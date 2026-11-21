@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Cross-cutting technical services: persistence helpers, audit, secret protection, messaging, telemetry, auth. -->
+  <PropertyGroup>
+    <RootNamespace>WebScan.Server.Infrastructure</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <ProjectReference Include="..\Kernel\WebScan.Server.Kernel.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" PrivateAssets="all" />
+    <PackageReference Include="WolverineFx" />
+  </ItemGroup>
+</Project>

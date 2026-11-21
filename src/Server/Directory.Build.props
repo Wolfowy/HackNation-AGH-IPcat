@@ -1,0 +1,11 @@
+<Project>
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
+  <ItemGroup>
+    <InternalsVisibleTo Include="WebScan.Server.UnitTests" />
+    <InternalsVisibleTo Include="WebScan.Scheduling.UnitTests" />
+    <InternalsVisibleTo Include="WebScan.Discovery.UnitTests" />
+    <InternalsVisibleTo Include="WebScan.Shared.UnitTests" />
+    <InternalsVisibleTo Include="WebScan.IntegrationTests" />
+    <InternalsVisibleTo Include="WebScan.E2ETests" />
+  </ItemGroup>
+</Project>

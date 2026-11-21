@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Agent runtime: Execution, Tools (built-in adapters/parsers), Communication, Storage. -->
+  <PropertyGroup>
+    <RootNamespace>WebScan.Agent</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Tools.Abstractions\WebScan.Agent.Tools.Abstractions.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+    <PackageReference Include="Microsoft.Extensions.Http" />
+    <PackageReference Include="Microsoft.Extensions.Http.Resilience" />
+    <PackageReference Include="Microsoft.Data.Sqlite" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="WebScan.Agent.UnitTests" />
+    <InternalsVisibleTo Include="WebScan.IntegrationTests" />
+    <InternalsVisibleTo Include="WebScan.E2ETests" />
+  </ItemGroup>
+</Project>

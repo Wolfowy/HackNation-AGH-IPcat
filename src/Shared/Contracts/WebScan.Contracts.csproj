@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Stable wire contracts shared by Server, Agent and tests. No dependencies beyond the BCL. -->
+  <PropertyGroup>
+    <RootNamespace>WebScan.Contracts</RootNamespace>
+  </PropertyGroup>
+</Project>

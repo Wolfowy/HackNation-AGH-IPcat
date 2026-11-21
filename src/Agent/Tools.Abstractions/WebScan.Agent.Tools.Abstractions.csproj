@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Plugin SDK for scanner tools: third parties implement adapters/parsers against this assembly only. -->
+  <PropertyGroup>
+    <RootNamespace>WebScan.Agent.Tools.Abstractions</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\Shared\Contracts\WebScan.Contracts.csproj" />
+  </ItemGroup>
+</Project>

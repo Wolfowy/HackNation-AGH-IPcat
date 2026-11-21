@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <!-- Composition root of the modular monolith. -->
+  <PropertyGroup>
+    <RootNamespace>WebScan.Server.Api</RootNamespace>
+    <UserSecretsId>webscan-server</UserSecretsId>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Infrastructure\WebScan.Server.Infrastructure.csproj" />
+    <ProjectReference Include="..\Modules\Identity\WebScan.Server.Modules.Identity.csproj" />
+    <ProjectReference Include="..\Modules\Agents\WebScan.Server.Modules.Agents.csproj" />
+    <ProjectReference Include="..\Modules\Networks\WebScan.Server.Modules.Networks.csproj" />
+    <ProjectReference Include="..\Modules\Scanning\WebScan.Server.Modules.Scanning.csproj" />
+    <ProjectReference Include="..\Modules\Scheduling\WebScan.Server.Modules.Scheduling.csproj" />
+    <ProjectReference Include="..\Modules\Workflows\WebScan.Server.Modules.Workflows.csproj" />
+    <ProjectReference Include="..\Modules\Signatures\WebScan.Server.Modules.Signatures.csproj" />
+    <ProjectReference Include="..\Modules\Discovery\WebScan.Server.Modules.Discovery.csproj" />
+    <ProjectReference Include="..\Modules\Analytics\WebScan.Server.Modules.Analytics.csproj" />
+    <ProjectReference Include="..\Modules\Integrations\WebScan.Server.Modules.Integrations.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" PrivateAssets="all" />
+  </ItemGroup>
+</Project>

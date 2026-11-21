@@ -1,0 +1,72 @@
+<Solution>
+  <Folder Name="/src/" />
+  <Folder Name="/src/Agent/" />
+  <Folder Name="/src/Agent/Core/">
+    <Project Path="src/Agent/Core/WebScan.Agent.Core.csproj" />
+  </Folder>
+  <Folder Name="/src/Agent/Tools.Abstractions/">
+    <Project Path="src/Agent/Tools.Abstractions/WebScan.Agent.Tools.Abstractions.csproj" />
+  </Folder>
+  <Folder Name="/src/Agent/Worker/">
+    <Project Path="src/Agent/Worker/WebScan.Agent.Worker.csproj" />
+  </Folder>
+  <Folder Name="/src/Server/" />
+  <Folder Name="/src/Server/Api/">
+    <Project Path="src/Server/Api/WebScan.Server.Api.csproj" />
+  </Folder>
+  <Folder Name="/src/Server/Infrastructure/">
+    <Project Path="src/Server/Infrastructure/WebScan.Server.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/src/Server/Kernel/">
+    <Project Path="src/Server/Kernel/WebScan.Server.Kernel.csproj" />
+  </Folder>
+  <Folder Name="/src/Server/Modules/" />
+  <Folder Name="/src/Server/Modules/Agents/">
+    <Project Path="src/Server/Modules/Agents/WebScan.Server.Modules.Agents.csproj" />
+  </Folder>
+  <Folder Name="/src/Server/Modules/Analytics/">
+    <Project Path="src/Server/Modules/Analytics/WebScan.Server.Modules.Analytics.csproj" />
+  </Folder>
+  <Folder Name="/src/Server/Modules/Discovery/">
+    <Project Path="src/Server/Modules/Discovery/WebScan.Server.Modules.Discovery.csproj" />
+  </Folder>
+  <Folder Name="/src/Server/Modules/Identity/">
+    <Project Path="src/Server/Modules/Identity/WebScan.Server.Modules.Identity.csproj" />
+  </Folder>
+  <Folder Name="/src/Server/Modules/Integrations/">
+    <Project Path="src/Server/Modules/Integrations/WebScan.Server.Modules.Integrations.csproj" />
+  </Folder>
+  <Folder Name="/src/Server/Modules/Networks/">
+    <Project Path="src/Server/Modules/Networks/WebScan.Server.Modules.Networks.csproj" />
+  </Folder>
+  <Folder Name="/src/Server/Modules/Scanning/">
+    <Project Path="src/Server/Modules/Scanning/WebScan.Server.Modules.Scanning.csproj" />
+  </Folder>
+  <Folder Name="/src/Server/Modules/Scheduling/">
+    <Project Path="src/Server/Modules/Scheduling/WebScan.Server.Modules.Scheduling.csproj" />
+  </Folder>
+  <Folder Name="/src/Server/Modules/Signatures/">
+    <Project Path="src/Server/Modules/Signatures/WebScan.Server.Modules.Signatures.csproj" />
+  </Folder>
+  <Folder Name="/src/Server/Modules/Workflows/">
+    <Project Path="src/Server/Modules/Workflows/WebScan.Server.Modules.Workflows.csproj" />
+  </Folder>
+  <Folder Name="/src/Shared/" />
+  <Folder Name="/src/Shared/Contracts/">
+    <Project Path="src/Shared/Contracts/WebScan.Contracts.csproj" />
+  </Folder>
+  <Folder Name="/tests/" />
+  <Folder Name="/tests/E2ETests/">
+    <Project Path="tests/E2ETests/WebScan.E2ETests/WebScan.E2ETests.csproj" />
+  </Folder>
+  <Folder Name="/tests/IntegrationTests/">
+    <Project Path="tests/IntegrationTests/WebScan.IntegrationTests/WebScan.IntegrationTests.csproj" />
+  </Folder>
+  <Folder Name="/tests/UnitTests/">
+    <Project Path="tests/UnitTests/WebScan.Agent.UnitTests/WebScan.Agent.UnitTests.csproj" />
+    <Project Path="tests/UnitTests/WebScan.Discovery.UnitTests/WebScan.Discovery.UnitTests.csproj" />
+    <Project Path="tests/UnitTests/WebScan.Scheduling.UnitTests/WebScan.Scheduling.UnitTests.csproj" />
+    <Project Path="tests/UnitTests/WebScan.Server.UnitTests/WebScan.Server.UnitTests.csproj" />
+    <Project Path="tests/UnitTests/WebScan.Shared.UnitTests/WebScan.Shared.UnitTests.csproj" />
+  </Folder>
+</Solution>

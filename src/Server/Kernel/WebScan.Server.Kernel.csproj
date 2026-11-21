@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Shared kernel: cross-module ports, security constants, IP range math. No module may reference another module directly. -->
+  <PropertyGroup>
+    <RootNamespace>WebScan.Server.Kernel</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <ProjectReference Include="..\..\Shared\Contracts\WebScan.Contracts.csproj" />
+  </ItemGroup>
+</Project>

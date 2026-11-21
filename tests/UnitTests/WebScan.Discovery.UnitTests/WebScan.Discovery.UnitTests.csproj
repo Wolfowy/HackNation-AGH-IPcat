@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" PrivateAssets="all" />
+    <PackageReference Include="Testcontainers.PostgreSql" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../../src/Server/Modules/Discovery/WebScan.Server.Modules.Discovery.csproj" />
+    <ProjectReference Include="../../../src/Server/Modules/Analytics/WebScan.Server.Modules.Analytics.csproj" />
+    <ProjectReference Include="../../../src/Server/Modules/Signatures/WebScan.Server.Modules.Signatures.csproj" />
+    <ProjectReference Include="../../../src/Server/Modules/Integrations/WebScan.Server.Modules.Integrations.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+</Project>
