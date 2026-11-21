@@ -1,6 +1,8 @@
 # Uruchomienie i testy
 
 Wymagania: .NET SDK 10, Node 22+ / npm 10+, Docker z Compose v2 (wystarczy 20.10 / Compose 2.15).
+Budowa obrazów (serwer, agent z narzędziami, frontend, TestLab) potrzebuje ok. 15–20 GB wolnego miejsca w VM Dockera;
+przy braku miejsca PostgreSQL/RabbitMQ zatrzymują się z `No space left on device` (`docker system df`, `docker builder prune`).
 
 ## 1. Pełny stos w Docker Compose (z siecią testową)
 

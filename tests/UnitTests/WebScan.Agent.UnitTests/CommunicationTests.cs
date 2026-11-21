@@ -129,6 +129,32 @@ public class CommunicationTests
     }
 
     [Fact]
+    public async Task Upload_loop_survives_local_storage_failures()
+    {
+        var server = new FakeAgentServer();
+        var job = PortScanJob();
+        server.PendingAssignments.Enqueue(Jobs.Assign(job));
+        var outage = true;
+        server.Fault = r => outage && r.RequestUri!.AbsolutePath.StartsWith("/api/agents/jobs/" + job.JobId, StringComparison.Ordinal)
+            ? FakeAgentServer.StatusCode(HttpStatusCode.ServiceUnavailable) : null;
+        await using var agent = new AgentHarness(server);
+        await agent.Host.StartAsync();
+        await Eventually.TrueAsync(() => agent.Get<ResultBuffer>().PendingBatchCount() > 0, "results buffered during outage");
+
+        // Local storage breaks (like a full disk): the buffer file cannot be opened at all.
+        var db = Path.Combine(agent.Dir.Path, "data", "agent-buffer.db");
+        File.Move(db, db + ".away");
+        Directory.CreateDirectory(db);
+        await Task.Delay(TimeSpan.FromSeconds(3)); // several upload attempts hit the storage error
+
+        Directory.Delete(db);
+        File.Move(db + ".away", db);
+        outage = false;
+        await Eventually.TrueAsync(() => server.Read(s => s.Completions.Count) == 1, "completion after storage and server recover");
+        Assert.Equal(0, agent.Get<ResultBuffer>().PendingBatchCount());
+    }
+
+    [Fact]
     public async Task Server_cancellation_and_shutdown_report_failures_with_coverage()
     {
         var server = new FakeAgentServer();

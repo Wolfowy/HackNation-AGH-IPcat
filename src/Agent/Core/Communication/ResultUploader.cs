@@ -73,6 +73,13 @@ public sealed class ResultUploader(
                 await _signal.WaitAsync(TimeSpan.FromSeconds(5), ct);
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
+            catch (Exception ex)
+            {
+                // e.g. local disk full / SQLite I/O error: never let the upload loop die silently; results stay buffered.
+                logger.LogWarning(ex, "Result upload loop failed: {Error}; retrying in {Delay}.", ex.Message, backoff);
+                try { await Task.Delay(backoff, time, ct); } catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
+                backoff = TimeSpan.FromTicks(Math.Min(backoff.Ticks * 2, MaxBackoff.Ticks));
+            }
         }
     }
 
