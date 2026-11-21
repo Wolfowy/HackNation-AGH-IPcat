@@ -8,7 +8,8 @@ var runJobIndex = Array.IndexOf(args, "--run-job");
 var jobFile = runJobIndex >= 0 && runJobIndex + 1 < args.Length ? args[runJobIndex + 1] : null;
 var configArgs = args.Where((a, i) => a != "--list-tools" && i != runJobIndex && (runJobIndex < 0 || i != runJobIndex + 1)).ToArray();
 
-var builder = Host.CreateApplicationBuilder(configArgs);
+// Content root = binary directory, so appsettings.json is found whatever the working directory is (the container uses the data dir).
+var builder = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings { Args = configArgs, ContentRootPath = AppContext.BaseDirectory });
 if (listTools || runJobIndex >= 0) // keep stdout clean for command output
     builder.Services.Configure<Microsoft.Extensions.Logging.Console.ConsoleLoggerOptions>(o => o.LogToStandardErrorThreshold = LogLevel.Trace);
 builder.Services.AddScannerAgent(builder.Configuration);

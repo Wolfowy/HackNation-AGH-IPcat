@@ -41,7 +41,11 @@ public sealed class AgentReach
         return reach;
     }
 
-    /// <summary>Interfaces through which every target is reachable (hostnames need a default route).</summary>
+    /// <summary>
+    /// Interfaces through which every target is reachable (hostnames need a default route). Longest-prefix semantics:
+    /// when an interface reaches the targets through its own subnet or a specific route, the OS sends the traffic there,
+    /// so interfaces that would only reach them via a default route are not offered (binding a tool to them would fail).
+    /// </summary>
     public IReadOnlyList<string> InterfacesReaching(IReadOnlyList<string> targets)
     {
         var ranges = new List<IpRange>();
@@ -53,14 +57,16 @@ public sealed class AgentReach
         }
         var ips = IpRangeSet.FromRanges(ranges);
 
-        var result = new List<string>();
+        var specific = new List<string>();
+        var viaDefault = new List<string>();
         foreach (var (name, reach, v4, v6) in _interfaces)
         {
             if (hasHostnames && !v4 && !v6) continue;
             var rest = ips.Subtract(reach);
-            if (rest.Ranges.All(r => r.Family == AddressFamily.InterNetwork ? v4 : v6)) result.Add(name);
+            if (rest.IsEmpty && !hasHostnames) specific.Add(name);
+            else if (rest.Ranges.All(r => r.Family == AddressFamily.InterNetwork ? v4 : v6)) viaDefault.Add(name);
         }
-        return result;
+        return specific.Count > 0 ? specific : viaDefault;
     }
 }
 

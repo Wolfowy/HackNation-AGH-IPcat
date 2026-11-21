@@ -17,6 +17,24 @@ public sealed class EligibilityTests
         Eligibility.Evaluate(agent, AgentReach.Build(agent, (options ?? Options).AllowDefaultRoute), job, options ?? Options);
 
     [Fact]
+    public void Directly_connected_interface_wins_over_default_route_interface()
+    {
+        // Typical container: eth0 = backend network with the default route, eth1 = scanned lab network.
+        var agent = Agents.Simple("a1", "dc1", "172.23.0.7/16") with
+        {
+            Interfaces =
+            [
+                new NetworkInterfaceInfo { Name = "eth0", Addresses = ["172.23.0.7/16"] },
+                new NetworkInterfaceInfo { Name = "eth1", Addresses = ["172.30.0.100/24"] },
+            ],
+            Routes = [new RouteInfo { Destination = "0.0.0.0/0", Gateway = "172.23.0.1", InterfaceName = "eth0" }],
+        };
+        var reach = AgentReach.Build(agent, allowDefaultRoute: true);
+        Assert.Equal(["eth1"], reach.InterfacesReaching(["172.30.0.0/26"]));
+        Assert.Equal(["eth0"], reach.InterfacesReaching(["10.99.0.0/24"])); // only reachable via the default route
+    }
+
+    [Fact]
     public void Agent_must_be_authorized_for_the_zone_and_restricted_network()
     {
         var agent = Agents.Simple("a1", "dc1", "10.0.0.5/16");
