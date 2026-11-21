@@ -27,6 +27,7 @@
     <PackageVersion Include="WolverineFx.RabbitMQ" Version="6.64.2" />
     <PackageVersion Include="WolverineFx.Postgresql" Version="6.64.2" />
     <PackageVersion Include="WolverineFx.EntityFrameworkCore" Version="6.64.2" />
+    <PackageVersion Include="WolverineFx.RuntimeCompilation" Version="6.64.2" />
     <PackageVersion Include="Quartz" Version="3.22.11" />
     <PackageVersion Include="Quartz.Extensions.Hosting" Version="3.22.11" />
     <PackageVersion Include="Quartz.Serialization.SystemTextJson" Version="3.22.11" />
