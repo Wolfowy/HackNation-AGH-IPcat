@@ -1,6 +1,6 @@
 import { Link } from 'react-router'
 import { useCancelJob, useRetryJob } from '@/api/scans'
-import type { ScanJob } from '@/api/types'
+import { ACTIVE_RUN_STATUSES, type ScanJob, type ScanRunStatus } from '@/api/types'
 import { useCan } from '@/auth/AuthProvider'
 import { EmptyState } from '@/components/feedback'
 import { StatusBadge } from '@/components/page'
@@ -8,8 +8,10 @@ import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { formatDuration, formatRelative } from '@/lib/format'
 
-export function JobsTable({ jobs, showRun = false }: { jobs: ScanJob[]; showRun?: boolean }) {
+/** `runStatus`: status of the run all jobs belong to; jobs of a finished run cannot be retried (the server answers 409). */
+export function JobsTable({ jobs, showRun = false, runStatus }: { jobs: ScanJob[]; showRun?: boolean; runStatus?: ScanRunStatus }) {
   const canEdit = useCan('edit')
+  const canRetry = !runStatus || ACTIVE_RUN_STATUSES.includes(runStatus)
   const cancel = useCancelJob()
   const retry = useRetryJob()
   if (jobs.length === 0) return <EmptyState>No jobs.</EmptyState>
@@ -80,7 +82,7 @@ export function JobsTable({ jobs, showRun = false }: { jobs: ScanJob[]; showRun?
                     Cancel
                   </Button>
                 )}
-                {(job.status === 'Failed' || job.status === 'Cancelled') && (
+                {canRetry && (job.status === 'Failed' || job.status === 'Cancelled') && (
                   <Button size="sm" variant="outline" onClick={() => retry.mutate(job.id)}>
                     Retry
                   </Button>

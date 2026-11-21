@@ -50,7 +50,7 @@ interface Values {
 
 const validateCron = (v: string) => {
   const fields = v.trim().split(/\s+/).length
-  return (fields >= 5 && fields <= 7) || 'Cron needs 6–7 fields (Quartz: sec min hour day month weekday [year]).'
+  return (fields >= 6 && fields <= 7) || 'Cron needs 6–7 fields (Quartz: sec min hour day month weekday [year]).'
 }
 
 function WindowsEditor({ windows, onChange }: { windows: AllowedWindow[]; onChange: (w: AllowedWindow[]) => void }) {

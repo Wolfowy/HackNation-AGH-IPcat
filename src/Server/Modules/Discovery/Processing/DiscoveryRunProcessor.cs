@@ -40,7 +40,8 @@ internal sealed class DiscoveryRunProcessor(
     TimeProvider time,
     IOptions<DiscoveryOptions> options,
     ILogger<DiscoveryRunProcessor> logger,
-    IRunBatchCatalog? batchCatalog = null) : IDiscoveryRunProcessor
+    IRunBatchCatalog? batchCatalog = null,
+    IScanEventPublisher? events = null) : IDiscoveryRunProcessor
 {
     public async Task<PersistRunResult> PersistRunAsync(Guid scanRunId, RunCoverage coverage, CancellationToken ct = default)
     {
@@ -112,9 +113,32 @@ internal sealed class DiscoveryRunProcessor(
         await tx.CommitAsync(ct);
         db.ChangeTracker.Clear();
 
-        if (changes.Count > 0) await bus.PublishAsync(new AssetChangesDetected(scanRunId, changes.Count));
+        if (changes.Count > 0)
+        {
+            await bus.PublishAsync(new AssetChangesDetected(scanRunId, changes.Count));
+            await PublishChangeDetectedAsync(scanRunId, changes.Count, byType, ct);
+        }
         logger.LogInformation("Compared run {ScanRunId}: {Count} changes", scanRunId, changes.Count);
         return new CompareRunResult(changes.Count, byType);
+    }
+
+    /// <summary>Live ChangeDetected hub event (implemented by Scanning; absent when the module runs alone). Never fails the compare.</summary>
+    private async Task PublishChangeDetectedAsync(Guid scanRunId, int count, Dictionary<string, int> byType, CancellationToken ct)
+    {
+        if (events is null) return;
+        try
+        {
+            await events.PublishAsync(new ScanExecutionEvent
+            {
+                EventId = Guid.NewGuid(), OccurredAt = time.GetUtcNow(), Type = ScanExecutionEventType.ChangeDetected, ScanRunId = scanRunId,
+                Message = $"{count} change{(count == 1 ? "" : "s")} detected",
+                Data = byType.ToDictionary(kv => kv.Key, kv => kv.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)),
+            }, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogWarning(ex, "Publishing ChangeDetected for run {ScanRunId} failed", scanRunId);
+        }
     }
 
     private static void ApplyChangeRules(DetectedChange change, IReadOnlyList<ChangeRule> changeRules)

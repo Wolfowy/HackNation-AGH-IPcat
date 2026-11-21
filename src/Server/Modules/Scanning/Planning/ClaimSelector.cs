@@ -14,10 +14,11 @@ public sealed record ScanLimits
     public int SubnetPrefixLength { get; init; } = 16;
     public int MaxRatePerSecondGlobal { get; init; } = 50_000;
 
-    public IReadOnlyList<string> Validate()
+    /// <summary>Validation errors keyed by camelCase field name (empty = valid).</summary>
+    public Dictionary<string, string[]> Validate()
     {
-        var errors = new List<string>();
-        void Check(int value, int min, int max, string name) { if (value < min || value > max) errors.Add($"{name} must be between {min} and {max}."); }
+        var errors = new Dictionary<string, string[]>();
+        void Check(int value, int min, int max, string name) { if (value < min || value > max) errors[name] = [$"{name} must be between {min} and {max}."]; }
         Check(DefaultBatchSize, TargetPlanner.MinBatchSize, TargetPlanner.MaxBatchSize, "defaultBatchSize");
         Check(LeaseDurationSeconds, 30, 3600, "leaseDurationSeconds");
         Check(MaxAttempts, 1, 10, "maxAttempts");

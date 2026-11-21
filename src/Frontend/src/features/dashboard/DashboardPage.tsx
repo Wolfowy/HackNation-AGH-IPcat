@@ -2,6 +2,7 @@ import { Link } from 'react-router'
 import type { ReactNode } from 'react'
 import { useAgents } from '@/api/agents'
 import { useChanges, useDashboardSummary } from '@/api/assets'
+import { useJoinActiveRuns } from '@/api/scanHub'
 import { useScans } from '@/api/scans'
 import { EmptyState, Loadable } from '@/components/feedback'
 import { PageHeader, ProgressCell, StatusBadge } from '@/components/page'
@@ -32,6 +33,7 @@ export function DashboardPage() {
   const summary = useDashboardSummary()
   const agents = useAgents()
   const running = useScans({ status: 'Running', page: 1, pageSize: 10 })
+  useJoinActiveRuns(running.data?.items)
   const changes = useChanges({ page: 1, pageSize: 8 })
   const s = summary.data
   const online = agents.data?.filter((a) => a.isOnline).length

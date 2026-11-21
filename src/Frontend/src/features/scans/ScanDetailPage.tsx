@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router'
 import { CheckCircle2, Circle, CircleDashed, CircleSlash, Loader2, XCircle } from 'lucide-react'
-import { asList } from '@/api/client'
 import { useNetworks } from '@/api/networks'
 import { useScanEventListener } from '@/api/scanHub'
 import { useCancelScan, useScan, useScanEvents, useScanJobs } from '@/api/scans'
@@ -9,7 +8,7 @@ import { ACTIVE_RUN_STATUSES, type ScanExecutionEvent, type ScanStep, type StepS
 import { Can } from '@/auth/AuthProvider'
 import { ConfirmButton } from '@/components/actions'
 import { EmptyState, Loadable } from '@/components/feedback'
-import { Chips, KeyValues, PageHeader, StatusBadge } from '@/components/page'
+import { Chips, KeyValues, PageHeader, Pagination, StatusBadge } from '@/components/page'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
@@ -75,7 +74,9 @@ function EventsLog({ events }: { events: ScanExecutionEvent[] }) {
 export function ScanDetailPage() {
   const { id = '' } = useParams()
   const scan = useScan(id)
-  const jobs = useScanJobs(id)
+  const [jobsPage, setJobsPage] = useState(1)
+  const jobsPageSize = 100
+  const jobs = useScanJobs(id, jobsPage, jobsPageSize)
   const history = useScanEvents(id)
   const networks = useNetworks()
   const cancel = useCancelScan()
@@ -185,7 +186,14 @@ export function ScanDetailPage() {
                 <StepsTimeline steps={run.steps} />
               </TabsContent>
               <TabsContent value="jobs">
-                <Loadable query={jobs}>{(data) => <JobsTable jobs={asList(data)} />}</Loadable>
+                <Loadable query={jobs}>
+                  {(data) => (
+                    <>
+                      <JobsTable jobs={data.items} runStatus={run.status} />
+                      <Pagination page={jobsPage} pageSize={jobsPageSize} total={data.total} onPageChange={setJobsPage} />
+                    </>
+                  )}
+                </Loadable>
               </TabsContent>
               <TabsContent value="events">
                 <EventsLog events={events} />

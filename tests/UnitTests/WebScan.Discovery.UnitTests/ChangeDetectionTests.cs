@@ -126,6 +126,20 @@ public class ChangeDetectionTests(TestApp app) : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Detected_changes_are_published_as_a_live_ChangeDetected_event()
+    {
+        await _s.RunAsync(Full("10.2.6.0/24"), 1, _s.HostUp("10.2.6.1"), _s.Port("10.2.6.1", 22));
+        var evt = Assert.Single(app.ScanEvents.Events, e => e.ScanRunId == _s.RunId);
+        Assert.Equal(ScanExecutionEventType.ChangeDetected, evt.Type);
+        Assert.Equal("2 changes detected", evt.Message);
+        Assert.Equal(("1", "1", 2), (evt.Data!["NewHost"], evt.Data["NewPort"], evt.Data.Count));
+
+        _s.NextRun();
+        Assert.Empty(await _s.RunAsync(Full("10.2.6.0/24"), 1, _s.HostUp("10.2.6.1"), _s.Port("10.2.6.1", 22)));
+        Assert.DoesNotContain(app.ScanEvents.Events, e => e.ScanRunId == _s.RunId); // nothing changed, nothing published
+    }
+
+    [Fact]
     public async Task Host_reappears_after_being_gone()
     {
         await _s.RunAsync(Full("10.2.5.0/24"), 1, _s.HostUp("10.2.5.1"));

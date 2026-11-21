@@ -30,7 +30,8 @@ export function SchedulesPage() {
 
   const runNow = (s: Schedule) =>
     trigger.mutate(s.id, {
-      onSuccess: ({ scanRunId }) => {
+      onSuccess: ({ scanRunId, reason }) => {
+        if (!scanRunId) return void toast.info(`Queued: ${reason ?? 'waits for the previous run'}`)
         toast.success(`Scan started from "${s.name}"`)
         navigate(`/scans/${scanRunId}`)
       },

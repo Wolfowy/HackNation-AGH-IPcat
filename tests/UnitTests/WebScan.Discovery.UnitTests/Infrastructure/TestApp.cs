@@ -14,6 +14,7 @@ using Microsoft.Extensions.Options;
 using Testcontainers.PostgreSql;
 using WebScan.Contracts;
 using WebScan.Server.Infrastructure.Persistence;
+using WebScan.Server.Kernel.Ports;
 using WebScan.Server.Kernel.Security;
 using WebScan.Server.Modules.Analytics;
 using WebScan.Server.Modules.Discovery;
@@ -43,6 +44,7 @@ public sealed class TestApp : IAsyncLifetime
     public ManualClock Clock { get; } = new(new DateTimeOffset(2026, 11, 2, 10, 0, 0, TimeSpan.Zero));
     public FakeAuditLog Audit { get; } = new();
     public FakeHttpHandler DefectDojo { get; } = new();
+    public RecordingScanEventPublisher ScanEvents { get; } = new();
     public IServiceProvider Services => _app!.Services;
 
     public async Task InitializeAsync()
@@ -70,6 +72,7 @@ public sealed class TestApp : IAsyncLifetime
             .AddSignaturesModule(builder.Configuration).AddIntegrationsModule(builder.Configuration);
         services.AddSingleton<TimeProvider>(Clock);
         services.AddSingleton<IAuditLog>(Audit);
+        services.AddSingleton<IScanEventPublisher>(ScanEvents);
         services.AddSingleton<ISecretProtector, FakeSecretProtector>();
         services.AddHttpContextAccessor();
         services.AddScoped<ICurrentUser, HttpContextCurrentUser>();
@@ -139,6 +142,7 @@ public sealed class TestApp : IAsyncLifetime
                 """);
         });
         Audit.Entries.Clear();
+        ScanEvents.Events.Clear();
         DefectDojo.Reset();
     }
 }
@@ -157,6 +161,17 @@ public sealed class FakeAuditLog : IAuditLog
     public Task WriteAsync(AuditEntry entry, CancellationToken ct = default)
     {
         lock (Entries) Entries.Add(entry);
+        return Task.CompletedTask;
+    }
+}
+
+public sealed class RecordingScanEventPublisher : IScanEventPublisher
+{
+    public List<ScanExecutionEvent> Events { get; } = [];
+
+    public Task PublishAsync(ScanExecutionEvent evt, CancellationToken ct = default)
+    {
+        lock (Events) Events.Add(evt);
         return Task.CompletedTask;
     }
 }

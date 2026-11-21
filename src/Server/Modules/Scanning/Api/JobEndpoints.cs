@@ -88,7 +88,7 @@ public static class JobEndpoints
         endpoints.MapPut("/api/scan-limits", async (ScanLimits limits, ScanLimitsStore store, IAuditLog audit, CancellationToken ct) =>
         {
             var errors = limits.Validate();
-            if (errors.Count > 0) return Results.ValidationProblem(new Dictionary<string, string[]> { ["limits"] = [.. errors] }, statusCode: StatusCodes.Status422UnprocessableEntity);
+            if (errors.Count > 0) return Results.ValidationProblem(errors, statusCode: StatusCodes.Status422UnprocessableEntity);
             await store.SaveAsync(limits, ct);
             await audit.WriteAsync(new AuditEntry("scan-limits.updated", "ScanLimits", null, limits), ct);
             return Results.Ok(limits);

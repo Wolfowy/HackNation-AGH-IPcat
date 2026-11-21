@@ -36,10 +36,22 @@ const validationProblem = (errors: Record<string, string[]>) => problem(400, 'On
 const notFound = (what = 'Resource') => problem(404, `${what} not found`)
 const noContent = () => new HttpResponse(null, { status: 204 })
 
-function paged<T>(items: T[], url: URL) {
+function paged<T>(items: T[], url: URL, defaultPageSize = 50) {
   const page = Math.max(1, Number(url.searchParams.get('page') ?? 1))
-  const pageSize = Math.min(500, Math.max(1, Number(url.searchParams.get('pageSize') ?? 50)))
+  const pageSize = Math.min(500, Math.max(1, Number(url.searchParams.get('pageSize') ?? defaultPageSize)))
   return { items: items.slice((page - 1) * pageSize, page * pageSize), total: items.length, page, pageSize }
+}
+
+/** ScanLimits.Validate() ranges (Scanning/Planning/ClaimSelector.cs). */
+const SCAN_LIMIT_RANGES: Record<keyof MockDb['scanLimits'], [number, number]> = {
+  defaultBatchSize: [64, 1024],
+  leaseDurationSeconds: [30, 3600],
+  maxAttempts: [1, 10],
+  maxConcurrentJobsPerZone: [1, 100_000],
+  maxConcurrentJobsPerInterface: [1, 1000],
+  maxConcurrentJobsPerSubnet: [1, 100_000],
+  subnetPrefixLength: [8, 32],
+  maxRatePerSecondGlobal: [1, 100_000_000],
 }
 
 const publicUser = ({ password: _password, ...u }: MockUser): User => u
@@ -603,10 +615,14 @@ export const handlers = [
     route('edit', ({ params, user }) => {
       const s = db.schedules.find((x) => x.id === p(params, 'id'))
       if (!s) return notFound('Schedule')
+      // Overlap policy like ScheduleFiringService: Skip → 409, Queue → 200 without a run, CancelPrevious → start anyway.
+      const previous = db.runs.find((r) => r.id === s.lastRunId && ['Pending', 'Running'].includes(r.status))
+      if (previous && s.overlapPolicy === 'Skip') return problem(409, 'Conflict', { detail: `previous run ${previous.id} is still active` })
+      if (previous && s.overlapPolicy === 'Queue') return HttpResponse.json({ outcome: 'Queued', reason: `Queued behind run ${previous.id}` })
       const run = createRun(user, { name: s.name, workflowKey: s.workflowKey, workflowVersion: s.workflowVersion, networkIds: s.networkIds, priority: s.priority }, `schedule:${s.id}`)
       s.lastRunId = run.id
       s.lastRunStatus = run.status
-      return HttpResponse.json({ scanRunId: run.id })
+      return HttpResponse.json({ scanRunId: run.id, outcome: 'Started' })
     }),
   ),
   ...(['pause', 'resume'] as const).map((action) =>
@@ -664,12 +680,23 @@ export const handlers = [
       return noContent()
     }),
   ),
-  http.get('*/api/scans/:id/jobs', route('read', ({ params }) => HttpResponse.json(db.jobs.filter((j) => j.scanRunId === p(params, 'id'))))),
+  http.get(
+    '*/api/scans/:id/jobs',
+    route('read', ({ params, url }) => {
+      if (!db.runs.some((r) => r.id === p(params, 'id'))) return notFound('Scan')
+      const status = url.searchParams.get('status')
+      return HttpResponse.json(paged(db.jobs.filter((j) => j.scanRunId === p(params, 'id') && (!status || j.status === status)), url, 100))
+    }),
+  ),
   http.get(
     '*/api/scans/:id/events',
     route('read', ({ params, url }) => {
+      // Like the server: `after` (event id or timestamp) pages forward from the cursor; without it the latest 1000.
+      const events = db.events.filter((e) => e.scanRunId === p(params, 'id'))
       const after = url.searchParams.get('after')
-      return HttpResponse.json(db.events.filter((e) => e.scanRunId === p(params, 'id') && (!after || e.occurredAt > after)))
+      if (!after) return HttpResponse.json(events.slice(-1000))
+      const index = events.findIndex((e) => e.eventId === after)
+      return HttpResponse.json((index >= 0 ? events.slice(index + 1) : events.filter((e) => e.occurredAt > after)).slice(0, 1000))
     }),
   ),
   http.get(
@@ -731,6 +758,10 @@ export const handlers = [
     route('edit', ({ params }) => {
       const job = db.jobs.find((j) => j.id === p(params, 'id'))
       if (!job) return notFound('Job')
+      if (job.status !== 'Failed' && job.status !== 'Cancelled')
+        return problem(409, 'Conflict', { detail: `Only failed or cancelled jobs can be retried (job is ${job.status}).` })
+      const runStatus = db.runs.find((r) => r.id === job.scanRunId)?.status
+      if (runStatus && !['Pending', 'Running'].includes(runStatus)) return problem(409, 'Conflict', { detail: `The scan run is already ${runStatus}.` })
       Object.assign(job, { status: 'Queued', attempt: job.attempt + 1, error: undefined, finishedAt: undefined })
       emit(db, { type: 'JobRetryScheduled', scanRunId: job.scanRunId, jobId: job.id, stepId: job.stepId })
       return noContent()
@@ -741,9 +772,14 @@ export const handlers = [
     '*/api/scan-limits',
     route('admin', async ({ request }) => {
       const limits = await body<MockDb['scanLimits']>(request)
-      if (limits.defaultBatchSize < 64 || limits.defaultBatchSize > 1024) return validationProblem({ DefaultBatchSize: ['Must be between 64 and 1024.'] })
+      const errors: Record<string, string[]> = {}
+      for (const [name, [min, max]] of Object.entries(SCAN_LIMIT_RANGES)) {
+        const value = limits[name as keyof typeof limits]
+        if (!(value >= min && value <= max)) errors[name] = [`${name} must be between ${min} and ${max}.`]
+      }
+      if (Object.keys(errors).length) return problem(422, 'One or more validation errors occurred.', { errors })
       db.scanLimits = limits
-      return noContent()
+      return HttpResponse.json(limits)
     }),
   ),
   http.get(

@@ -112,3 +112,58 @@ describe('scan detail live progress', () => {
     expect(await screen.findByText('Name already used today.')).toBeInTheDocument()
   })
 })
+
+describe('live progress outside the detail page', () => {
+  const joined = () => fakeHub.invocations.filter((i) => i.method === 'JoinRun').map((i) => i.args[0])
+
+  it.each(['/scans', '/'])('%s joins the hub group of every active run shown, and only those', async (path) => {
+    const db = getDb()
+    const live = db.runs.find((r) => r.status === 'Running')!
+    renderApp(path, { role: 'Viewer' })
+    await waitFor(() => expect(joined()).toEqual([live.id]))
+  })
+
+  it('leaves the run group once the run is no longer active', async () => {
+    const db = getDb()
+    const live = db.runs.find((r) => r.status === 'Running')!
+    renderApp('/scans', { role: 'Viewer' })
+    await waitFor(() => expect(joined()).toEqual([live.id]))
+    live.status = 'Completed'
+    act(() => fakeHub.emit('scanEvent', { eventId: 'done', occurredAt: new Date().toISOString(), type: 'RunCompleted', scanRunId: live.id }))
+    await waitFor(() => expect(fakeHub.invocations).toContainEqual({ method: 'LeaveRun', args: [live.id] }), { timeout: 3000 })
+  })
+})
+
+describe('scan jobs', () => {
+  it('pages the jobs of a run and hides Retry when the run is finished', async () => {
+    const db = getDb()
+    const run = db.runs.find((r) => r.status === 'Failed')!
+    const total = db.jobs.filter((j) => j.scanRunId === run.id).length
+    let query = ''
+    server.events.on('request:start', ({ request }) => {
+      const url = new URL(request.url)
+      if (url.pathname === `/api/scans/${run.id}/jobs`) query = url.search
+    })
+    const { user } = renderApp(`/scans/${run.id}`, { role: 'Editor' })
+    await user.click(await screen.findByRole('tab', { name: 'Jobs' }))
+    expect(await screen.findByText(`Page 1 of 1 · ${total} total`)).toBeInTheDocument()
+    expect(query).toBe('?page=1&pageSize=100')
+    expect(screen.getAllByTestId('job-row').some((row) => within(row).queryByText('Cancelled'))).toBe(true) // retryable status
+    expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument()
+    server.events.removeAllListeners()
+  })
+
+  it('keeps Retry on the jobs page; the server answers 409 for a finished run', async () => {
+    const conflicts: string[] = []
+    server.events.on('response:mocked', async ({ request, response }) => {
+      if (request.url.endsWith('/retry') && response.status === 409) conflicts.push(((await response.clone().json()) as { detail: string }).detail)
+    })
+    const { user } = renderApp('/jobs', { role: 'Editor' })
+    await user.selectOptions(await screen.findByLabelText('Status'), 'Cancelled')
+    await waitFor(() => expect(screen.getAllByTestId('job-row').every((row) => within(row).queryByText('Cancelled'))).toBe(true))
+    await user.click(screen.getAllByRole('button', { name: 'Retry' })[0]) // mock data: cancelled jobs belong to finished runs
+    // The app's MutationCache (not used by renderApp) toasts this detail.
+    await waitFor(() => expect(conflicts).toEqual([expect.stringMatching(/^The scan run is already (Failed|WindowExpired)\.$/)]))
+    server.events.removeAllListeners()
+  })
+})

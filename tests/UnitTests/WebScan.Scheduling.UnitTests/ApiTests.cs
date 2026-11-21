@@ -113,6 +113,31 @@ public sealed class ApiTests(TestHost host) : DbTestBase(host)
     }
 
     [Fact]
+    public async Task Scan_events_without_cursor_return_the_latest_1000_oldest_first()
+    {
+        var runId = Guid.NewGuid();
+        var start = Host.Time.GetUtcNow();
+        var events = Enumerable.Range(0, 1005).Select(i => new ScanExecutionEvent
+        {
+            EventId = Guid.NewGuid(), OccurredAt = start.AddSeconds(i), Type = ScanExecutionEventType.JobProgress, ScanRunId = runId, Progress = i % 100,
+        }).ToList();
+        await Host.DbAsync(db =>
+        {
+            db.Events.AddRange(events.Select(e => new WebScan.Server.Modules.Scanning.Persistence.ScanEventRecord
+            {
+                EventId = e.EventId, ScanRunId = runId, OccurredAt = e.OccurredAt, Type = e.Type, PayloadJson = JsonSerializer.Serialize(e, ContractJson.Options),
+            }));
+            return db.SaveChangesAsync();
+        });
+        var viewer = Host.UserClient(Roles.Viewer);
+
+        var latest = await viewer.GetFromJsonAsync<List<ScanExecutionEvent>>($"/api/scans/{runId}/events", ContractJson.Options);
+        Assert.Equal(events.Skip(5).Select(e => e.EventId), latest!.Select(e => e.EventId));
+        var page = await viewer.GetFromJsonAsync<List<ScanExecutionEvent>>($"/api/scans/{runId}/events?after={events[0].EventId}", ContractJson.Options);
+        Assert.Equal(events.Skip(1).Take(1000).Select(e => e.EventId), page!.Select(e => e.EventId));
+    }
+
+    [Fact]
     public async Task Scan_limits_are_admin_only_and_validated()
     {
         var admin = Host.UserClient(Roles.Administrator);
@@ -120,9 +145,9 @@ public sealed class ApiTests(TestHost host) : DbTestBase(host)
         Assert.Equal(HttpStatusCode.Forbidden, (await Host.UserClient(Roles.Manager).PutAsync("/api/scan-limits", Json(current))).StatusCode);
         var invalid = await admin.PutAsync("/api/scan-limits", Json(current! with { DefaultBatchSize = 5000, SubnetPrefixLength = 2 }));
         Assert.Equal(HttpStatusCode.UnprocessableEntity, invalid.StatusCode);
-        var body = await invalid.Content.ReadAsStringAsync();
-        Assert.Contains("defaultBatchSize", body);
-        Assert.Contains("subnetPrefixLength", body);
+        var errors = (await invalid.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("errors");
+        Assert.Equal(["defaultBatchSize", "subnetPrefixLength"], errors.EnumerateObject().Select(p => p.Name).Order().ToArray());
+        Assert.Contains("between 64 and 1024", errors.GetProperty("defaultBatchSize")[0].GetString());
 
         Assert.Equal(HttpStatusCode.OK, (await admin.PutAsync("/api/scan-limits", Json(current with { LeaseDurationSeconds = 300 }))).StatusCode);
         Assert.Equal(300, (await admin.GetFromJsonAsync<ScanLimits>("/api/scan-limits", ContractJson.Options))!.LeaseDurationSeconds);

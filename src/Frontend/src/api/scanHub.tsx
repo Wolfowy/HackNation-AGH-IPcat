@@ -3,7 +3,7 @@ import { HubConnectionBuilder, HubConnectionState, LogLevel, type HubConnection 
 import { useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { API_BASE_URL } from './client'
 import { sessionStore } from './session'
-import type { ScanExecutionEvent } from './types'
+import { ACTIVE_RUN_STATUSES, type ScanExecutionEvent, type ScanRun } from './types'
 
 // Mirrors Contracts/ScanExecutionEvent.cs → ScanHub.
 export const SCAN_HUB_PATH = '/hubs/scans'
@@ -146,4 +146,33 @@ export function useScanEventListener(listener: Listener, runId?: string) {
     [hub, runId],
   )
   useEffect(() => (runId ? hub.joinRun(runId) : undefined), [hub, runId])
+}
+
+/**
+ * Joins the hub group of every shown Pending/Running run: the server sends job, step and ResultsReceived events only to
+ * `run:{id}` groups. Leaves a run once it is no longer shown or active.
+ */
+export function useJoinActiveRuns(runs: Pick<ScanRun, 'id' | 'status'>[] | undefined) {
+  const { joinRun } = useContext(ScanHubContext)
+  const joined = useRef(new Map<string, () => void>())
+  const key = [...new Set((runs ?? []).filter((r) => ACTIVE_RUN_STATUSES.includes(r.status)).map((r) => r.id))].sort().join(',')
+  useEffect(() => {
+    const map = joined.current
+    const wanted = new Set(key ? key.split(',') : [])
+    map.forEach((leave, id) => {
+      if (wanted.has(id)) return
+      leave()
+      map.delete(id)
+    })
+    wanted.forEach((id) => {
+      if (!map.has(id)) map.set(id, joinRun(id))
+    })
+  }, [joinRun, key])
+  useEffect(() => {
+    const map = joined.current
+    return () => {
+      map.forEach((leave) => leave())
+      map.clear()
+    }
+  }, [])
 }

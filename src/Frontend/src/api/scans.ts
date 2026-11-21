@@ -1,19 +1,23 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { api } from './client'
 import { useApiMutation } from './query'
-import type {
-  JobStatus,
-  Paged,
-  PlannerStats,
-  ScanDiff,
-  ScanExecutionEvent,
-  ScanJob,
-  ScanLimits,
-  ScanRun,
-  ScanRunDetail,
-  ScanRunStatus,
-  ScanStartRequest,
+import {
+  ACTIVE_RUN_STATUSES,
+  type JobStatus,
+  type Paged,
+  type PlannerStats,
+  type ScanDiff,
+  type ScanExecutionEvent,
+  type ScanJob,
+  type ScanLimits,
+  type ScanRun,
+  type ScanRunDetail,
+  type ScanRunStatus,
+  type ScanStartRequest,
 } from './types'
+
+/** Polling fallback while something shown is still active (live hub events can be missed, e.g. while reconnecting). */
+const ACTIVE_POLL_MS = 5000
 
 export interface ScanListParams {
   status?: ScanRunStatus | ''
@@ -26,15 +30,17 @@ export const useScans = (params: ScanListParams) =>
     queryKey: ['scans', 'list', params],
     queryFn: ({ signal }) => api<Paged<ScanRun>>('/api/scans', { query: { ...params }, signal }),
     placeholderData: keepPreviousData,
+    refetchInterval: (q) => (q.state.data?.items.some((r) => ACTIVE_RUN_STATUSES.includes(r.status)) ? ACTIVE_POLL_MS : false),
   })
 
 export const useScan = (id: string) =>
   useQuery({ queryKey: ['scans', 'detail', id], queryFn: ({ signal }) => api<ScanRunDetail>(`/api/scans/${id}`, { signal }) })
 
-export const useScanJobs = (id: string) =>
+export const useScanJobs = (id: string, page: number, pageSize: number) =>
   useQuery({
-    queryKey: ['scans', 'jobs', id],
-    queryFn: ({ signal }) => api<ScanJob[] | Paged<ScanJob>>(`/api/scans/${id}/jobs`, { signal }),
+    queryKey: ['scans', 'jobs', id, { page, pageSize }],
+    queryFn: ({ signal }) => api<Paged<ScanJob>>(`/api/scans/${id}/jobs`, { query: { page, pageSize }, signal }),
+    placeholderData: keepPreviousData,
   })
 
 export const useScanEvents = (id: string) =>
@@ -70,6 +76,7 @@ export const useJobs = (params: JobListParams) =>
     queryKey: ['jobs', params],
     queryFn: ({ signal }) => api<Paged<ScanJob>>('/api/jobs', { query: { ...params }, signal }),
     placeholderData: keepPreviousData,
+    refetchInterval: (q) => (q.state.data?.items.some((j) => j.status === 'Queued' || j.status === 'Leased') ? ACTIVE_POLL_MS : false),
   })
 
 export const useCancelJob = () =>

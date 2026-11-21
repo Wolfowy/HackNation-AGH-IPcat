@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router'
 import { Play } from 'lucide-react'
+import { useJoinActiveRuns } from '@/api/scanHub'
 import { useScans } from '@/api/scans'
 import { SCAN_RUN_STATUSES, type ScanRunStatus } from '@/api/types'
 import { Can } from '@/auth/AuthProvider'
@@ -18,6 +19,7 @@ export function ScansPage() {
   const [page, setPage] = useState(1)
   const pageSize = 25
   const scans = useScans({ status, page, pageSize })
+  useJoinActiveRuns(scans.data?.items)
 
   return (
     <>

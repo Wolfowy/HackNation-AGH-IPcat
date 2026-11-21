@@ -107,6 +107,7 @@ public static class ScanEndpoints
 
         scans.MapGet("/{id:guid}/events", async (Guid id, string? after, ScanningDbContext db, CancellationToken ct) =>
         {
+            const int limit = 1000;
             var query = db.Events.AsNoTracking().Where(e => e.ScanRunId == id);
             if (Guid.TryParse(after, out var afterEventId))
             {
@@ -117,7 +118,12 @@ public static class ScanEndpoints
             {
                 query = query.Where(e => e.OccurredAt > afterTime.ToUniversalTime());
             }
-            var payloads = await query.OrderBy(e => e.Seq).Take(1000).Select(e => e.PayloadJson).ToListAsync(ct);
+            else
+            {
+                // No cursor: the latest events (a client loading a long run wants the tail), still returned oldest first.
+                query = query.OrderByDescending(e => e.Seq).Take(limit);
+            }
+            var payloads = await query.OrderBy(e => e.Seq).Take(limit).Select(e => e.PayloadJson).ToListAsync(ct);
             return payloads.Select(p => JsonSerializer.Deserialize<ScanExecutionEvent>(p, ContractJson.Options)!).ToList();
         }).RequireAuthorization(Policies.CanRead);
     }

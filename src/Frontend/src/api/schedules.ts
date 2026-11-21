@@ -21,9 +21,16 @@ export const useUpdateSchedule = () =>
 export const useDeleteSchedule = () =>
   useApiMutation((id: string) => api(`/api/schedules/${id}`, { method: 'DELETE' }), [['schedules']])
 
+/** POST /api/schedules/{id}/trigger → 200 (409 when the overlap policy skips it). `Queued` has no run yet. */
+export interface TriggerResult {
+  scanRunId?: string
+  outcome: 'Started' | 'Queued'
+  reason?: string
+}
+
 export const useTriggerSchedule = () =>
   useApiMutation(
-    (id: string) => api<{ scanRunId: string }>(`/api/schedules/${id}/trigger`, { method: 'POST' }),
+    (id: string) => api<TriggerResult>(`/api/schedules/${id}/trigger`, { method: 'POST' }),
     [['schedules'], ['scans'], ['dashboard']],
   )
 
