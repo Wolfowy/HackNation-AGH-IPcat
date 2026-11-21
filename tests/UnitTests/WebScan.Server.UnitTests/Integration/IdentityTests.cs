@@ -39,6 +39,18 @@ public sealed class IdentityTests(WebScanFactory factory)
     }
 
     [Fact]
+    public async Task Access_token_in_query_is_accepted_only_for_hub_paths()
+    {
+        var login = await (await factory.CreateClient().PostAsJsonAsync("/api/auth/login",
+            new { userName = WebScanFactory.AdminUserName, password = WebScanFactory.AdminPassword })).ReadAsync<LoginResponse>();
+        var anonymous = factory.CreateClient();
+
+        Assert.Equal(HttpStatusCode.OK, (await anonymous.GetAsync($"/hubs/probe?access_token={login.AccessToken}")).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.GetAsync("/hubs/probe")).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.GetAsync($"/api/auth/me?access_token={login.AccessToken}")).StatusCode);
+    }
+
+    [Fact]
     public async Task Account_locks_after_five_failures_for_fifteen_minutes()
     {
         var admin = await factory.AdminAsync();

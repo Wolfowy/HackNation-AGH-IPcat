@@ -1,11 +1,17 @@
+using System.Collections.Concurrent;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Testcontainers.PostgreSql;
 using WebScan.Contracts;
+using WebScan.Server.Kernel.Ports;
+using WebScan.Server.Kernel.Security;
 using WebScan.Server.Modules.Identity;
 using Wolverine;
 
@@ -59,8 +65,42 @@ public sealed class WebScanFactory : WebApplicationFactory<Program>, IAsyncLifet
         builder.ConfigureTestServices(services =>
         {
             services.AddSingleton<TimeProvider>(Time);
+            services.AddSingleton<IScanEventPublisher>(Events);
+            services.AddSingleton<IStartupFilter, HubProbeStartupFilter>();
             services.RunWolverineInSoloMode();
+            services.ConfigureWolverine(opts => opts.Discovery.IncludeAssembly(typeof(WebScanFactory).Assembly));
         });
+    }
+
+    /// <summary>Stands in for the Scanning module's publisher (optional dependency of the Agents module).</summary>
+    public RecordingScanEventPublisher Events { get; } = new();
+
+    public sealed class RecordingScanEventPublisher : IScanEventPublisher
+    {
+        public ConcurrentQueue<ScanExecutionEvent> Published { get; } = new();
+
+        public Task PublishAsync(ScanExecutionEvent evt, CancellationToken ct = default)
+        {
+            Published.Enqueue(evt);
+            return Task.CompletedTask;
+        }
+    }
+
+    /// <summary><c>/hubs/probe</c>: 200 when the user scheme authenticates the request (SignalR-style token in the query).</summary>
+    private sealed class HubProbeStartupFilter : IStartupFilter
+    {
+        public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next) => app =>
+        {
+            // Not app.Map: that moves the path into PathBase, whereas hub endpoints keep the full request path.
+            app.Use(async (ctx, nextMiddleware) =>
+            {
+                if (ctx.Request.Path.StartsWithSegments("/hubs/probe"))
+                    ctx.Response.StatusCode = (await ctx.AuthenticateAsync(AuthSchemes.User)).Succeeded ? 200 : 401;
+                else
+                    await nextMiddleware(ctx);
+            });
+            next(app);
+        };
     }
 
     public HttpClient CreateClient(string? accessToken)

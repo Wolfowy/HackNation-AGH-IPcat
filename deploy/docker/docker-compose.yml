@@ -1,0 +1,187 @@
+# WebScan local/demo stack.
+#   cp deploy/docker/.env.example deploy/docker/.env    # then edit secrets
+#   deploy/docker/certs/generate-certs.sh
+#   docker compose -f deploy/docker/docker-compose.yml up -d --build
+#   + test lab:      -f tests/TestLab/docker-compose.yml
+#   + observability: --profile observability
+name: webscan
+
+x-agent: &agent
+  build:
+    context: ../..
+    dockerfile: src/Agent/Worker/Dockerfile
+  image: webscan-agent
+  restart: unless-stopped
+  depends_on:
+    server:
+      condition: service_healthy
+  cap_add: [NET_RAW, NET_ADMIN]
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: webscan
+      POSTGRES_USER: webscan
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?copy .env.example to .env and set it}
+      GRAFANA_DB_PASSWORD: ${GRAFANA_DB_PASSWORD:-}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./postgres/init-readonly-user.sh:/docker-entrypoint-initdb.d/10-readonly-user.sh:ro
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    networks: [backend]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U webscan -d webscan"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  rabbitmq:
+    image: rabbitmq:4-management-alpine
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-webscan}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?copy .env.example to .env and set it}
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    networks: [backend]
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+
+  server:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/server.Dockerfile
+    image: webscan-server
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ConnectionStrings__WebScan: Host=postgres;Port=5432;Database=webscan;Username=webscan;Password=${POSTGRES_PASSWORD}
+      RabbitMq__ConnectionString: amqp://${RABBITMQ_USER:-webscan}:${RABBITMQ_PASSWORD}@rabbitmq:5672
+      Auth__Jwt__SigningKey: ${JWT_SIGNING_KEY:?copy .env.example to .env and set it}
+      Bootstrap__AdminUserName: ${ADMIN_USERNAME:-admin}
+      Bootstrap__AdminPassword: ${ADMIN_PASSWORD:?copy .env.example to .env and set it}
+      Agents__BootstrapEnrollmentToken: ${AGENT_ENROLLMENT_TOKEN:?copy .env.example to .env and set it}
+      Agents__BootstrapEnrollmentZones: lab
+      Networks__SeedScopePolicy__Allowed: 172.30.0.0/24
+      OpenTelemetry__OtlpEndpoint: ${OTLP_ENDPOINT:-}
+      Kestrel__Endpoints__Http__Url: http://+:8080
+      Kestrel__Endpoints__Https__Url: https://+:8443
+      Kestrel__Endpoints__Https__Certificate__Path: /certs/server.crt
+      Kestrel__Endpoints__Https__Certificate__KeyPath: /certs/server.key
+    volumes:
+      - ./certs:/certs:ro
+    ports:
+      - "5080:8080"
+      - "5443:8443"
+    networks: [backend]
+    healthcheck:
+      test: ["CMD", "wget", "-qO", "/dev/null", "http://127.0.0.1:8080/health/ready"]
+      interval: 10s
+      timeout: 5s
+      start_period: 60s
+      retries: 10
+
+  frontend:
+    build:
+      context: ../../src/Frontend
+      dockerfile: Dockerfile
+    image: webscan-frontend
+    restart: unless-stopped
+    depends_on:
+      server:
+        condition: service_healthy
+    ports:
+      - "8088:8080"
+    networks: [backend]
+
+  agent-1:
+    <<: *agent
+    environment:
+      Agent__ServerUrl: https://server:8443
+      Agent__AgentId: agent-1
+      Agent__EnrollmentToken: ${AGENT_ENROLLMENT_TOKEN}
+      Server__CaCertificatePath: /certs/ca.crt
+    volumes:
+      - ./certs:/certs:ro
+      - agent-1-data:/var/lib/webscan-agent
+    networks:
+      backend: {}
+      lab:
+        ipv4_address: 172.30.0.100
+
+  agent-2:
+    <<: *agent
+    environment:
+      Agent__ServerUrl: https://server:8443
+      Agent__AgentId: agent-2
+      Agent__EnrollmentToken: ${AGENT_ENROLLMENT_TOKEN}
+      Server__CaCertificatePath: /certs/ca.crt
+    volumes:
+      - ./certs:/certs:ro
+      - agent-2-data:/var/lib/webscan-agent
+    networks:
+      backend: {}
+      lab:
+        ipv4_address: 172.30.0.101
+
+  # ---- observability profile: OTLP → collector → Prometheus → Grafana ----
+  otel-collector:
+    profiles: [observability]
+    image: otel/opentelemetry-collector-contrib:0.115.1
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./observability/otel-collector.yaml:/etc/otelcol/config.yaml:ro
+    networks: [backend]
+
+  prometheus:
+    profiles: [observability]
+    image: prom/prometheus:v3.1.0
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    networks: [backend]
+
+  grafana:
+    profiles: [observability]
+    image: grafana/grafana:11.4.0
+    depends_on: [prometheus]
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GRAFANA_DB_PASSWORD: ${GRAFANA_DB_PASSWORD:-}
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3000:3000"
+    networks: [backend]
+
+networks:
+  backend:
+    name: webscan-backend
+  # Shared with tests/TestLab/docker-compose.yml (identical definition, combined with -f).
+  lab:
+    name: webscan-lab
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
+
+volumes:
+  postgres-data:
+  rabbitmq-data:
+  agent-1-data:
+  agent-2-data:

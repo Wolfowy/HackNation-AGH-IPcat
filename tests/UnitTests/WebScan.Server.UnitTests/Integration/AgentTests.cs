@@ -270,5 +270,21 @@ public sealed class AgentTests(WebScanFactory factory)
         Assert.False((await (await admin.GetAsync($"/api/agents/{agentId}")).ReadAsync<AgentDto>()).IsOnline);
         Assert.Equal(HttpStatusCode.OK, (await HeartbeatAsync(agent, agentId)).StatusCode);
         Assert.True((await (await admin.GetAsync($"/api/agents/{agentId}")).ReadAsync<AgentDto>()).IsOnline);
+
+        var events = factory.Events.Published.Where(e => e.AgentId == agentId).Select(e => e.Type).ToList();
+        Assert.Equal([ScanExecutionEventType.AgentOffline, ScanExecutionEventType.AgentOnline], events);
+    }
+
+    [Fact]
+    public async Task Bootstrap_enrollment_token_from_configuration_enrolls_into_its_zone()
+    {
+        var agentId = NewAgentId();
+        await EnrollActiveAsync(agentId);
+        var admin = await factory.AdminAsync();
+        var detail = await (await admin.GetAsync($"/api/agents/{agentId}")).ReadAsync<AgentDto>();
+        Assert.Equal(["lab"], detail.AuthorizedZones);
+        Assert.Equal(["lab"], detail.DeclaredZones);
+        Assert.Equal("eth0", Assert.Single(detail.Interfaces).Name);
+        Assert.Equal(new AgentLimits { MaxConcurrentJobs = 4, MaxRatePerSecond = 1000 }, detail.Limits);
     }
 }

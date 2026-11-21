@@ -1,0 +1,11 @@
+**/bin
+**/obj
+**/node_modules
+**/TestResults
+.git
+.vs
+.idea
+src/Frontend
+src/Agent
+tests
+deploy
