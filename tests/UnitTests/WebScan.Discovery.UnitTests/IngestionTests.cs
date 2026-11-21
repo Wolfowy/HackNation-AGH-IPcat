@@ -93,6 +93,20 @@ public class IngestionTests(TestApp app) : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Signature_results_without_a_version_get_the_approved_version()
+    {
+        var o = _s.Signature("10.1.5.1", 80, "nginx-default-page", "info");
+        await _s.IngestAsync(o with { Signature = o.Signature! with { SignatureVersion = null } }, _s.Signature("10.1.5.1", 80, "unknown-template", "low") with
+        {
+            Signature = o.Signature with { SignatureId = "unknown-template", SignatureVersion = null },
+        });
+
+        var matches = await _s.QueryAsync(db => db.SignatureMatches.OrderBy(m => m.SignatureId).ToListAsync());
+        Assert.Equal([("nginx-default-page", (int?)1), ("unknown-template", null)], matches.Select(m => (m.SignatureId, m.SignatureVersion)));
+        Assert.All(matches, m => Assert.Equal(("nuclei", "signature-match"), (m.Source, m.ConfidenceMethod)));
+    }
+
+    [Fact]
     public async Task Raw_observations_are_masked_before_storage()
     {
         await _s.IngestAsync(_s.Signature("10.1.4.1", 80, "token-leak", "low", "Authorization: Bearer secret-token-value-123"));

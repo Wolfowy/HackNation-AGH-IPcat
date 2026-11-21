@@ -64,10 +64,10 @@ internal static class SignatureEndpoints
         var errors = new Dictionary<string, string[]>();
         if (string.IsNullOrWhiteSpace(r.Id) || !Regex.IsMatch(r.Id, Signature.IdPattern)) errors["id"] = [$"Id must match {Signature.IdPattern}."];
         if (string.IsNullOrWhiteSpace(r.Name) || r.Name.Length > 200) errors["name"] = ["Name is required (max 200 chars)."];
-        if (errors.Count > 0) return Results.ValidationProblem(errors);
+        if (errors.Count > 0) return Results.ValidationProblem(errors, statusCode: StatusCodes.Status422UnprocessableEntity);
 
         var validation = ValidateContent(r.Kind, r.Id!, r.Content);
-        if (validation.Errors.Count > 0) return Results.ValidationProblem(new Dictionary<string, string[]> { ["content"] = [.. validation.Errors] });
+        if (validation.Errors.Count > 0) return Results.ValidationProblem(new Dictionary<string, string[]> { ["content"] = [.. validation.Errors] }, statusCode: StatusCodes.Status422UnprocessableEntity);
         if (await db.Signatures.AnyAsync(s => s.Id == r.Id, ct)) return Results.Conflict(new { error = $"Signature '{r.Id}' already exists." });
 
         var now = time.GetUtcNow();
@@ -90,7 +90,7 @@ internal static class SignatureEndpoints
         if (signature is null) return Results.NotFound();
 
         var validation = ValidateContent(signature.Kind, id, r.Content);
-        if (validation.Errors.Count > 0) return Results.ValidationProblem(new Dictionary<string, string[]> { ["content"] = [.. validation.Errors] });
+        if (validation.Errors.Count > 0) return Results.ValidationProblem(new Dictionary<string, string[]> { ["content"] = [.. validation.Errors] }, statusCode: StatusCodes.Status422UnprocessableEntity);
 
         var now = time.GetUtcNow();
         var version = NewVersion(id, signature.LatestVersion + 1, r.Content!, validation, user, now);
@@ -116,13 +116,13 @@ internal static class SignatureEndpoints
 
         // Re-validate at approval time: validator rules may have tightened since the version was created.
         var validation = ValidateContent(signature.Kind, id, v.Content);
-        if (validation.Errors.Count > 0) return Results.ValidationProblem(new Dictionary<string, string[]> { ["content"] = [.. validation.Errors] });
+        if (validation.Errors.Count > 0) return Results.ValidationProblem(new Dictionary<string, string[]> { ["content"] = [.. validation.Errors] }, statusCode: StatusCodes.Status422UnprocessableEntity);
         var note = r?.Note?.Trim();
         if (validation.RequiresApprovalNote && string.IsNullOrEmpty(note))
             return Results.ValidationProblem(new Dictionary<string, string[]>
             {
                 ["note"] = [$"Severity '{validation.Severity}' is above medium: an approval note is required."],
-            });
+            }, statusCode: StatusCodes.Status422UnprocessableEntity);
 
         var now = time.GetUtcNow();
         v.ApprovedBy = UserName(user);

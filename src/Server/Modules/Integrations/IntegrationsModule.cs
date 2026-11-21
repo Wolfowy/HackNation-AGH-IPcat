@@ -66,7 +66,7 @@ public static class IntegrationsModule
         var hasKey = r.ApiKey is null ? settings?.ApiKeyProtected is not null : r.ApiKey.Length > 0;
         if (r.Enabled && (string.IsNullOrEmpty(baseUrl) || !hasKey || r.EngagementId is not > 0))
             errors["enabled"] = ["baseUrl, apiKey and engagementId are required to enable the integration."];
-        if (errors.Count > 0) return Results.ValidationProblem(errors);
+        if (errors.Count > 0) return Results.ValidationProblem(errors, statusCode: StatusCodes.Status422UnprocessableEntity);
 
         if (settings is null) db.DefectDojo.Add(settings = new DefectDojoSettings());
         settings.Enabled = r.Enabled;
@@ -107,7 +107,7 @@ public static class IntegrationsModule
     {
         var ids = r.FindingIds?.Distinct().ToList() ?? [];
         if (ids.Count is 0 or > 1000)
-            return Results.ValidationProblem(new Dictionary<string, string[]> { ["findingIds"] = ["Select between 1 and 1000 findings."] });
+            return Results.ValidationProblem(new Dictionary<string, string[]> { ["findingIds"] = ["Select between 1 and 1000 findings."] }, statusCode: StatusCodes.Status422UnprocessableEntity);
         var settings = await exporter.GetSettingsAsync(ct);
         if (settings is not { Enabled: true, IsConfigured: true })
             return Results.Problem("DefectDojo integration is disabled or not configured.", statusCode: StatusCodes.Status409Conflict);

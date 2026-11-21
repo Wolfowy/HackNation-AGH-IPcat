@@ -71,7 +71,7 @@ internal static class DiscoveryEndpoints
         IAuditLog audit, CancellationToken ct)
     {
         var errors = AnnotationService.Validate(request);
-        if (errors.Count > 0) return Results.ValidationProblem(new Dictionary<string, string[]> { ["annotation"] = [.. errors] });
+        if (errors.Count > 0) return Results.ValidationProblem(new Dictionary<string, string[]> { ["annotation"] = [.. errors] }, statusCode: StatusCodes.Status422UnprocessableEntity);
         var address = await db.Hosts.Where(h => h.Id == id).Select(h => h.Address).FirstOrDefaultAsync(ct);
         if (address is null) return Results.NotFound();
 
@@ -89,7 +89,7 @@ internal static class DiscoveryEndpoints
     {
         format = (format ?? "json").ToLowerInvariant();
         if (format is not ("json" or "csv"))
-            return Results.ValidationProblem(new Dictionary<string, string[]> { ["format"] = ["format must be json or csv."] });
+            return Results.ValidationProblem(new Dictionary<string, string[]> { ["format"] = ["format must be json or csv."] }, statusCode: StatusCodes.Status422UnprocessableEntity);
 
         const int rows = AssetQueries.MaxExportRows;
         (IReadOnlyList<string> Header, Func<IEnumerable<IReadOnlyList<string?>>> Rows, object Json)? export = dataset.ToLowerInvariant() switch
@@ -113,7 +113,7 @@ internal static class DiscoveryEndpoints
     {
         format = (format ?? "json").ToLowerInvariant();
         if (format is not ("json" or "csv"))
-            return Results.ValidationProblem(new Dictionary<string, string[]> { ["format"] = ["format must be json or csv."] });
+            return Results.ValidationProblem(new Dictionary<string, string[]> { ["format"] = ["format must be json or csv."] }, statusCode: StatusCodes.Status422UnprocessableEntity);
         if (request.ContentLength > MaxImportBytes) return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
 
         string body;
@@ -137,14 +137,14 @@ internal static class DiscoveryEndpoints
                 errors.Add($"Row {line}: invalid address '{row.Address}'.");
                 continue;
             }
-            var request2 = new AnnotationRequest(row.Description, row.Classification, row.BusinessState, row.Owner, row.Tags);
-            var rowErrors = AnnotationService.Validate(request2);
+            var annotation = new AnnotationRequest(row.Description, row.Classification, row.BusinessState, row.Owner, row.Tags);
+            var rowErrors = AnnotationService.Validate(annotation);
             if (rowErrors.Count > 0)
             {
                 errors.AddRange(rowErrors.Select(err => $"Row {line}: {err}"));
                 continue;
             }
-            var (created, changed, _) = await annotations.UpsertAsync(address, request2, "import", ct);
+            var (created, changed, _) = await annotations.UpsertAsync(address, annotation, "import", ct);
             if (created) imported++;
             else if (changed) updated++;
         }

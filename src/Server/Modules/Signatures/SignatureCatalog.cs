@@ -53,6 +53,11 @@ internal sealed class SignatureCatalog(SignaturesDbContext db, ILogger<Signature
         return rules;
     }
 
+    public async Task<IReadOnlyDictionary<string, int>> GetApprovedVersionsAsync(IReadOnlyCollection<string> signatureIds, CancellationToken ct = default) =>
+        await db.Signatures.AsNoTracking()
+            .Where(s => signatureIds.Contains(s.Id) && s.Status == SignatureStatus.Approved && s.ApprovedVersion != null)
+            .ToDictionaryAsync(s => s.Id, s => s.ApprovedVersion!.Value, ct);
+
     private bool TryParse<T>(Signature signature, SignatureVersion version, out T? doc) where T : class
     {
         if (SignatureValidator.TryParse(version.Content, out doc, out var error)) return true;

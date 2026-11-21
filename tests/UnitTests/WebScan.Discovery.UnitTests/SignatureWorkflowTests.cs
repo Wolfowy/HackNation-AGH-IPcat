@@ -97,11 +97,11 @@ public class SignatureWorkflowTests(TestApp app) : IAsyncLifetime
         var manager = app.Client(Roles.Manager);
         var unsafeTemplate = Template("bad-one").Replace("tags: tech", "tags: tech,intrusive");
         var response = await manager.PostAsJsonAsync("/api/signatures", new { id = "bad-one", name = "Bad", kind = "NucleiTemplate", content = unsafeTemplate }, Json);
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
         Assert.Contains("intrusive", await response.Content.ReadAsStringAsync());
 
         var mismatch = await manager.PostAsJsonAsync("/api/signatures", new { id = "other-id", name = "X", kind = "NucleiTemplate", content = Template("bad-two") }, Json);
-        Assert.Equal(HttpStatusCode.BadRequest, mismatch.StatusCode);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, mismatch.StatusCode);
 
         var viewerValidate = await app.Client(Roles.Viewer).PostAsJsonAsync("/api/signatures/validate", new { kind = "NucleiTemplate", content = unsafeTemplate }, Json);
         var result = await viewerValidate.Content.ReadFromJsonAsync<ValidateSignatureResponse>(Json);
@@ -114,7 +114,7 @@ public class SignatureWorkflowTests(TestApp app) : IAsyncLifetime
         await app.Client(Roles.Manager).PostAsJsonAsync("/api/signatures", new { id = "hi-sev", name = "High", kind = "NucleiTemplate", content = Template("hi-sev", "high") }, Json);
         var admin = app.Client(Roles.Administrator);
 
-        Assert.Equal(HttpStatusCode.BadRequest, (await admin.PostAsync("/api/signatures/hi-sev/versions/1/approve", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, (await admin.PostAsync("/api/signatures/hi-sev/versions/1/approve", null)).StatusCode);
         var ok = await admin.PostAsJsonAsync("/api/signatures/hi-sev/versions/1/approve", new { note = "Validated against staging, read-only check" }, Json);
         Assert.Equal(HttpStatusCode.OK, ok.StatusCode);
         Assert.Single((await BundleAsync(["hi-sev"])).Items);
@@ -145,6 +145,10 @@ public class SignatureWorkflowTests(TestApp app) : IAsyncLifetime
         var host = hosts.GetProperty("items")[0];
         Assert.Equal("admin-panel", host.GetProperty("classifications")[0].GetString());
         Assert.Contains("nginx", host.GetProperty("technologies").EnumerateArray().Select(t => t.GetString()));
+
+        var technologies = await app.Client(Roles.Viewer).GetFromJsonAsync<JsonElement>("/api/assets/technologies", Json);
+        var summary = technologies.EnumerateArray().Single(t => t.GetProperty("name").GetString() == "nginx");
+        Assert.Equal((1, 1, 0.98), (summary.GetProperty("hostCount").GetInt32(), summary.GetProperty("serviceCount").GetInt32(), summary.GetProperty("confidence").GetDouble()));
     }
 
     [Fact]

@@ -119,7 +119,7 @@ public class ApiTests(TestApp app) : IAsyncLifetime
         var changes = await viewer.GetFromJsonAsync<PagedResult<ChangeDto>>($"/api/changes?scanRunId={_s.RunId}", Json);
         Assert.Equal("New open port 10.4.0.1:8443/tcp", Assert.Single(changes!.Items).Summary);
 
-        var services = await viewer.GetFromJsonAsync<PagedResult<ServiceDto>>("/api/assets/services?port=8443", Json);
+        var services = await viewer.GetFromJsonAsync<PagedResult<ServiceDto>>("/api/assets/services?port=8443&search=10.4.0", Json);
         Assert.Equal(1, services!.Total);
 
         var findings = await viewer.GetFromJsonAsync<PagedResult<FindingDto>>("/api/findings?severity=medium&status=Open", Json);
@@ -131,6 +131,6 @@ public class ApiTests(TestApp app) : IAsyncLifetime
         var diff = await viewer.GetFromJsonAsync<RunDiffDto>($"/api/scans/{_s.RunId}/diff?baseline={firstRun}", Json);
         Assert.Equal(["endpoint|10.4.0.1|8443|tcp"], diff!.Added.Select(a => a.Key));
         Assert.Empty(diff.Removed);
-        Assert.Equal(HttpStatusCode.BadRequest, (await viewer.GetAsync($"/api/scans/{_s.RunId}/diff")).StatusCode);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, (await viewer.GetAsync($"/api/scans/{_s.RunId}/diff")).StatusCode);
     }
 }

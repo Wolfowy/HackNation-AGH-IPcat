@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using WebScan.Contracts;
+using WebScan.Server.Kernel.Discovery;
 using WebScan.Server.Kernel.Messaging;
 using WebScan.Server.Kernel.Ports;
 using WebScan.Server.Kernel.Telemetry;
@@ -16,10 +17,12 @@ namespace WebScan.Server.Modules.Discovery.Ingestion;
 /// Stores raw observations (append-only, deduplicated by (job id, observation id)) and updates live "last seen" state.
 /// Idempotent per <see cref="ScanResultBatch.BatchId"/>.
 /// </summary>
-internal sealed class ObservationIngestor(DiscoveryDbContext db, TimeProvider time, ILogger<ObservationIngestor> logger) : IObservationSink
+internal sealed class ObservationIngestor(DiscoveryDbContext db, IInterpretationRuleProvider signatures, TimeProvider time,
+    ILogger<ObservationIngestor> logger) : IObservationSink
 {
     public async Task IngestAsync(IngestContext context, ScanResultBatch batch, CancellationToken ct = default)
     {
+        var versions = await ApprovedVersionsAsync(batch, ct);
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         await DiscoveryLock.AcquireAsync(db, ct);
         if (await db.ProcessedBatches.AnyAsync(b => b.BatchId == batch.BatchId, ct))
@@ -33,8 +36,15 @@ internal sealed class ObservationIngestor(DiscoveryDbContext db, TimeProvider ti
         foreach (var raw in batch.Observations.DistinctBy(o => o.ObservationId))
         {
             var masked = Normalizer.Mask(raw);
-            if (Normalizer.Normalize(masked) is { } normalized) candidates.Add((masked, normalized));
-            else logger.LogWarning("Dropping observation {ObservationId} of job {JobId}: invalid address or port", raw.ObservationId, batch.JobId);
+            if (Normalizer.Normalize(masked) is not { } normalized)
+            {
+                logger.LogWarning("Dropping observation {ObservationId} of job {JobId}: invalid address or port", raw.ObservationId, batch.JobId);
+                continue;
+            }
+            // Every signature result carries a version: fall back to the version approved now when the agent did not report one.
+            if (normalized.Signature is { SignatureVersion: null } sig && versions.TryGetValue(sig.SignatureId, out var version))
+                normalized = normalized with { Signature = sig with { SignatureVersion = version } };
+            candidates.Add((masked, normalized));
         }
 
         var ids = candidates.Select(c => c.Raw.ObservationId).ToList();
@@ -71,6 +81,12 @@ internal sealed class ObservationIngestor(DiscoveryDbContext db, TimeProvider ti
             new KeyValuePair<string, object?>("agent", context.AgentId));
         logger.LogInformation("Ingested batch {BatchId} of run {ScanRunId}: {Accepted}/{Received} new observations",
             batch.BatchId, context.ScanRunId, fresh.Count, batch.Observations.Count);
+    }
+
+    private async Task<IReadOnlyDictionary<string, int>> ApprovedVersionsAsync(ScanResultBatch batch, CancellationToken ct)
+    {
+        var ids = batch.Observations.Where(o => o.Signature is { SignatureVersion: null }).Select(o => o.Signature!.SignatureId).Distinct().ToList();
+        return ids.Count == 0 ? new Dictionary<string, int>() : await signatures.GetApprovedVersionsAsync(ids, ct);
     }
 }
 

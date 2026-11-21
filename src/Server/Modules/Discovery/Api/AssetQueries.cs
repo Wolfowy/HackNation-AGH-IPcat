@@ -76,13 +76,19 @@ internal sealed class AssetQueries(DiscoveryDbContext db)
         return new PagedResult<ServiceDto>(await ToServiceDtosAsync(services, ct), total, page, pageSize);
     }
 
-    public async Task<IReadOnlyList<TechnologySummaryDto>> TechnologiesAsync(CancellationToken ct) =>
-        await db.Technologies.AsNoTracking()
+    public async Task<IReadOnlyList<TechnologySummaryDto>> TechnologiesAsync(CancellationToken ct)
+    {
+        var rows = await db.Technologies.AsNoTracking()
             .GroupBy(t => new { t.Name, t.Version, t.Category })
-            .Select(g => new TechnologySummaryDto(g.Key.Name, g.Key.Version, g.Key.Category, g.Select(t => t.HostId).Distinct().Count(),
-                g.Count(t => t.Port != null), g.Max(t => t.Confidence)))
-            .OrderBy(t => t.Name).ThenBy(t => t.Version)
+            .Select(g => new
+            {
+                g.Key.Name, g.Key.Version, g.Key.Category, Hosts = g.Select(t => t.HostId).Distinct().Count(),
+                Services = g.Count(t => t.Port != null), Confidence = g.Max(t => t.Confidence),
+            })
             .ToListAsync(ct);
+        return rows.OrderBy(r => r.Name, StringComparer.OrdinalIgnoreCase).ThenBy(r => r.Version, StringComparer.Ordinal)
+            .Select(r => new TechnologySummaryDto(r.Name, r.Version, r.Category, r.Hosts, r.Services, r.Confidence)).ToList();
+    }
 
     public async Task<PagedResult<ChangeDto>> ChangesAsync(ChangeQuery query, int page, int pageSize, CancellationToken ct)
     {

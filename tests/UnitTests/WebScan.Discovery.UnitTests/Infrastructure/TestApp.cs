@@ -37,7 +37,7 @@ public sealed class DbCollection : ICollectionFixture<TestApp>
 /// </summary>
 public sealed class TestApp : IAsyncLifetime
 {
-    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:17-alpine").Build();
+    private PostgreSqlContainer? _postgres;
     private WebApplication? _app;
 
     public ManualClock Clock { get; } = new(new DateTimeOffset(2026, 11, 2, 10, 0, 0, TimeSpan.Zero));
@@ -47,6 +47,9 @@ public sealed class TestApp : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
+        // Docker Engine 20.10 on the shared build machine only speaks API 1.41 (Testcontainers 4 defaults to 1.44); an explicit setting wins.
+        if (Environment.GetEnvironmentVariable("DOCKER_API_VERSION") is null) Environment.SetEnvironmentVariable("DOCKER_API_VERSION", "1.41");
+        _postgres = new PostgreSqlBuilder("postgres:17-alpine").Build();
         await _postgres.StartAsync();
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = "Testing" });
         builder.WebHost.UseTestServer();
@@ -95,7 +98,7 @@ public sealed class TestApp : IAsyncLifetime
     public async Task DisposeAsync()
     {
         if (_app is not null) await _app.DisposeAsync();
-        await _postgres.DisposeAsync();
+        if (_postgres is not null) await _postgres.DisposeAsync();
     }
 
     /// <summary>HTTP client authenticated with the given role (null = anonymous).</summary>

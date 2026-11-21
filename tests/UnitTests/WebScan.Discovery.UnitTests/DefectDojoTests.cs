@@ -53,7 +53,7 @@ public class DefectDojoTests(TestApp app) : IAsyncLifetime
 
         var invalid = await app.Client(Roles.Administrator).PutAsJsonAsync("/api/integrations/defectdojo",
             new { enabled = true, baseUrl = "ftp://x", engagementId = 1, minimumSeverity = "low" }, Json);
-        Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, invalid.StatusCode);
     }
 
     [Fact]

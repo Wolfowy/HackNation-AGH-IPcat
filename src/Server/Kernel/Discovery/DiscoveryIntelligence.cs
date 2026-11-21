@@ -46,6 +46,9 @@ public interface IInterpretationRuleProvider
 {
     Task<IReadOnlyList<ClassificationRule>> GetApprovedClassificationRulesAsync(CancellationToken ct = default);
     Task<IReadOnlyList<ChangeRule>> GetApprovedChangeRulesAsync(CancellationToken ct = default);
+
+    /// <summary>Currently approved version per signature id (unknown/unapproved ids are absent). Used to complete agent results without a version.</summary>
+    Task<IReadOnlyDictionary<string, int>> GetApprovedVersionsAsync(IReadOnlyCollection<string> signatureIds, CancellationToken ct = default);
 }
 
 /// <summary>"When an observation satisfies <see cref="When"/>, conclude <see cref="Outcome"/>."</summary>

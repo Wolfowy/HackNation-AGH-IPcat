@@ -21,7 +21,7 @@ public static class AnalyticsModule
         endpoints.MapGet("/api/scans/{runId:guid}/diff", async (Guid runId, Guid? baseline, IObservationReader reader, CancellationToken ct) =>
         {
             if (baseline is null)
-                return Results.ValidationProblem(new Dictionary<string, string[]> { ["baseline"] = ["Query parameter 'baseline' (run id) is required."] });
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["baseline"] = ["Query parameter 'baseline' (run id) is required."] }, statusCode: StatusCodes.Status422UnprocessableEntity);
             var diff = await RunDiff.ComputeAsync(runId, baseline.Value, reader.ReadRunObservationsAsync(runId, ct),
                 reader.ReadRunObservationsAsync(baseline.Value, ct), ct);
             return Results.Ok(diff);
