@@ -1,0 +1,184 @@
+using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
+using WebScan.Contracts;
+using WebScan.Server.Kernel.Discovery;
+using WebScan.Server.Modules.Discovery.Domain;
+using WebScan.Server.Modules.Discovery.Normalization;
+using WebScan.Server.Modules.Discovery.Persistence;
+
+namespace WebScan.Server.Modules.Discovery.Api;
+
+public sealed record HostQuery(string? Search, HostStatus? Status, string? Zone);
+public sealed record ServiceQuery(int? Port, string? ServiceName, string? Search);
+public sealed record ChangeQuery(DateTimeOffset? Since, AssetChangeType? Type, Guid? HostId, Guid? ScanRunId);
+public sealed record FindingQuery(string? Severity, FindingStatus? Status);
+
+/// <summary>Read models of the current-state tables, shared by the list and export endpoints.</summary>
+internal sealed class AssetQueries(DiscoveryDbContext db)
+{
+    public const int MaxPageSize = 500;
+
+    /// <summary>shortcut: exports are built in memory and capped; stream rows if larger exports are needed.</summary>
+    public const int MaxExportRows = 100_000;
+
+    public static (int Page, int PageSize) Paging(int? page, int? pageSize) => (Math.Max(1, page ?? 1), Math.Clamp(pageSize ?? 50, 1, MaxPageSize));
+
+    public async Task<PagedResult<HostListItemDto>> HostsAsync(HostQuery query, int page, int pageSize, CancellationToken ct)
+    {
+        var q = db.Hosts.AsNoTracking();
+        if (!string.IsNullOrWhiteSpace(query.Search))
+        {
+            var like = Like(query.Search);
+            q = q.Where(h => EF.Functions.ILike(h.Address, like) || h.Hostnames.Any(n => EF.Functions.ILike(n, like)));
+        }
+        if (query.Status is not null) q = q.Where(h => h.Status == query.Status);
+        if (!string.IsNullOrWhiteSpace(query.Zone)) q = q.Where(h => h.Zone == query.Zone);
+
+        var total = await q.CountAsync(ct);
+        var hosts = await q.OrderBy(h => h.Address).Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(ct);
+        return new PagedResult<HostListItemDto>(await ToHostItemsAsync(hosts, ct), total, page, pageSize);
+    }
+
+    public async Task<HostDetailDto?> HostAsync(Guid id, CancellationToken ct)
+    {
+        var host = await db.Hosts.AsNoTracking().FirstOrDefaultAsync(h => h.Id == id, ct);
+        if (host is null) return null;
+        var item = (await ToHostItemsAsync([host], ct))[0];
+        var services = await ToServiceDtosAsync(await db.Services.AsNoTracking().Where(s => s.HostId == id).OrderBy(s => s.Port).ToListAsync(ct), ct);
+        var technologies = await db.Technologies.AsNoTracking().Where(t => t.HostId == id).OrderBy(t => t.Port).ThenBy(t => t.Name).ToListAsync(ct);
+        var certificates = await db.Certificates.AsNoTracking().Where(c => c.HostId == id).OrderByDescending(c => c.LastSeenAt).ToListAsync(ct);
+        var findings = await db.SignatureMatches.AsNoTracking().Where(m => m.HostId == id).OrderByDescending(m => m.MatchedAt).ToListAsync(ct);
+        var changes = await db.Changes.AsNoTracking().Where(c => c.HostId == id).OrderByDescending(c => c.DetectedAt).Take(50).ToListAsync(ct);
+        return new HostDetailDto(host.Id, host.Address, host.Hostnames, host.Status, host.Unstable, host.FirstSeenAt, host.LastSeenAt,
+            host.LastScannedAt, item.OpenPortCount, host.Zone, item.Annotation, item.Classifications, host.MacAddress, host.MacVendor,
+            host.OsGuess, host.ConsecutiveMisses, host.StateChangeCount, services, technologies.Select(t => t.ToDto()).ToList(),
+            certificates.Select(c => c.ToDto()).ToList(), findings.Select(f => f.ToDto()).ToList(), changes.Select(c => c.ToDto()).ToList());
+    }
+
+    public async Task<PagedResult<ServiceDto>> ServicesAsync(ServiceQuery query, int page, int pageSize, CancellationToken ct)
+    {
+        var q = db.Services.AsNoTracking();
+        if (query.Port is not null) q = q.Where(s => s.Port == query.Port);
+        if (!string.IsNullOrWhiteSpace(query.ServiceName))
+        {
+            var name = Normalizer.CanonicalServiceName(query.ServiceName);
+            q = q.Where(s => s.ServiceName == name);
+        }
+        if (!string.IsNullOrWhiteSpace(query.Search))
+        {
+            var like = Like(query.Search);
+            q = q.Where(s => EF.Functions.ILike(s.Address, like) || EF.Functions.ILike(s.Product ?? "", like)
+                || EF.Functions.ILike(s.Banner ?? "", like) || EF.Functions.ILike(s.HttpTitle ?? "", like));
+        }
+
+        var total = await q.CountAsync(ct);
+        var services = await q.OrderBy(s => s.Address).ThenBy(s => s.Port).Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(ct);
+        return new PagedResult<ServiceDto>(await ToServiceDtosAsync(services, ct), total, page, pageSize);
+    }
+
+    public async Task<IReadOnlyList<TechnologySummaryDto>> TechnologiesAsync(CancellationToken ct) =>
+        await db.Technologies.AsNoTracking()
+            .GroupBy(t => new { t.Name, t.Version, t.Category })
+            .Select(g => new TechnologySummaryDto(g.Key.Name, g.Key.Version, g.Key.Category, g.Select(t => t.HostId).Distinct().Count(),
+                g.Count(t => t.Port != null), g.Max(t => t.Confidence)))
+            .OrderBy(t => t.Name).ThenBy(t => t.Version)
+            .ToListAsync(ct);
+
+    public async Task<PagedResult<ChangeDto>> ChangesAsync(ChangeQuery query, int page, int pageSize, CancellationToken ct)
+    {
+        var q = db.Changes.AsNoTracking();
+        if (query.Since is not null) q = q.Where(c => c.DetectedAt >= query.Since);
+        if (query.Type is not null) q = q.Where(c => c.Type == query.Type);
+        if (query.HostId is not null) q = q.Where(c => c.HostId == query.HostId);
+        if (query.ScanRunId is not null) q = q.Where(c => c.ScanRunId == query.ScanRunId);
+        var total = await q.CountAsync(ct);
+        var items = await q.OrderByDescending(c => c.DetectedAt).ThenBy(c => c.Id).Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(ct);
+        return new PagedResult<ChangeDto>(items.Select(c => c.ToDto()).ToList(), total, page, pageSize);
+    }
+
+    public async Task<PagedResult<FindingDto>> FindingsAsync(FindingQuery query, int page, int pageSize, CancellationToken ct)
+    {
+        var q = db.SignatureMatches.AsNoTracking();
+        if (!string.IsNullOrWhiteSpace(query.Severity))
+        {
+            var severity = query.Severity.Trim().ToLowerInvariant();
+            q = q.Where(m => m.Severity == severity);
+        }
+        if (query.Status is not null) q = q.Where(m => m.Status == query.Status);
+        var total = await q.CountAsync(ct);
+        var items = await q.OrderByDescending(m => m.MatchedAt).ThenBy(m => m.Id).Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(ct);
+        return new PagedResult<FindingDto>(items.Select(m => m.ToDto()).ToList(), total, page, pageSize);
+    }
+
+    public async Task<PagedResult<ObservationDto>?> ObservationsAsync(Guid? hostId, Guid? scanRunId, ObservationKind? kind, int page, int pageSize,
+        CancellationToken ct)
+    {
+        var q = db.Observations.AsNoTracking();
+        if (hostId is not null)
+        {
+            var address = await db.Hosts.Where(h => h.Id == hostId).Select(h => h.Address).FirstOrDefaultAsync(ct);
+            if (address is null) return null;
+            q = q.Where(o => o.Address == address);
+        }
+        if (scanRunId is not null) q = q.Where(o => o.ScanRunId == scanRunId);
+        if (kind is not null) q = q.Where(o => o.Kind == kind);
+        var total = await q.CountAsync(ct);
+        var rows = await q.OrderByDescending(o => o.Id).Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(ct);
+        var items = rows.Select(o => new ObservationDto(o.Id, o.ScanRunId, o.JobId, o.BatchId, o.AgentId, o.InterfaceName, o.Zone, o.ReceivedAt,
+            JsonSerializer.Deserialize<DiscoveryObservation>(o.Payload, ContractJson.Options)!)).ToList();
+        return new PagedResult<ObservationDto>(items, total, page, pageSize);
+    }
+
+    public async Task<DashboardSummaryDto> DashboardAsync(DateTimeOffset now, CancellationToken ct)
+    {
+        var since = now.AddHours(-24);
+        return new DashboardSummaryDto(
+            await db.Hosts.CountAsync(ct),
+            await db.Hosts.CountAsync(h => h.Status == HostStatus.Active, ct),
+            await db.Services.CountAsync(s => s.State == ServiceState.Open, ct),
+            await db.Changes.CountAsync(c => c.DetectedAt >= since, ct),
+            await db.SignatureMatches.CountAsync(m => m.Status == FindingStatus.Open, ct),
+            await db.ProcessedBatches.MaxAsync(b => (DateTimeOffset?)b.ProcessedAt, ct));
+    }
+
+    private async Task<List<HostListItemDto>> ToHostItemsAsync(List<Host> hosts, CancellationToken ct)
+    {
+        var ids = hosts.Select(h => h.Id).ToList();
+        var addresses = hosts.Select(h => h.Address).ToList();
+        var openPorts = await db.Services.Where(s => ids.Contains(s.HostId) && s.State == ServiceState.Open)
+            .GroupBy(s => s.HostId).Select(g => new { g.Key, Count = g.Count() }).ToDictionaryAsync(x => x.Key, x => x.Count, ct);
+        var technologies = (await db.Technologies.Where(t => ids.Contains(t.HostId)).Select(t => new { t.HostId, t.Name }).ToListAsync(ct))
+            .ToLookup(t => t.HostId, t => t.Name);
+        var classifications = (await db.SignatureMatches
+                .Where(m => ids.Contains(m.HostId) && m.Status == FindingStatus.Open && m.ClassificationTag != null)
+                .Select(m => new { m.HostId, m.ClassificationTag }).ToListAsync(ct))
+            .ToLookup(m => m.HostId, m => m.ClassificationTag!);
+        var annotations = await db.Annotations.AsNoTracking().Where(a => addresses.Contains(a.Address)).ToDictionaryAsync(a => a.Address, ct);
+
+        return hosts.Select(h => new HostListItemDto(h.Id, h.Address, h.Hostnames, h.Status, h.Unstable, h.FirstSeenAt, h.LastSeenAt,
+            h.LastScannedAt, openPorts.GetValueOrDefault(h.Id), technologies[h.Id].Distinct().Order().ToList(), h.Zone,
+            annotations.GetValueOrDefault(h.Address).ToDto(), classifications[h.Id].Distinct().Order().ToList())).ToList();
+    }
+
+    private async Task<List<ServiceDto>> ToServiceDtosAsync(List<Service> services, CancellationToken ct)
+    {
+        var ids = services.Select(s => s.Id).ToList();
+        var technologies = (await db.Technologies.Where(t => t.ServiceId != null && ids.Contains(t.ServiceId.Value))
+            .Select(t => new { t.ServiceId, t.Name }).ToListAsync(ct)).ToLookup(t => t.ServiceId!.Value, t => t.Name);
+        var fingerprints = services.Select(s => s.CurrentCertFingerprint).OfType<string>().ToList();
+        var certificates = (await db.Certificates.AsNoTracking().Where(c => ids.Contains(c.ServiceId) && fingerprints.Contains(c.FingerprintSha256))
+            .ToListAsync(ct)).ToDictionary(c => (c.ServiceId, c.FingerprintSha256));
+
+        return services.Select(s =>
+        {
+            var cert = s.CurrentCertFingerprint is { } fp ? certificates.GetValueOrDefault((s.Id, fp)) : null;
+            return new ServiceDto(s.Id, s.HostId, s.Address, s.Port, s.Transport, s.State, s.ServiceName, s.Product, s.Version, s.Banner, s.Cpe,
+                s.HttpUrl is null ? null : new HttpInfoDto(s.HttpUrl, s.HttpStatusCode, s.HttpTitle, s.HttpWebServer),
+                cert is null ? null : new TlsInfoDto(cert.SubjectCommonName, cert.Issuer, cert.NotAfter, cert.FingerprintSha256),
+                technologies[s.Id].Distinct().Order().ToList(), s.Confidence, s.ConfidenceMethod, s.TimeOfDayVariance, s.FirstSeenAt, s.LastSeenAt);
+        }).ToList();
+    }
+
+    private static string Like(string search) =>
+        "%" + search.Trim().Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_") + "%";
+}

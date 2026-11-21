@@ -12,4 +12,7 @@
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" PrivateAssets="all" />
     <PackageReference Include="WolverineFx" />
   </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="WebScan.Discovery.UnitTests" />
+  </ItemGroup>
 </Project>

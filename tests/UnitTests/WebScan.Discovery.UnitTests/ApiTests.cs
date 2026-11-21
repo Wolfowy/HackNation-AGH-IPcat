@@ -1,0 +1,136 @@
+using System.Net;
+using System.Net.Http.Json;
+using System.Text;
+using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
+using WebScan.Contracts;
+using WebScan.Discovery.UnitTests.Infrastructure;
+using WebScan.Server.Kernel.Security;
+using WebScan.Server.Modules.Analytics;
+using WebScan.Server.Modules.Discovery.Api;
+
+namespace WebScan.Discovery.UnitTests;
+
+[Collection(DbCollection.Name)]
+public class ApiTests(TestApp app) : IAsyncLifetime
+{
+    private static readonly JsonSerializerOptions Json = ContractJson.Options;
+    private readonly Scenario _s = new(app);
+
+    public Task InitializeAsync() => app.ResetAsync();
+    public Task DisposeAsync() => Task.CompletedTask;
+
+    private async Task<Guid> SeedHostAsync(string address = "10.4.0.1")
+    {
+        await _s.RunAsync(Scenario.Coverage(["10.4.0.0/24"]), 3, _s.HostUp(address), _s.Port(address, 443),
+            _s.Signature(address, 443, "exposed-panel", "medium", "=cmd|' /C calc'!A0"));
+        return await _s.QueryAsync(db => db.Hosts.Where(h => h.Address == address).Select(h => h.Id).SingleAsync());
+    }
+
+    [Theory]
+    [InlineData("GET", "/api/assets/hosts", null, HttpStatusCode.Unauthorized)]
+    [InlineData("GET", "/api/assets/hosts", Roles.Viewer, HttpStatusCode.OK)]
+    [InlineData("GET", "/api/dashboard/summary", Roles.Viewer, HttpStatusCode.OK)]
+    [InlineData("POST", "/api/import/assets?format=json", Roles.Editor, HttpStatusCode.Forbidden)]
+    [InlineData("POST", "/api/signatures", Roles.Editor, HttpStatusCode.Forbidden)]
+    [InlineData("GET", "/api/integrations/defectdojo", Roles.Manager, HttpStatusCode.Forbidden)]
+    [InlineData("GET", "/api/integrations/defectdojo", Roles.Administrator, HttpStatusCode.OK)]
+    public async Task Endpoints_enforce_roles(string method, string url, string? role, HttpStatusCode expected)
+    {
+        var request = new HttpRequestMessage(new HttpMethod(method), url) { Content = method == "POST" ? JsonContent.Create(new { }) : null };
+        Assert.Equal(expected, (await app.Client(role).SendAsync(request)).StatusCode);
+    }
+
+    [Fact]
+    public async Task Annotation_requires_editor_is_audited_and_never_touches_evidence()
+    {
+        var id = await SeedHostAsync();
+        var body = new { description = "Payment gateway", classification = "critical", businessState = "production", owner = "team-pay", tags = new[] { "pci", "dmz" } };
+
+        Assert.Equal(HttpStatusCode.Forbidden, (await app.Client(Roles.Viewer).PutAsJsonAsync($"/api/assets/hosts/{id}/annotation", body, Json)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await app.Client(Roles.Editor).PutAsJsonAsync($"/api/assets/hosts/{id}/annotation", body, Json)).StatusCode);
+        await app.Client(Roles.Editor).PutAsJsonAsync($"/api/assets/hosts/{id}/annotation", body with { owner = "team-core" }, Json);
+
+        var detail = await app.Client(Roles.Viewer).GetFromJsonAsync<HostDetailDto>($"/api/assets/hosts/{id}", Json);
+        Assert.Equal(("team-core", "critical"), (detail!.Annotation!.Owner, detail.Annotation.Classification));
+        Assert.Equal(["pci", "dmz"], detail.Annotation.Tags);
+        Assert.Single(detail.Services);
+        Assert.Single(detail.Findings);
+        Assert.Equal(2, await _s.QueryAsync(db => db.AnnotationRevisions.CountAsync()));
+        Assert.Equal(["asset.annotation_created", "asset.annotation_updated"], app.Audit.Entries.Select(e => e.Action));
+        Assert.Equal(HttpStatusCode.NotFound, (await app.Client(Roles.Editor).PutAsJsonAsync($"/api/assets/hosts/{Guid.NewGuid()}/annotation", body, Json)).StatusCode);
+    }
+
+    [Fact]
+    public async Task Csv_export_is_rfc4180_and_injection_safe()
+    {
+        await SeedHostAsync();
+        var response = await app.Client(Roles.Viewer).GetAsync("/api/export/findings?format=csv");
+        Assert.Equal("text/csv", response.Content.Headers.ContentType!.MediaType);
+        var csv = await response.Content.ReadAsStringAsync();
+
+        var rows = Csv.Parse(csv);
+        Assert.Equal(2, rows.Count);
+        var evidence = rows[1][rows[0].IndexOf("evidence")];
+        Assert.Equal("'=cmd|' /C calc'!A0", evidence);
+        Assert.EndsWith("\r\n", csv);
+
+        var hosts = await app.Client(Roles.Viewer).GetFromJsonAsync<JsonElement>("/api/export/hosts?format=json", Json);
+        Assert.Equal("10.4.0.1", hosts[0].GetProperty("address").GetString());
+        Assert.Equal(HttpStatusCode.NotFound, (await app.Client(Roles.Viewer).GetAsync("/api/export/secrets?format=csv")).StatusCode);
+    }
+
+    [Fact]
+    public async Task Import_upserts_annotations_by_address_without_fabricating_hosts()
+    {
+        await SeedHostAsync("10.4.0.1");
+        const string csv = "address,owner,tags,description\r\n10.4.0.1,team-a,a;b,\"Main, primary\"\r\n10.4.0.99,team-b,,\r\nnot an address,x,,\r\n";
+        var manager = app.Client(Roles.Manager);
+        var result = await (await manager.PostAsync("/api/import/assets?format=csv", new StringContent(csv, Encoding.UTF8, "text/csv")))
+            .Content.ReadFromJsonAsync<ImportResult>(Json);
+
+        Assert.Equal((2, 0), (result!.Imported, result.Updated));
+        Assert.Equal(["Row 4: invalid address 'not an address'."], result.Errors);
+        Assert.Single(await _s.QueryAsync(db => db.Hosts.ToListAsync()));
+
+        const string json = """[{ "address": "10.4.0.1", "owner": "team-z", "tags": ["a", "b"], "description": "Main, primary" }]""";
+        var second = await (await manager.PostAsync("/api/import/assets?format=json", new StringContent(json, Encoding.UTF8, "application/json")))
+            .Content.ReadFromJsonAsync<ImportResult>(Json);
+        Assert.Equal((0, 1), (second!.Imported, second.Updated));
+
+        var host = (await app.Client(Roles.Viewer).GetFromJsonAsync<PagedResult<HostListItemDto>>("/api/assets/hosts?search=10.4.0", Json))!.Items.Single();
+        Assert.Equal(("team-z", "Main, primary"), (host.Annotation!.Owner, host.Annotation.Description));
+        Assert.Contains(app.Audit.Entries, e => e.Action == "assets.imported");
+    }
+
+    [Fact]
+    public async Task Lists_dashboard_changes_observations_and_diff()
+    {
+        await SeedHostAsync();
+        var firstRun = _s.RunId;
+        _s.NextRun(TimeSpan.FromDays(2));
+        await _s.RunAsync(Scenario.Coverage(["10.4.0.0/24"]), 3, _s.HostUp("10.4.0.1"), _s.Port("10.4.0.1", 443), _s.Port("10.4.0.1", 8443));
+
+        var viewer = app.Client(Roles.Viewer);
+        var summary = await viewer.GetFromJsonAsync<DashboardSummaryDto>("/api/dashboard/summary", Json);
+        Assert.Equal((1, 1, 2, 1), (summary!.HostsTotal, summary.HostsActive, summary.ServicesTotal, summary.FindingsOpen));
+        Assert.Equal(1, summary.ChangesLast24h); // the first run's changes are two days older
+
+        var changes = await viewer.GetFromJsonAsync<PagedResult<ChangeDto>>($"/api/changes?scanRunId={_s.RunId}", Json);
+        Assert.Equal("New open port 10.4.0.1:8443/tcp", Assert.Single(changes!.Items).Summary);
+
+        var services = await viewer.GetFromJsonAsync<PagedResult<ServiceDto>>("/api/assets/services?port=8443", Json);
+        Assert.Equal(1, services!.Total);
+
+        var findings = await viewer.GetFromJsonAsync<PagedResult<FindingDto>>("/api/findings?severity=medium&status=Open", Json);
+        Assert.Equal("exposed-panel", Assert.Single(findings!.Items).SignatureId);
+
+        var observations = await viewer.GetFromJsonAsync<PagedResult<ObservationDto>>($"/api/observations?scanRunId={_s.RunId}&pageSize=2", Json);
+        Assert.Equal((3, 2), (observations!.Total, observations.Items.Count));
+
+        var diff = await viewer.GetFromJsonAsync<RunDiffDto>($"/api/scans/{_s.RunId}/diff?baseline={firstRun}", Json);
+        Assert.Equal(["endpoint|10.4.0.1|8443|tcp"], diff!.Added.Select(a => a.Key));
+        Assert.Empty(diff.Removed);
+        Assert.Equal(HttpStatusCode.BadRequest, (await viewer.GetAsync($"/api/scans/{_s.RunId}/diff")).StatusCode);
+    }
+}
