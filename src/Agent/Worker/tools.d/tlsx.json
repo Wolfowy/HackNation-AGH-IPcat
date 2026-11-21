@@ -1,0 +1,43 @@
+// tlsx (ProjectDiscovery): TLS certificate grabbing. Added purely by manifest: output is mapped by the
+// declarative generic-jsonl parser, no tool-specific code in the agent.
+{
+  "id": "tlsx",
+  "displayName": "tlsx",
+  "executable": "tlsx",
+  "versionArgs": ["-version"],
+  "versionRegex": "[Vv]ersion:?\\s*v?(?<version>\\d+\\.\\d+\\.\\d+)",
+  "maxConcurrency": 2,
+  "defaultTimeoutSeconds": 1800,
+  "capabilities": {
+    "tls-probe": {
+      "parser": "generic-jsonl",
+      "parserOptions": {
+        "kind": "TlsCertificate",
+        "requireFields": ["tls.fingerprintSha256"],
+        "discriminator": "tls.fingerprintSha256",
+        "fields": {
+          "address": "ip",
+          "port": "port",
+          "hostname": "host",
+          "tls.subjectCommonName": "subject_cn",
+          "tls.subjectAlternativeNames": "subject_an",
+          "tls.issuer": "issuer_dn",
+          "tls.notBefore": "not_before",
+          "tls.notAfter": "not_after",
+          "tls.serialNumber": "serial",
+          "tls.fingerprintSha256": "fingerprint_hash.sha256",
+          "tls.tlsVersion": "tls_version",
+          "tls.cipher": "cipher",
+          "tls.selfSigned": "self_signed"
+        },
+        "attributes": { "tlsx.connection": "tls_connection", "tlsx.subjectOrg": "subject_org" }
+      },
+      "input": { "mode": "file", "format": "endpoints" },
+      "output": { "mode": "file" },
+      // JSON output always contains subject/SAN/issuer/validity/serial/version/cipher; display flags such as -san/-cn
+      // are rejected by tlsx when combined. tlsx has no rate flag; concurrency is bounded by {parallelism}.
+      "arguments": ["-l", "{input}", "-json", "-o", "{output}", "-silent", "-no-color", "-disable-update-check",
+                    "-c", "{parallelism}", "-timeout", "10", "-hash", "sha256"]
+    }
+  }
+}

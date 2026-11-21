@@ -1,0 +1,24 @@
+// naabu (ProjectDiscovery): fast port scanner, JSONL output.
+{
+  "id": "naabu",
+  "displayName": "naabu",
+  "executable": "naabu",
+  "versionArgs": ["-version"],
+  "versionRegex": "[Vv]ersion:?\\s*v?(?<version>\\d+\\.\\d+\\.\\d+)",
+  "maxConcurrency": 2,
+  "defaultTimeoutSeconds": 3600,
+  "capabilities": {
+    "port-scan": {
+      "parser": "naabu-jsonl",
+      "input": { "mode": "file", "format": "hosts" },
+      "output": { "mode": "file" },
+      "arguments": ["-list", "{input}", "-json", "-o", "{output}", "-rate", "{rate}", "-c", "{parallelism}", "-Pn", "-silent", "-no-color", "-disable-update-check"],
+      "parameterArguments": {
+        "ports": { "top-*": ["-top-ports", "{value}"], "*": ["-port", "{value}"] },
+        "scanType": { "connect": ["-scan-type", "c"], "syn": ["-scan-type", "s"] },
+        "retries": ["-retries", "{value}"]
+      },
+      "interfaceArguments": ["-interface", "{interface}"]
+    }
+  }
+}

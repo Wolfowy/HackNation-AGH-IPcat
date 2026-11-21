@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Minimal third-party style plugin: references only the SDK (not copied, shared with the agent at runtime). -->
+  <ItemGroup>
+    <ProjectReference Include="../../../../src/Agent/Tools.Abstractions/WebScan.Agent.Tools.Abstractions.csproj" Private="false" />
+  </ItemGroup>
+</Project>

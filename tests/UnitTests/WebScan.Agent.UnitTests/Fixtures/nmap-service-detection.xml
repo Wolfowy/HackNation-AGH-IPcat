@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE nmaprun>
+<?xml-stylesheet href="file:///usr/bin/../share/nmap/nmap.xsl" type="text/xsl"?>
+<!-- Nmap 7.93 scan initiated Sat Nov 21 18:57:33 2026 as: nmap -n -Pn -sT -sV -T4 -&#45;open -&#45;max-rate 100 -p 80,2323,8080,8443 -oX /work/nmap-service-detection.xml -iL /work/sd-input.txt -&#45;version-intensity 5 -&#45;script banner -->
+<nmaprun scanner="nmap" args="nmap -n -Pn -sT -sV -T4 -&#45;open -&#45;max-rate 100 -p 80,2323,8080,8443 -oX /work/nmap-service-detection.xml -iL /work/sd-input.txt -&#45;version-intensity 5 -&#45;script banner" start="1795287453" startstr="Sat Nov 21 18:57:33 2026" version="7.93" xmloutputversion="1.05">
+<scaninfo type="connect" protocol="tcp" numservices="4" services="80,2323,8080,8443"/>
+<verbose level="0"/>
+<debugging level="0"/>
+<host starttime="1795287454" endtime="1795287491"><status state="up" reason="user-set" reason_ttl="0"/>
+<address addr="172.30.0.10" addrtype="ipv4"/>
+<hostnames>
+</hostnames>
+<ports><extraports state="closed" count="3">
+<extrareasons reason="conn-refused" count="3" proto="tcp" ports="2323,8080,8443"/>
+</extraports>
+<port protocol="tcp" portid="80"><state state="open" reason="syn-ack" reason_ttl="0"/><service name="http" product="nginx" version="1.27.5" method="probed" conf="10"><cpe>cpe:/a:igor_sysoev:nginx:1.27.5</cpe></service></port>
+</ports>
+<times srtt="251" rttvar="2365" to="100000"/>
+</host>
+<host starttime="1795287454" endtime="1795287491"><status state="up" reason="user-set" reason_ttl="0"/>
+<address addr="172.30.0.11" addrtype="ipv4"/>
+<hostnames>
+</hostnames>
+<ports><extraports state="closed" count="3">
+<extrareasons reason="conn-refused" count="3" proto="tcp" ports="2323,8080,8443"/>
+</extraports>
+<port protocol="tcp" portid="80"><state state="open" reason="syn-ack" reason_ttl="0"/><service name="http" product="Apache httpd" version="2.4.71" extrainfo="(Unix)" method="probed" conf="10"><cpe>cpe:/a:apache:http_server:2.4.71</cpe></service></port>
+</ports>
+<times srtt="215" rttvar="2215" to="100000"/>
+</host>
+<host starttime="1795287454" endtime="1795287491"><status state="up" reason="user-set" reason_ttl="0"/>
+<address addr="172.30.0.12" addrtype="ipv4"/>
+<hostnames>
+</hostnames>
+<ports><extraports state="closed" count="2">
+<extrareasons reason="conn-refused" count="2" proto="tcp" ports="80,2323"/>
+</extraports>
+<port protocol="tcp" portid="8080"><state state="open" reason="syn-ack" reason_ttl="0"/><service name="http-proxy" servicefp="SF-Port8080-TCP:V=7.93%I=5%D=11/21%Time=6B01E9A4%P=aarch64-unknown-linux-gnu%r(GetRequest,1F0,&quot;HTTP/1\.1\x20200\x20OK\r\nContent-Length:\x20217\r\nConnection:\x20close\r\nContent-Type:\x20text/html;\x20charset=utf-8\r\nDate:\x20Sat,\x2021\x20Nov\x202026\x2018:57:40\x20GMT\r\nServer:\x20Kestrel\r\nSet-Cookie:\x20testlab_session=94466D9D0675FDA21005CC67DB10D9E0;\x20path=/;\x20httponly\r\nX-Powered-By:\x20ASP\.NET\r\nX-TestLab-App:\x20webapp\r\n\r\n&lt;!DOCTYPE\x20html&gt;\n&lt;html&gt;&lt;head&gt;&lt;title&gt;WebScan\x20TestLab\x20Web\x20App&lt;/title&gt;&lt;/head&gt;\n&lt;body&gt;&lt;h1&gt;WebScan\x20TestLab\x20Web\x20App&lt;/h1&gt;&lt;p&gt;ASP\.NET\x20Core\x20sample\x20target\x20for\x20authorized\x20local\x20testing\.&lt;/p&gt;\n&lt;a\x20href=\&quot;/old\&quot;&gt;old\x20link&lt;/a&gt;&lt;/body&gt;&lt;/html&gt;&quot;)%r(HTTPOptions,B9,&quot;HTTP/1\.1\x20405\x20Method\x20Not\x20Allowed\r\nContent-Length:\x200\r\nConnection:\x20close\r\nDate:\x20Sat,\x2021\x20Nov\x202026\x2018:57:40\x20GMT\r\nServer:\x20Kestrel\r\nAllow:\x20GET\r\nX-Powered-By:\x20ASP\.NET\r\nX-TestLab-App:\x20webapp\r\n\r\n&quot;)%r(RTSPRequest,76,&quot;HTTP/1\.1\x20505\x20HTTP\x20Version\x20Not\x20Supported\r\nContent-Length:\x200\r\nConnection:\x20close\r\nDate:\x20Sat,\x2021\x20Nov\x202026\x2018:57:40\x20GMT\r\n\r\n&quot;)%r(FourOhFourRequest,A4,&quot;HTTP/1\.1\x20404\x20Not\x20Found\r\nContent-Length:\x200\r\nConnection:\x20close\r\nDate:\x20Sat,\x2021\x20Nov\x202026\x2018:57:40\x20GMT\r\nServer:\x20Kestrel\r\nX-Powered-By:\x20ASP\.NET\r\nX-TestLab-App:\x20webapp\r\n\r\n&quot;)%r(Socks5,67,&quot;HTTP/1\.1\x20400\x20Bad\x20Request\r\nContent-Length:\x200\r\nConnection:\x20close\r\nDate:\x20Sat,\x2021\x20Nov\x202026\x2018:57:40\x20GMT\r\n\r\n&quot;)%r(Socks4,67,&quot;HTTP/1\.1\x20400\x20Bad\x20Request\r\nContent-Length:\x200\r\nConnection:\x20close\r\nDate:\x20Sat,\x2021\x20Nov\x202026\x2018:57:40\x20GMT\r\n\r\n&quot;)%r(RPCCheck,67,&quot;HTTP/1\.1\x20400\x20Bad\x20Request\r\nContent-Length:\x200\r\nConnection:\x20close\r\nDate:\x20Sat,\x2021\x20Nov\x202026\x2018:57:45\x20GMT\r\n\r\n&quot;)%r(DNSVersionBindReqTCP,67,&quot;HTTP/1\.1\x20400\x20Bad\x20Request\r\nContent-Length:\x200\r\nConnection:\x20close\r\nDate:\x20Sat,\x2021\x20Nov\x202026\x2018:57:45\x20GMT\r\n\r\n&quot;);" method="table" conf="3"/><script id="fingerprint-strings" output="&#xa;  DNSVersionBindReqTCP, RPCCheck: &#xa;    HTTP/1.1 400 Bad Request&#xa;    Content-Length: 0&#xa;    Connection: close&#xa;    Date: Sat, 21 Nov 2026 18:57:45 GMT&#xa;  FourOhFourRequest: &#xa;    HTTP/1.1 404 Not Found&#xa;    Content-Length: 0&#xa;    Connection: close&#xa;    Date: Sat, 21 Nov 2026 18:57:40 GMT&#xa;    Server: Kestrel&#xa;    X-Powered-By: ASP.NET&#xa;    X-TestLab-App: webapp&#xa;  GetRequest: &#xa;    HTTP/1.1 200 OK&#xa;    Content-Length: 217&#xa;    Connection: close&#xa;    Content-Type: text/html; charset=utf-8&#xa;    Date: Sat, 21 Nov 2026 18:57:40 GMT&#xa;    Server: Kestrel&#xa;    Set-Cookie: testlab_session=94466D9D0675FDA21005CC67DB10D9E0; path=/; httponly&#xa;    X-Powered-By: ASP.NET&#xa;    X-TestLab-App: webapp&#xa;    &lt;!DOCTYPE html&gt;&#xa;    &lt;html&gt;&lt;head&gt;&lt;title&gt;WebScan TestLab Web App&lt;/title&gt;&lt;/head&gt;&#xa;    &lt;body&gt;&lt;h1&gt;WebScan TestLab Web App&lt;/h1&gt;&lt;p&gt;ASP.NET Core sample target for authorized local testing.&lt;/p&gt;&#xa;    href=&quot;/old&quot;&gt;old link&lt;/a&gt;&lt;/body&gt;&lt;/html&gt;&#xa;  HTTPOptions: &#xa;    HTTP/1.1 405 Method Not Allowed&#xa;    Content-Length: 0&#xa;    Connection: close&#xa;    Date: Sat, 21 Nov 2026 18:57:40 GMT&#xa;    Server: Kestrel&#xa;    Allow: GET&#xa;    X-Powered-By: ASP.NET&#xa;    X-TestLab-App: webapp&#xa;  RTSPRequest: &#xa;    HTTP/1.1 505 HTTP Version Not Supported&#xa;    Content-Length: 0&#xa;    Connection: close&#xa;    Date: Sat, 21 Nov 2026 18:57:40 GMT&#xa;  Socks4, Socks5: &#xa;    HTTP/1.1 400 Bad Request&#xa;    Content-Length: 0&#xa;    Connection: close&#xa;    Date: Sat, 21 Nov 2026 18:57:40 GMT"><elem key="DNSVersionBindReqTCP, RPCCheck">&#xa;    HTTP/1.1 400 Bad Request&#xa;    Content-Length: 0&#xa;    Connection: close&#xa;    Date: Sat, 21 Nov 2026 18:57:45 GMT</elem>
+<elem key="FourOhFourRequest">&#xa;    HTTP/1.1 404 Not Found&#xa;    Content-Length: 0&#xa;    Connection: close&#xa;    Date: Sat, 21 Nov 2026 18:57:40 GMT&#xa;    Server: Kestrel&#xa;    X-Powered-By: ASP.NET&#xa;    X-TestLab-App: webapp</elem>
+<elem key="GetRequest">&#xa;    HTTP/1.1 200 OK&#xa;    Content-Length: 217&#xa;    Connection: close&#xa;    Content-Type: text/html; charset=utf-8&#xa;    Date: Sat, 21 Nov 2026 18:57:40 GMT&#xa;    Server: Kestrel&#xa;    Set-Cookie: testlab_session=94466D9D0675FDA21005CC67DB10D9E0; path=/; httponly&#xa;    X-Powered-By: ASP.NET&#xa;    X-TestLab-App: webapp&#xa;    &lt;!DOCTYPE html&gt;&#xa;    &lt;html&gt;&lt;head&gt;&lt;title&gt;WebScan TestLab Web App&lt;/title&gt;&lt;/head&gt;&#xa;    &lt;body&gt;&lt;h1&gt;WebScan TestLab Web App&lt;/h1&gt;&lt;p&gt;ASP.NET Core sample target for authorized local testing.&lt;/p&gt;&#xa;    href=&quot;/old&quot;&gt;old link&lt;/a&gt;&lt;/body&gt;&lt;/html&gt;</elem>
+<elem key="HTTPOptions">&#xa;    HTTP/1.1 405 Method Not Allowed&#xa;    Content-Length: 0&#xa;    Connection: close&#xa;    Date: Sat, 21 Nov 2026 18:57:40 GMT&#xa;    Server: Kestrel&#xa;    Allow: GET&#xa;    X-Powered-By: ASP.NET&#xa;    X-TestLab-App: webapp</elem>
+<elem key="RTSPRequest">&#xa;    HTTP/1.1 505 HTTP Version Not Supported&#xa;    Content-Length: 0&#xa;    Connection: close&#xa;    Date: Sat, 21 Nov 2026 18:57:40 GMT</elem>
+<elem key="Socks4, Socks5">&#xa;    HTTP/1.1 400 Bad Request&#xa;    Content-Length: 0&#xa;    Connection: close&#xa;    Date: Sat, 21 Nov 2026 18:57:40 GMT</elem>
+</script></port>
+<port protocol="tcp" portid="8443"><state state="open" reason="syn-ack" reason_ttl="0"/><service name="https-alt" servicefp="SF-Port8443-TCP:V=7.93%T=SSL%I=5%D=11/21%Time=6B01E9AA%P=aarch64-unknown-linux-gnu%r(GetRequest,1F0,&quot;HTTP/1\.1\x20200\x20OK\r\nContent-Length:\x20217\r\nConnection:\x20close\r\nContent-Type:\x20text/html;\x20charset=utf-8\r\nDate:\x20Sat,\x2021\x20Nov\x202026\x2018:57:46\x20GMT\r\nServer:\x20Kestrel\r\nSet-Cookie:\x20testlab_session=EEF0E15D6C9079664823CF9364D30465;\x20path=/;\x20httponly\r\nX-Powered-By:\x20ASP\.NET\r\nX-TestLab-App:\x20webapp\r\n\r\n&lt;!DOCTYPE\x20html&gt;\n&lt;html&gt;&lt;head&gt;&lt;title&gt;WebScan\x20TestLab\x20Web\x20App&lt;/title&gt;&lt;/head&gt;\n&lt;body&gt;&lt;h1&gt;WebScan\x20TestLab\x20Web\x20App&lt;/h1&gt;&lt;p&gt;ASP\.NET\x20Core\x20sample\x20target\x20for\x20authorized\x20local\x20testing\.&lt;/p&gt;\n&lt;a\x20href=\&quot;/old\&quot;&gt;old\x20link&lt;/a&gt;&lt;/body&gt;&lt;/html&gt;&quot;)%r(HTTPOptions,B9,&quot;HTTP/1\.1\x20405\x20Method\x20Not\x20Allowed\r\nContent-Length:\x200\r\nConnection:\x20close\r\nDate:\x20Sat,\x2021\x20Nov\x202026\x2018:57:46\x20GMT\r\nServer:\x20Kestrel\r\nAllow:\x20GET\r\nX-Powered-By:\x20ASP\.NET\r\nX-TestLab-App:\x20webapp\r\n\r\n&quot;)%r(FourOhFourRequest,A4,&quot;HTTP/1\.1\x20404\x20Not\x20Found\r\nContent-Length:\x200\r\nConnection:\x20close\r\nDate:\x20Sat,\x2021\x20Nov\x202026\x2018:57:46\x20GMT\r\nServer:\x20Kestrel\r\nX-Powered-By:\x20ASP\.NET\r\nX-TestLab-App:\x20webapp\r\n\r\n&quot;)%r(RPCCheck,67,&quot;HTTP/1\.1\x20400\x20Bad\x20Request\r\nContent-Length:\x200\r\nConnection:\x20close\r\nDate:\x20Sat,\x2021\x20Nov\x202026\x2018:57:51\x20GMT\r\n\r\n&quot;)%r(DNSVersionBindReqTCP,67,&quot;HTTP/1\.1\x20400\x20Bad\x20Request\r\nContent-Length:\x200\r\nConnection:\x20close\r\nDate:\x20Sat,\x2021\x20Nov\x202026\x2018:57:51\x20GMT\r\n\r\n&quot;);" tunnel="ssl" method="table" conf="3"/><script id="fingerprint-strings" output="&#xa;  DNSVersionBindReqTCP, RPCCheck: &#xa;    HTTP/1.1 400 Bad Request&#xa;    Content-Length: 0&#xa;    Connection: close&#xa;    Date: Sat, 21 Nov 2026 18:57:51 GMT&#xa;  FourOhFourRequest: &#xa;    HTTP/1.1 404 Not Found&#xa;    Content-Length: 0&#xa;    Connection: close&#xa;    Date: Sat, 21 Nov 2026 18:57:46 GMT&#xa;    Server: Kestrel&#xa;    X-Powered-By: ASP.NET&#xa;    X-TestLab-App: webapp&#xa;  GetRequest: &#xa;    HTTP/1.1 200 OK&#xa;    Content-Length: 217&#xa;    Connection: close&#xa;    Content-Type: text/html; charset=utf-8&#xa;    Date: Sat, 21 Nov 2026 18:57:46 GMT&#xa;    Server: Kestrel&#xa;    Set-Cookie: testlab_session=EEF0E15D6C9079664823CF9364D30465; path=/; httponly&#xa;    X-Powered-By: ASP.NET&#xa;    X-TestLab-App: webapp&#xa;    &lt;!DOCTYPE html&gt;&#xa;    &lt;html&gt;&lt;head&gt;&lt;title&gt;WebScan TestLab Web App&lt;/title&gt;&lt;/head&gt;&#xa;    &lt;body&gt;&lt;h1&gt;WebScan TestLab Web App&lt;/h1&gt;&lt;p&gt;ASP.NET Core sample target for authorized local testing.&lt;/p&gt;&#xa;    href=&quot;/old&quot;&gt;old link&lt;/a&gt;&lt;/body&gt;&lt;/html&gt;&#xa;  HTTPOptions: &#xa;    HTTP/1.1 405 Method Not Allowed&#xa;    Content-Length: 0&#xa;    Connection: close&#xa;    Date: Sat, 21 Nov 2026 18:57:46 GMT&#xa;    Server: Kestrel&#xa;    Allow: GET&#xa;    X-Powered-By: ASP.NET&#xa;    X-TestLab-App: webapp"><elem key="DNSVersionBindReqTCP, RPCCheck">&#xa;    HTTP/1.1 400 Bad Request&#xa;    Content-Length: 0&#xa;    Connection: close&#xa;    Date: Sat, 21 Nov 2026 18:57:51 GMT</elem>
+<elem key="FourOhFourRequest">&#xa;    HTTP/1.1 404 Not Found&#xa;    Content-Length: 0&#xa;    Connection: close&#xa;    Date: Sat, 21 Nov 2026 18:57:46 GMT&#xa;    Server: Kestrel&#xa;    X-Powered-By: ASP.NET&#xa;    X-TestLab-App: webapp</elem>
+<elem key="GetRequest">&#xa;    HTTP/1.1 200 OK&#xa;    Content-Length: 217&#xa;    Connection: close&#xa;    Content-Type: text/html; charset=utf-8&#xa;    Date: Sat, 21 Nov 2026 18:57:46 GMT&#xa;    Server: Kestrel&#xa;    Set-Cookie: testlab_session=EEF0E15D6C9079664823CF9364D30465; path=/; httponly&#xa;    X-Powered-By: ASP.NET&#xa;    X-TestLab-App: webapp&#xa;    &lt;!DOCTYPE html&gt;&#xa;    &lt;html&gt;&lt;head&gt;&lt;title&gt;WebScan TestLab Web App&lt;/title&gt;&lt;/head&gt;&#xa;    &lt;body&gt;&lt;h1&gt;WebScan TestLab Web App&lt;/h1&gt;&lt;p&gt;ASP.NET Core sample target for authorized local testing.&lt;/p&gt;&#xa;    href=&quot;/old&quot;&gt;old link&lt;/a&gt;&lt;/body&gt;&lt;/html&gt;</elem>
+<elem key="HTTPOptions">&#xa;    HTTP/1.1 405 Method Not Allowed&#xa;    Content-Length: 0&#xa;    Connection: close&#xa;    Date: Sat, 21 Nov 2026 18:57:46 GMT&#xa;    Server: Kestrel&#xa;    Allow: GET&#xa;    X-Powered-By: ASP.NET&#xa;    X-TestLab-App: webapp</elem>
+</script></port>
+</ports>
+<times srtt="83" rttvar="2121" to="100000"/>
+</host>
+<host starttime="1795287454" endtime="1795287491"><status state="up" reason="user-set" reason_ttl="0"/>
+<address addr="172.30.0.13" addrtype="ipv4"/>
+<hostnames>
+</hostnames>
+<ports><extraports state="closed" count="3">
+<extrareasons reason="conn-refused" count="3" proto="tcp" ports="2323,8080,8443"/>
+</extraports>
+<port protocol="tcp" portid="80"><state state="open" reason="syn-ack" reason_ttl="0"/><service name="http" product="nginx" version="1.27.5" method="probed" conf="10"><cpe>cpe:/a:igor_sysoev:nginx:1.27.5</cpe></service></port>
+</ports>
+<times srtt="108" rttvar="2132" to="100000"/>
+</host>
+<host starttime="1795287454" endtime="1795287491"><status state="up" reason="user-set" reason_ttl="0"/>
+<address addr="172.30.0.14" addrtype="ipv4"/>
+<hostnames>
+</hostnames>
+<ports><extraports state="closed" count="3">
+<extrareasons reason="conn-refused" count="3" proto="tcp" ports="80,8080,8443"/>
+</extraports>
+<port protocol="tcp" portid="2323"><state state="open" reason="syn-ack" reason_ttl="0"/><service name="3d-nfsd" servicefp="SF-Port2323-TCP:V=7.93%I=5%D=11/21%Time=6B01E99E%P=aarch64-unknown-linux-gnu%r(NULL,1C,&quot;WEBSCAN-TESTLAB-BANNER\x20v1\.0\n&quot;);" method="table" conf="3"/><script id="fingerprint-strings" output="&#xa;  NULL: &#xa;    WEBSCAN-TESTLAB-BANNER v1.0"><elem key="NULL">&#xa;    WEBSCAN-TESTLAB-BANNER v1.0</elem>
+</script><script id="banner" output="WEBSCAN-TESTLAB-BANNER v1.0"/></port>
+</ports>
+<times srtt="106" rttvar="2124" to="100000"/>
+</host>
+<runstats><finished time="1795287491" timestr="Sat Nov 21 18:58:11 2026" summary="Nmap done at Sat Nov 21 18:58:11 2026; 5 IP addresses (5 hosts up) scanned in 37.66 seconds" elapsed="37.66" exit="success"/><hosts up="5" down="0" total="5"/>
+</runstats>
+</nmaprun>

@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE nmaprun>
+<?xml-stylesheet href="file:///usr/bin/../share/nmap/nmap.xsl" type="text/xsl"?>
+<!-- Nmap 7.93 scan initiated Sat Nov 21 18:58:28 2026 as: nmap -n -Pn -sT -sV -&#45;version-light -T4 -&#45;open -&#45;script ssl-cert -&#45;max-rate 100 -p 8443 -oX /work/nmap-tls.xml -iL /work/tls-input.txt -->
+<nmaprun scanner="nmap" args="nmap -n -Pn -sT -sV -&#45;version-light -T4 -&#45;open -&#45;script ssl-cert -&#45;max-rate 100 -p 8443 -oX /work/nmap-tls.xml -iL /work/tls-input.txt" start="1795287508" startstr="Sat Nov 21 18:58:28 2026" version="7.93" xmloutputversion="1.05">
+<scaninfo type="connect" protocol="tcp" numservices="1" services="8443"/>
+<verbose level="0"/>
+<debugging level="0"/>
+<host starttime="1795287508" endtime="1795287525"><status state="up" reason="user-set" reason_ttl="0"/>
+<address addr="172.30.0.12" addrtype="ipv4"/>
+<hostnames>
+</hostnames>
+<ports><port protocol="tcp" portid="8443"><state state="open" reason="syn-ack" reason_ttl="0"/><service name="https-alt" servicefp="SF-Port8443-TCP:V=7.93%T=SSL%I=2%D=11/21%Time=6B01E9E0%P=aarch64-unknown-linux-gnu%r(GetRequest,1F0,&quot;HTTP/1\.1\x20200\x20OK\r\nContent-Length:\x20217\r\nConnection:\x20close\r\nContent-Type:\x20text/html;\x20charset=utf-8\r\nDate:\x20Sat,\x2021\x20Nov\x202026\x2018:58:39\x20GMT\r\nServer:\x20Kestrel\r\nSet-Cookie:\x20testlab_session=4C0C5D49B482ED944C741CC6675966FC;\x20path=/;\x20httponly\r\nX-Powered-By:\x20ASP\.NET\r\nX-TestLab-App:\x20webapp\r\n\r\n&lt;!DOCTYPE\x20html&gt;\n&lt;html&gt;&lt;head&gt;&lt;title&gt;WebScan\x20TestLab\x20Web\x20App&lt;/title&gt;&lt;/head&gt;\n&lt;body&gt;&lt;h1&gt;WebScan\x20TestLab\x20Web\x20App&lt;/h1&gt;&lt;p&gt;ASP\.NET\x20Core\x20sample\x20target\x20for\x20authorized\x20local\x20testing\.&lt;/p&gt;\n&lt;a\x20href=\&quot;/old\&quot;&gt;old\x20link&lt;/a&gt;&lt;/body&gt;&lt;/html&gt;&quot;)%r(HTTPOptions,B9,&quot;HTTP/1\.1\x20405\x20Method\x20Not\x20Allowed\r\nContent-Length:\x200\r\nConnection:\x20close\r\nDate:\x20Sat,\x2021\x20Nov\x202026\x2018:58:39\x20GMT\r\nServer:\x20Kestrel\r\nAllow:\x20GET\r\nX-Powered-By:\x20ASP\.NET\r\nX-TestLab-App:\x20webapp\r\n\r\n&quot;)%r(FourOhFourRequest,A4,&quot;HTTP/1\.1\x20404\x20Not\x20Found\r\nContent-Length:\x200\r\nConnection:\x20close\r\nDate:\x20Sat,\x2021\x20Nov\x202026\x2018:58:39\x20GMT\r\nServer:\x20Kestrel\r\nX-Powered-By:\x20ASP\.NET\r\nX-TestLab-App:\x20webapp\r\n\r\n&quot;)%r(SSLSessionReq,67,&quot;HTTP/1\.1\x20400\x20Bad\x20Request\r\nContent-Length:\x200\r\nConnection:\x20close\r\nDate:\x20Sat,\x2021\x20Nov\x202026\x2018:58:45\x20GMT\r\n\r\n&quot;);" tunnel="ssl" method="table" conf="3"/><script id="fingerprint-strings" output="&#xa;  FourOhFourRequest: &#xa;    HTTP/1.1 404 Not Found&#xa;    Content-Length: 0&#xa;    Connection: close&#xa;    Date: Sat, 21 Nov 2026 18:58:39 GMT&#xa;    Server: Kestrel&#xa;    X-Powered-By: ASP.NET&#xa;    X-TestLab-App: webapp&#xa;  GetRequest: &#xa;    HTTP/1.1 200 OK&#xa;    Content-Length: 217&#xa;    Connection: close&#xa;    Content-Type: text/html; charset=utf-8&#xa;    Date: Sat, 21 Nov 2026 18:58:39 GMT&#xa;    Server: Kestrel&#xa;    Set-Cookie: testlab_session=4C0C5D49B482ED944C741CC6675966FC; path=/; httponly&#xa;    X-Powered-By: ASP.NET&#xa;    X-TestLab-App: webapp&#xa;    &lt;!DOCTYPE html&gt;&#xa;    &lt;html&gt;&lt;head&gt;&lt;title&gt;WebScan TestLab Web App&lt;/title&gt;&lt;/head&gt;&#xa;    &lt;body&gt;&lt;h1&gt;WebScan TestLab Web App&lt;/h1&gt;&lt;p&gt;ASP.NET Core sample target for authorized local testing.&lt;/p&gt;&#xa;    href=&quot;/old&quot;&gt;old link&lt;/a&gt;&lt;/body&gt;&lt;/html&gt;&#xa;  HTTPOptions: &#xa;    HTTP/1.1 405 Method Not Allowed&#xa;    Content-Length: 0&#xa;    Connection: close&#xa;    Date: Sat, 21 Nov 2026 18:58:39 GMT&#xa;    Server: Kestrel&#xa;    Allow: GET&#xa;    X-Powered-By: ASP.NET&#xa;    X-TestLab-App: webapp&#xa;  SSLSessionReq: &#xa;    HTTP/1.1 400 Bad Request&#xa;    Content-Length: 0&#xa;    Connection: close&#xa;    Date: Sat, 21 Nov 2026 18:58:45 GMT"><elem key="FourOhFourRequest">&#xa;    HTTP/1.1 404 Not Found&#xa;    Content-Length: 0&#xa;    Connection: close&#xa;    Date: Sat, 21 Nov 2026 18:58:39 GMT&#xa;    Server: Kestrel&#xa;    X-Powered-By: ASP.NET&#xa;    X-TestLab-App: webapp</elem>
+<elem key="GetRequest">&#xa;    HTTP/1.1 200 OK&#xa;    Content-Length: 217&#xa;    Connection: close&#xa;    Content-Type: text/html; charset=utf-8&#xa;    Date: Sat, 21 Nov 2026 18:58:39 GMT&#xa;    Server: Kestrel&#xa;    Set-Cookie: testlab_session=4C0C5D49B482ED944C741CC6675966FC; path=/; httponly&#xa;    X-Powered-By: ASP.NET&#xa;    X-TestLab-App: webapp&#xa;    &lt;!DOCTYPE html&gt;&#xa;    &lt;html&gt;&lt;head&gt;&lt;title&gt;WebScan TestLab Web App&lt;/title&gt;&lt;/head&gt;&#xa;    &lt;body&gt;&lt;h1&gt;WebScan TestLab Web App&lt;/h1&gt;&lt;p&gt;ASP.NET Core sample target for authorized local testing.&lt;/p&gt;&#xa;    href=&quot;/old&quot;&gt;old link&lt;/a&gt;&lt;/body&gt;&lt;/html&gt;</elem>
+<elem key="HTTPOptions">&#xa;    HTTP/1.1 405 Method Not Allowed&#xa;    Content-Length: 0&#xa;    Connection: close&#xa;    Date: Sat, 21 Nov 2026 18:58:39 GMT&#xa;    Server: Kestrel&#xa;    Allow: GET&#xa;    X-Powered-By: ASP.NET&#xa;    X-TestLab-App: webapp</elem>
+<elem key="SSLSessionReq">&#xa;    HTTP/1.1 400 Bad Request&#xa;    Content-Length: 0&#xa;    Connection: close&#xa;    Date: Sat, 21 Nov 2026 18:58:45 GMT</elem>
+</script><script id="ssl-cert" output="Subject: commonName=testlab-webapp.local/organizationName=WebScan TestLab&#xa;Subject Alternative Name: DNS:testlab-webapp.local, DNS:localhost, IP Address:172.30.0.12&#xa;Issuer: commonName=testlab-webapp.local/organizationName=WebScan TestLab&#xa;Public Key type: rsa&#xa;Public Key bits: 2048&#xa;Signature Algorithm: sha256WithRSAEncryption&#xa;Not valid before: 2026-11-20T18:56:02&#xa;Not valid after:  2027-11-21T18:56:02&#xa;MD5:   bdd0ec65561d285866cc2907ea501f2e&#xa;SHA-1: 1c60f9c3c2140380deb21bd580365f0c1288a5cb"><table key="subject">
+<elem key="commonName">testlab-webapp.local</elem>
+<elem key="organizationName">WebScan TestLab</elem>
+</table>
+<table key="issuer">
+<elem key="commonName">testlab-webapp.local</elem>
+<elem key="organizationName">WebScan TestLab</elem>
+</table>
+<table key="pubkey">
+<elem key="type">rsa</elem>
+<elem key="bits">2048</elem>
+<elem key="modulus">CA3472001473FCF2EEB6C8DA08472ED0B405E2EF315CD4B19046E66B0DAEDB945556B8B2C8201C38502B6DE4B84E587656DCCE24753C3E0B6E08E0B620E33968A39231871D2C0714002CE0C309B36A7E9EDE5C247AE6A1567FD324E98B6E663F84E9FC84CE72ED93E898E8E085AFB04BF432718CD8F6169A669DAD563383C03E7621B0750F0AA3977DC09F6720B8BE672CA58CFFBD0F029195F7A3D3F708D2A137B700475CB91C06900DDC945F7CF7F8B6157202C61DDC03AC35ED067DA375DEA513A54D072DEAC6FF3F7C62ADD17A3C3B0E1FDFD785382CFEAB8B59D448DD261FEE959CAF6AE5F2CFB839CEF4DF85440AF73B5AEBEC862AAA9614B64BA6C62F</elem>
+<elem key="exponent">65537</elem>
+</table>
+<table key="extensions">
+<table>
+<elem key="name">X509v3 Subject Alternative Name</elem>
+<elem key="value">DNS:testlab-webapp.local, DNS:localhost, IP Address:172.30.0.12</elem>
+</table>
+<table>
+<elem key="name">X509v3 Basic Constraints</elem>
+<elem key="value">CA:FALSE</elem>
+<elem key="critical">true</elem>
+</table>
+<table>
+<elem key="name">X509v3 Key Usage</elem>
+<elem key="value">Digital Signature, Key Encipherment</elem>
+<elem key="critical">true</elem>
+</table>
+<table>
+<elem key="name">X509v3 Extended Key Usage</elem>
+<elem key="value">TLS Web Server Authentication</elem>
+</table>
+</table>
+<elem key="sig_algo">sha256WithRSAEncryption</elem>
+<table key="validity">
+<elem key="notBefore">2026-11-20T18:56:02</elem>
+<elem key="notAfter">2027-11-21T18:56:02</elem>
+</table>
+<elem key="md5">bdd0ec65561d285866cc2907ea501f2e</elem>
+<elem key="sha1">1c60f9c3c2140380deb21bd580365f0c1288a5cb</elem>
+<elem key="pem">-&#45;&#45;&#45;&#45;BEGIN CERTIFICATE-&#45;&#45;&#45;&#45;&#xa;MIIDXDCCAkSgAwIBAgIJAOB6eXaPBruBMA0GCSqGSIb3DQEBCwUAMDkxGDAWBgNV&#xa;BAoTD1dlYlNjYW4gVGVzdExhYjEdMBsGA1UEAxMUdGVzdGxhYi13ZWJhcHAubG9j&#xa;YWwwHhcNMjYxMTIwMTg1NjAyWhcNMjcxMTIxMTg1NjAyWjA5MRgwFgYDVQQKEw9X&#xa;ZWJTY2FuIFRlc3RMYWIxHTAbBgNVBAMTFHRlc3RsYWItd2ViYXBwLmxvY2FsMIIB&#xa;IjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAyjRyABRz/PLutsjaCEcu0LQF&#xa;4u8xXNSxkEbmaw2u25RVVriyyCAcOFArbeS4Tlh2VtzOJHU8PgtuCOC2IOM5aKOS&#xa;MYcdLAcUACzgwwmzan6e3lwkeuahVn/TJOmLbmY/hOn8hM5y7ZPomOjgha+wS/Qy&#xa;cYzY9haaZp2tVjODwD52IbB1Dwqjl33An2cguL5nLKWM/70PApGV96PT9wjSoTe3&#xa;AEdcuRwGkA3clF989/i2FXICxh3cA6w17QZ9o3XepROlTQct6sb/P3xirdF6PDsO&#xa;H9/XhTgs/quLWdRI3SYf7pWcr2rl8s+4Oc7034VECvc7WuvshiqqlhS2S6bGLwID&#xa;AQABo2cwZTAwBgNVHREEKTAnghR0ZXN0bGFiLXdlYmFwcC5sb2NhbIIJbG9jYWxo&#xa;b3N0hwSsHgAMMAwGA1UdEwEB/wQCMAAwDgYDVR0PAQH/BAQDAgWgMBMGA1UdJQQM&#xa;MAoGCCsGAQUFBwMBMA0GCSqGSIb3DQEBCwUAA4IBAQAdqC7hwWK0yLJ6VwkyiXfS&#xa;igeWmXmuaFP4FM010tsBM6oUIFOzNpzd5gK15UPHMxYlDtMji2byhk6k40jUJ/sJ&#xa;++o2XnqHqN2wP8/JNwcImTrBaEbefPqTfipUxdxcfgvs8p8FJ11171o4gViWeCVP&#xa;u59jbkCOH2kzlxpoIdeVni5B62tAcBPUFCBIpEYei8gKBwlfWFN1IMhwct87YYJa&#xa;kyf7N9+sEUf8+IQzcKDop5NFWFTu3KWWlvIMKSPQhVQ7idAd6RCEAcxb47aNnQVz&#xa;9g0Xa7+95FwjsIueOVjQpJ26BreN7SAl8An18yc9R5nhAtiyhYe5DkuyLx01VN8w&#xa;-&#45;&#45;&#45;&#45;END CERTIFICATE-&#45;&#45;&#45;&#45;&#xa;</elem>
+</script></port>
+</ports>
+<times srtt="287" rttvar="5000" to="100000"/>
+</host>
+<runstats><finished time="1795287525" timestr="Sat Nov 21 18:58:45 2026" summary="Nmap done at Sat Nov 21 18:58:45 2026; 1 IP address (1 host up) scanned in 17.35 seconds" elapsed="17.35" exit="success"/><hosts up="1" down="0" total="1"/>
+</runstats>
+</nmaprun>

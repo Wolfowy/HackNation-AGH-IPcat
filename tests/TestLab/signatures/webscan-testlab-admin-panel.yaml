@@ -1,0 +1,29 @@
+id: webscan-testlab-admin-panel
+
+info:
+  name: WebScan TestLab Admin Panel
+  author: webscan
+  severity: info
+  description: Detects the deliberately exposed admin panel of the WebScan TestLab (authorized local testing only).
+  tags: webscan-testlab,panel,login
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/"
+
+    # Single named matcher so nuclei reports matcher-name in its JSONL output.
+    matchers:
+      - type: word
+        name: admin-panel-title
+        part: body
+        words:
+          - "<title>WebScan TestLab Admin Panel</title>"
+
+    extractors:
+      - type: regex
+        name: page-title
+        part: body
+        group: 1
+        regex:
+          - "<title>([^<]+)</title>"
