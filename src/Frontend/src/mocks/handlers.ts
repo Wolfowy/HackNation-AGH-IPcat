@@ -10,6 +10,8 @@ import type {
   ScheduleInput,
   Severity,
   SignatureKind,
+  Topology,
+  TopologyHost,
   User,
   ValidationResult,
 } from '@/api/types'
@@ -55,6 +57,20 @@ const SCAN_LIMIT_RANGES: Record<keyof MockDb['scanLimits'], [number, number]> = 
 }
 
 const publicUser = ({ password: _password, ...u }: MockUser): User => u
+
+/** Which seeded agent interface scans which zone (topology `observedBy`). */
+const MOCK_PERSPECTIVES: Record<string, { agentId: string; interfaceName: string }> = {
+  dmz: { agentId: 'scanner-dmz-01', interfaceName: 'eth0' },
+  office: { agentId: 'scanner-office-01', interfaceName: 'ens18' },
+  lab: { agentId: 'scanner-office-01', interfaceName: 'wg0' },
+}
+
+function inIpv4Cidr(address: string, cidr: string) {
+  const [base, bits = '32'] = cidr.split('/')
+  if (!/^\d+\.\d+\.\d+\.\d+$/.test(address) || !/^\d+\.\d+\.\d+\.\d+$/.test(base)) return address === cidr
+  const size = 2 ** (32 - Number(bits))
+  return Math.floor(ipv4ToInt(address) / size) === Math.floor(ipv4ToInt(base) / size)
+}
 
 function audit(user: MockUser, action: string, entityType: string, entityId?: string) {
   db.audit.unshift({
@@ -885,6 +901,57 @@ export const handlers = [
           .map((e) => ({ name: e.name, version: e.version, category: e.category, hostCount: e.hosts.size, serviceCount: e.serviceCount, confidence: Math.round((e.confidence.reduce((a, b) => a + b, 0) / e.confidence.length) * 100) / 100 }))
           .sort((a, b) => b.hostCount - a.hostCount),
       )
+    }),
+  ),
+  http.get(
+    '*/api/topology',
+    route('read', ({ url }) => {
+      const q = (k: string) => url.searchParams.get(k)
+      const search = q('search')?.toLowerCase()
+      const network = q('networkId') ? db.networks.find((n) => n.id === q('networkId')) : undefined
+      const hosts: TopologyHost[] = db.hosts
+        .filter(
+          (h) =>
+            (!q('zone') || h.zone === q('zone')) &&
+            (!search || [h.address, ...h.hostnames].some((v) => v.toLowerCase().includes(search))) &&
+            (!q('networkId') || (network?.ranges.some((r) => inIpv4Cidr(h.address, r)) ?? false)),
+        )
+        .map((h) => {
+          const services = db.services.filter((s) => s.hostId === h.id && s.state === 'Open').sort((a, b) => a.port - b.port)
+          const seenBy = MOCK_PERSPECTIVES[h.zone ?? '']
+          return {
+            id: h.id,
+            address: h.address,
+            hostnames: h.hostnames,
+            status: h.status,
+            unstable: h.unstable,
+            subnet: h.address.replace(/\.\d+$/, '.0/24'),
+            zone: h.zone,
+            lastSeenAt: h.lastSeenAt,
+            openPortCount: services.length,
+            services: services.map((s) => ({
+              port: s.port,
+              transport: s.transport,
+              serviceName: s.serviceName,
+              product: s.product,
+              version: s.version,
+              url: s.url,
+              isWeb: !!s.http || !!s.serviceName?.startsWith('http'),
+              tls: !!s.tls || !!s.serviceName?.startsWith('https'),
+            })),
+            technologies: [...new Set(h.technologies.map((x) => (typeof x === 'string' ? x : x.name)))],
+            observedBy: seenBy ? [{ agentId: seenBy.agentId, interfaceName: seenBy.interfaceName }] : [],
+          }
+        })
+      const subnets = [...new Set(hosts.map((h) => h.subnet))].sort().map((cidr) => {
+        const members = hosts.filter((h) => h.subnet === cidr)
+        return { id: cidr, cidr, zone: members[0].zone, hostCount: members.length }
+      })
+      const perspectives = Object.entries(MOCK_PERSPECTIVES)
+        .filter(([zone]) => hosts.some((h) => h.zone === zone))
+        .map(([zone, p]) => ({ ...p, zone }))
+      const topology: Topology = { perspectives, subnets, hosts, truncated: false }
+      return HttpResponse.json(topology)
     }),
   ),
   http.get('*/api/observations', route('read', ({ url }) => HttpResponse.json(paged([], url)))),

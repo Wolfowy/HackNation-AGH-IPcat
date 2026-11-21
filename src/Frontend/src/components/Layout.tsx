@@ -44,6 +44,7 @@ const sections: { title: string; items: NavItem[] }[] = [
       { to: '/assets/hosts', label: t.nav.hosts, icon: Server },
       { to: '/assets/services', label: t.nav.services, icon: Activity },
       { to: '/assets/technologies', label: t.nav.technologies, icon: Cpu },
+      { to: '/assets/graph', label: t.nav.graph, icon: GitBranch },
       { to: '/changes', label: t.nav.changes, icon: GitCompare },
       { to: '/findings', label: t.nav.findings, icon: ShieldAlert },
     ],

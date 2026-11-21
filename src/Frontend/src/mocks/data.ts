@@ -397,6 +397,7 @@ export function createDb(): MockDb {
       for (const svc of catalog) {
         const sid = mockId(6)
         const hasHttp = 'http' in svc
+        const httpUrl = `${svc.port === 443 ? 'https' : 'http'}://${address}:${svc.port}/`
         services.push({
           id: sid,
           hostId: id,
@@ -407,7 +408,9 @@ export function createDb(): MockDb {
           serviceName: svc.name,
           product: svc.product,
           version: 'version' in svc ? svc.version : undefined,
-          http: hasHttp ? { url: `${svc.port === 443 ? 'https' : 'http'}://${address}:${svc.port}/`, ...svc.http } : undefined,
+          http: hasHttp ? { url: httpUrl, ...svc.http } : undefined,
+          // Server rule: the probed HTTP URL; non-web services (ssh, smb, databases…) get none.
+          url: hasHttp ? httpUrl : undefined,
           tls: 'tls' in svc ? { subjectCommonName: `${pick(HOSTNAME_PARTS)}.example.internal`, issuer: 'Example Internal CA', notAfter: ago(-60 * 24 * int(-20, 300)), fingerprintSha256: sha(++certN) } : undefined,
           technologies: [svc.tech.name],
           confidence: Math.round((0.6 + rand() * 0.4) * 100) / 100,

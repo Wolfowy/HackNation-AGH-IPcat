@@ -1,5 +1,6 @@
 import { Link } from 'react-router'
 import type { Finding } from '@/api/types'
+import { TargetLink } from '@/components/EndpointLink'
 import { EmptyState } from '@/components/feedback'
 import { StatusBadge } from '@/components/page'
 import { Badge } from '@/components/ui/badge'
@@ -12,7 +13,16 @@ interface Selection {
   onToggleAll: (on: boolean) => void
 }
 
-export function FindingsTable({ findings, selection }: { findings: Finding[]; selection?: Selection }) {
+export function FindingsTable({
+  findings,
+  selection,
+  urlFor,
+}: {
+  findings: Finding[]
+  selection?: Selection
+  /** Service URL of a port of the host (host detail knows its services). */
+  urlFor?: (port: number) => string | undefined
+}) {
   if (findings.length === 0) return <EmptyState>No findings.</EmptyState>
   const allSelected = selection ? findings.every((f) => selection.selected.has(f.id)) : false
   return (
@@ -64,10 +74,7 @@ export function FindingsTable({ findings, selection }: { findings: Finding[]; se
               </Link>
             </TableCell>
             <TableCell className="font-mono text-xs">
-              <Link to={`/assets/hosts/${f.hostId}`} className="hover:underline">
-                {f.address}
-                {f.port !== undefined && `:${f.port}`}
-              </Link>
+              <TargetLink hostId={f.hostId} address={f.address} port={f.port} url={f.port === undefined ? undefined : urlFor?.(f.port)} />
               {f.matchedUrl && <div className="text-muted-foreground max-w-56 truncate">{f.matchedUrl}</div>}
             </TableCell>
             <TableCell>

@@ -45,6 +45,7 @@ public sealed class TestApp : IAsyncLifetime
     public FakeAuditLog Audit { get; } = new();
     public FakeHttpHandler DefectDojo { get; } = new();
     public RecordingScanEventPublisher ScanEvents { get; } = new();
+    public FakeNetworkScope NetworkScope { get; } = new();
     public IServiceProvider Services => _app!.Services;
 
     public async Task InitializeAsync()
@@ -74,6 +75,7 @@ public sealed class TestApp : IAsyncLifetime
         services.AddSingleton<IAuditLog>(Audit);
         services.AddSingleton<IScanEventPublisher>(ScanEvents);
         services.AddSingleton<ISecretProtector, FakeSecretProtector>();
+        services.AddSingleton<INetworkScopeService>(NetworkScope);
         services.AddHttpContextAccessor();
         services.AddScoped<ICurrentUser, HttpContextCurrentUser>();
         services.ConfigureHttpJsonOptions(o => ContractJson.Configure(o.SerializerOptions));
@@ -174,6 +176,21 @@ public sealed class RecordingScanEventPublisher : IScanEventPublisher
         lock (Events) Events.Add(evt);
         return Task.CompletedTask;
     }
+}
+
+/// <summary>Networks module stand-in: <see cref="Networks"/> maps network ids to include entries.</summary>
+public sealed class FakeNetworkScope : INetworkScopeService
+{
+    public Dictionary<Guid, string[]> Networks { get; } = [];
+
+    public Task<ResolvedScope> ResolveAsync(IReadOnlyCollection<Guid> networkIds, CancellationToken ct = default) =>
+        Task.FromResult(new ResolvedScope
+        {
+            Segments = networkIds.Where(Networks.ContainsKey)
+                .Select(id => new ScopeSegment { NetworkId = id, NetworkName = id.ToString(), Zone = "lab", Include = Networks[id] }).ToList(),
+        });
+
+    public Task<bool> IsAuthorizedAsync(string target, CancellationToken ct = default) => Task.FromResult(true);
 }
 
 public sealed class FakeSecretProtector : ISecretProtector

@@ -597,6 +597,8 @@ export interface Service {
   confidence?: number
   firstSeenAt: Instant
   lastSeenAt: Instant
+  /** Best clickable URL derived by the server (HTTP probe URL, else https/http by TLS/service name); absent for non-web services. */
+  url?: string
 }
 
 export interface TechnologySummary {
@@ -729,4 +731,54 @@ export interface DefectDojoExportResult {
   exported: number
   skipped: number
   errors: ValidationMessage[]
+}
+
+// ---------- Topology (GET /api/topology) ----------
+export interface TopologyPerspective {
+  agentId: string
+  interfaceName?: string
+  zone?: string
+}
+
+/** IPv4 /24 or IPv6 /64 (`id` = `cidr`; "other" groups hosts known only by name). */
+export interface TopologySubnet {
+  id: string
+  cidr: string
+  zone?: string
+  hostCount: number
+}
+
+export interface TopologyService {
+  port: number
+  transport: 'Tcp' | 'Udp'
+  serviceName?: string
+  product?: string
+  version?: string
+  url?: string
+  isWeb: boolean
+  tls: boolean
+}
+
+export interface TopologyHost {
+  id: Guid
+  address: string
+  hostnames: string[]
+  status: HostStatus
+  unstable: boolean
+  subnet: string
+  zone?: string
+  lastSeenAt: Instant
+  macVendor?: string
+  openPortCount: number
+  services: TopologyService[]
+  technologies: string[]
+  observedBy: { agentId: string; interfaceName?: string }[]
+}
+
+export interface Topology {
+  perspectives: TopologyPerspective[]
+  subnets: TopologySubnet[]
+  hosts: TopologyHost[]
+  /** More hosts matched than the server cap (5000). */
+  truncated: boolean
 }

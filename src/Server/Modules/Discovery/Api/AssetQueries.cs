@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using WebScan.Contracts;
 using WebScan.Server.Kernel.Discovery;
+using WebScan.Server.Kernel.Ports;
 using WebScan.Server.Modules.Discovery.Domain;
 using WebScan.Server.Modules.Discovery.Normalization;
 using WebScan.Server.Modules.Discovery.Persistence;
@@ -12,6 +13,7 @@ public sealed record HostQuery(string? Search, HostStatus? Status, string? Zone)
 public sealed record ServiceQuery(int? Port, string? ServiceName, string? Search);
 public sealed record ChangeQuery(DateTimeOffset? Since, AssetChangeType? Type, Guid? HostId, Guid? ScanRunId);
 public sealed record FindingQuery(string? Severity, FindingStatus? Status);
+public sealed record TopologyQuery(string? Zone, string? Search);
 
 /// <summary>Read models of the current-state tables, shared by the list and export endpoints.</summary>
 internal sealed class AssetQueries(DiscoveryDbContext db)
@@ -74,6 +76,58 @@ internal sealed class AssetQueries(DiscoveryDbContext db)
         var total = await q.CountAsync(ct);
         var services = await q.OrderBy(s => s.Address).ThenBy(s => s.Port).Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(ct);
         return new PagedResult<ServiceDto>(await ToServiceDtosAsync(services, ct), total, page, pageSize);
+    }
+
+    /// <summary>Current-state graph (Gone hosts included with their status, Gone services excluded), capped at <see cref="Topology.MaxHosts"/>.</summary>
+    public async Task<TopologyDto> TopologyAsync(TopologyQuery query, ResolvedScope? network, CancellationToken ct)
+    {
+        var q = db.Hosts.AsNoTracking();
+        if (!string.IsNullOrWhiteSpace(query.Search))
+        {
+            var like = Like(query.Search);
+            q = q.Where(h => EF.Functions.ILike(h.Address, like) || h.Hostnames.Any(n => EF.Functions.ILike(n, like)));
+        }
+        if (!string.IsNullOrWhiteSpace(query.Zone)) q = q.Where(h => h.Zone == query.Zone);
+        q = q.OrderBy(h => h.Address);
+        // Network membership needs IP math, so a network filter loads the (projected) zone/search matches and filters in memory.
+        if (network is null) q = q.Take(Topology.MaxHosts + 1);
+        var rows = await q.Select(h => new { h.Id, h.Address, h.Hostnames, h.Status, h.Unstable, h.Zone, h.LastSeenAt, h.MacVendor }).ToListAsync(ct);
+        if (network is not null)
+        {
+            var inNetwork = Topology.NetworkMatcher(network);
+            rows = rows.Where(h => inNetwork(h.Address, h.Hostnames)).Take(Topology.MaxHosts + 1).ToList();
+        }
+        var truncated = rows.Count > Topology.MaxHosts;
+        if (truncated) rows.RemoveAt(Topology.MaxHosts);
+
+        var ids = rows.Select(h => h.Id).ToList();
+        var addresses = rows.Select(h => h.Address).ToList();
+        var services = (await db.Services.AsNoTracking().Where(s => ids.Contains(s.HostId) && s.State == ServiceState.Open)
+                .OrderBy(s => s.Port).ThenBy(s => s.Transport)
+                .Select(s => new { s.HostId, s.Port, s.Transport, s.ServiceName, s.Product, s.Version, s.Tunnel, s.HttpUrl, Cert = s.CurrentCertFingerprint != null })
+                .ToListAsync(ct))
+            .ToLookup(s => s.HostId);
+        var technologies = (await db.Technologies.AsNoTracking().Where(t => ids.Contains(t.HostId)).Select(t => new { t.HostId, t.Name }).Distinct()
+            .ToListAsync(ct)).ToLookup(t => t.HostId, t => t.Name);
+        // shortcut: DISTINCT over all raw observations of the hosts; add an (address, agent, interface) index or a perspective table if this gets slow.
+        var seen = await db.Observations.AsNoTracking().Where(o => addresses.Contains(o.Address))
+            .Select(o => new { o.Address, o.AgentId, o.InterfaceName, o.Zone }).Distinct().ToListAsync(ct);
+        var observedBy = seen.ToLookup(o => o.Address);
+
+        var hosts = rows.Select(h => new TopologyHostDto(h.Id, h.Address, h.Hostnames, h.Status, h.Unstable, Topology.SubnetOf(h.Address), h.Zone,
+            h.LastSeenAt, h.MacVendor, services[h.Id].Count(),
+            services[h.Id].Select(s => new TopologyServiceDto(s.Port, s.Transport, s.ServiceName, s.Product, s.Version,
+                Topology.ServiceUrl(h.Address, s.Port, s.ServiceName, s.Tunnel, s.HttpUrl, s.Cert),
+                s.HttpUrl is not null || Topology.IsWebName(s.ServiceName), Topology.IsTls(s.ServiceName, s.Tunnel, s.Cert))).ToList(),
+            technologies[h.Id].Order(StringComparer.OrdinalIgnoreCase).ToList(),
+            observedBy[h.Address].Select(o => new ObservedByDto(o.AgentId, o.InterfaceName)).Distinct()
+                .OrderBy(o => o.AgentId, StringComparer.Ordinal).ThenBy(o => o.InterfaceName, StringComparer.Ordinal).ToList())).ToList();
+        var subnets = hosts.GroupBy(h => h.Subnet).OrderBy(g => g.Key, StringComparer.Ordinal)
+            .Select(g => new TopologySubnetDto(g.Key, g.Key, g.Select(h => h.Zone).FirstOrDefault(z => z is not null), g.Count())).ToList();
+        var perspectives = seen.GroupBy(o => (o.AgentId, o.InterfaceName))
+            .OrderBy(g => g.Key.AgentId, StringComparer.Ordinal).ThenBy(g => g.Key.InterfaceName, StringComparer.Ordinal)
+            .Select(g => new TopologyPerspectiveDto(g.Key.AgentId, g.Key.InterfaceName, g.Select(o => o.Zone).FirstOrDefault(z => z is not null))).ToList();
+        return new TopologyDto(perspectives, subnets, hosts, truncated);
     }
 
     public async Task<IReadOnlyList<TechnologySummaryDto>> TechnologiesAsync(CancellationToken ct)
@@ -181,7 +235,8 @@ internal sealed class AssetQueries(DiscoveryDbContext db)
             return new ServiceDto(s.Id, s.HostId, s.Address, s.Port, s.Transport, s.State, s.ServiceName, s.Product, s.Version, s.Banner, s.Cpe,
                 s.HttpUrl is null ? null : new HttpInfoDto(s.HttpUrl, s.HttpStatusCode, s.HttpTitle, s.HttpWebServer),
                 cert is null ? null : new TlsInfoDto(cert.SubjectCommonName, cert.Issuer, cert.NotAfter, cert.FingerprintSha256),
-                technologies[s.Id].Distinct().Order().ToList(), s.Confidence, s.ConfidenceMethod, s.TimeOfDayVariance, s.FirstSeenAt, s.LastSeenAt);
+                technologies[s.Id].Distinct().Order().ToList(), s.Confidence, s.ConfidenceMethod, s.TimeOfDayVariance, s.FirstSeenAt, s.LastSeenAt,
+                Topology.ServiceUrl(s.Address, s.Port, s.ServiceName, s.Tunnel, s.HttpUrl, s.CurrentCertFingerprint is not null));
         }).ToList();
     }
 

@@ -1,5 +1,6 @@
 import { Link } from 'react-router'
 import type { Change } from '@/api/types'
+import { TargetLink } from '@/components/EndpointLink'
 import { EmptyState } from '@/components/feedback'
 import { StatusBadge } from '@/components/page'
 import { Badge } from '@/components/ui/badge'
@@ -34,14 +35,7 @@ export function ChangesTable({ changes }: { changes: Change[] }) {
               <StatusBadge status={c.severity} />
             </TableCell>
             <TableCell className="font-mono text-xs whitespace-nowrap">
-              {c.hostId ? (
-                <Link to={`/assets/hosts/${c.hostId}`} className="hover:underline">
-                  {c.address}
-                </Link>
-              ) : (
-                c.address
-              )}
-              {c.port !== undefined && `:${c.port}`}
+              <TargetLink hostId={c.hostId} address={c.address} port={c.port} />
             </TableCell>
             <TableCell>{c.summary}</TableCell>
             <TableCell className="max-w-72 truncate font-mono text-xs" title={`${show(c.before)} → ${show(c.after)}`}>
