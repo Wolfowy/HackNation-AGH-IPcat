@@ -18,6 +18,14 @@ public sealed class InProcessAgent : IAsyncDisposable
     public string AgentId { get; }
     public IConfiguration Configuration => _host.Services.GetRequiredService<IConfiguration>();
 
+    /// <summary>Changes agent configuration at runtime and fires the reload token (IOptionsMonitor consumers see it).</summary>
+    public void UpdateConfiguration(IReadOnlyDictionary<string, string?> values)
+    {
+        var root = (IConfigurationRoot)Configuration;
+        foreach (var (key, value) in values) root[key] = value;
+        root.Reload();
+    }
+
     private InProcessAgent(string agentId, IHost host, string dataDir)
     {
         AgentId = agentId;

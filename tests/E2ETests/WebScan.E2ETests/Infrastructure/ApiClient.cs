@@ -96,6 +96,7 @@ public sealed class ApiClient(HttpClient http)
     {
         JsonNode n => n.ToJsonString().Length > 2000 ? n.ToJsonString()[..2000] : n.ToJsonString(),
         null => "null",
+        System.Collections.IEnumerable e => $"[{string.Join(", ", e.Cast<object>().Take(50))}]",
         _ => value.ToString() ?? "",
     };
 }
