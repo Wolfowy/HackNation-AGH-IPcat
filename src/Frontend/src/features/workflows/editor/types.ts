@@ -1,5 +1,5 @@
 import type { ComponentType } from 'react'
-import type { OperationDescriptor, ScanWorkflowDefinition } from '@/api/types'
+import type { OperationDescriptor, ScanWorkflowDefinition, ValidationMessage } from '@/api/types'
 
 export interface WorkflowEditorChange {
   /** Parsed definition, or null while the editor content is not a structurally valid definition. */
@@ -18,6 +18,12 @@ export interface WorkflowEditorProps {
   onChange: (change: WorkflowEditorChange) => void
   /** Operation catalog (GET /api/operations) for parameter docs, palettes, inline hints. */
   operations: OperationDescriptor[]
+  /** Last validation errors (POST /api/workflows/validate); editors may highlight the affected steps. */
+  errors?: ValidationMessage[]
+  /** Viewer mode: nothing can be changed. */
+  readOnly?: boolean
+  /** The workflow key may only be edited before the first save. */
+  keyEditable?: boolean
 }
 
 export type WorkflowEditorComponent = ComponentType<WorkflowEditorProps>

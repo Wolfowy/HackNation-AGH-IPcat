@@ -730,3 +730,36 @@ export interface DefectDojoExportResult {
   skipped: number
   errors: ValidationMessage[]
 }
+
+// ---------- Workflow conditions (Contracts: ConditionFields, ConditionOperator; Server: ConditionFieldTypes) ----------
+export const CONDITION_FIELDS = [
+  'kind',
+  'address',
+  'hostname',
+  'port',
+  'transport',
+  'source.toolId',
+  'host.status',
+  'port.state',
+  'service.name',
+  'service.product',
+  'service.version',
+  'service.tunnel',
+  'http.scheme',
+  'http.statusCode',
+  'http.title',
+  'http.webServer',
+  'tls.subjectCommonName',
+  'tls.issuer',
+  'technology.name',
+  'technology.category',
+  'signature.signatureId',
+  'signature.severity',
+  'confidence.score',
+] as const
+export const CONDITION_OPERATORS: ConditionOperator[] = ['Equals', 'NotEquals', 'In', 'NotIn', 'Contains', 'StartsWith', 'GreaterThan', 'LessThan', 'Exists', 'NotExists']
+/** Known values of enum-typed condition fields (ObservationKind, TransportProtocol), offered as suggestions. */
+export const CONDITION_FIELD_VALUES: Partial<Record<string, string[]>> = {
+  kind: ['HostUp', 'HostDown', 'PortOpen', 'PortClosed', 'Service', 'HttpResponse', 'TlsCertificate', 'Technology', 'SignatureMatch', 'DnsRecord', 'Generic'],
+  transport: ['Tcp', 'Udp'],
+}
