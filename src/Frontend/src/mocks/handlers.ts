@@ -1,0 +1,1018 @@
+// MSW handlers implementing the UI-facing API (ARCHITECTURE.md §11) on top of an in-memory db.
+import { http, HttpResponse, type PathParams } from 'msw'
+import type {
+  Change,
+  HostDetail,
+  Network,
+  NetworkInput,
+  ScanStartRequest,
+  ScanWorkflowDefinition,
+  ScheduleInput,
+  Severity,
+  SignatureKind,
+  User,
+  ValidationResult,
+} from '@/api/types'
+import { hasPermission, type Permission } from '@/auth/roles'
+import { dagLevels } from '@/features/workflows/dag'
+import { validateTarget } from '@/lib/targets'
+import { buildRunPlan, createDb, mockId, randomGuid, type MockDb, type MockRun, type MockUser } from './data'
+import { OPERATIONS } from './operations'
+import { emit, progressOf, startRunSimulation, stopAllSimulations, stopRunSimulation } from './simulation'
+
+let db: MockDb = createDb()
+export const getDb = () => db
+export function resetDb() {
+  stopAllSimulations()
+  db = createDb()
+}
+
+const TOKEN_PREFIX = 'mock-token.'
+
+// ---------- response helpers ----------
+const problem = (status: number, title: string, extra: Record<string, unknown> = {}) =>
+  HttpResponse.json({ type: `https://httpstatuses.io/${status}`, title, status, ...extra }, { status, headers: { 'Content-Type': 'application/problem+json' } })
+const validationProblem = (errors: Record<string, string[]>) => problem(400, 'One or more validation errors occurred.', { errors })
+const notFound = (what = 'Resource') => problem(404, `${what} not found`)
+const noContent = () => new HttpResponse(null, { status: 204 })
+
+function paged<T>(items: T[], url: URL) {
+  const page = Math.max(1, Number(url.searchParams.get('page') ?? 1))
+  const pageSize = Math.min(500, Math.max(1, Number(url.searchParams.get('pageSize') ?? 50)))
+  return { items: items.slice((page - 1) * pageSize, page * pageSize), total: items.length, page, pageSize }
+}
+
+const publicUser = ({ password: _password, ...u }: MockUser): User => u
+
+function audit(user: MockUser, action: string, entityType: string, entityId?: string) {
+  db.audit.unshift({
+    id: randomGuid(),
+    occurredAt: new Date().toISOString(),
+    userId: user.id,
+    userName: user.userName,
+    action,
+    entityType,
+    entityId,
+    details: '{"source":"ui"}',
+    ipAddress: '127.0.0.1',
+  })
+}
+
+interface Ctx {
+  request: Request
+  params: PathParams
+  url: URL
+  user: MockUser
+}
+
+/** Authenticated route with the backend policy (CanRead/CanEdit/CanManage/AdminOnly). */
+function route(permission: Permission, handler: (ctx: Ctx) => Response | Promise<Response>) {
+  return async ({ request, params }: { request: Request; params: PathParams }) => {
+    const header = request.headers.get('Authorization') ?? ''
+    const userId = header.startsWith(`Bearer ${TOKEN_PREFIX}`) ? header.slice(`Bearer ${TOKEN_PREFIX}`.length) : ''
+    const user = db.users.find((u) => u.id === userId && u.isActive !== false)
+    if (!user) return problem(401, 'Unauthorized')
+    if (!hasPermission(user.roles, permission)) return problem(403, 'Forbidden', { detail: `Requires ${permission} permission.` })
+    return handler({ request, params, url: new URL(request.url), user })
+  }
+}
+
+const p = (params: PathParams, key: string) => decodeURIComponent(String(params[key]))
+const body = async <T,>(request: Request) => (await request.json()) as T
+
+// ---------- validation helpers ----------
+const ipv4ToInt = (ip: string) => ip.split('.').reduce((acc, o) => acc * 256 + Number(o), 0)
+function insideScope(target: string): boolean {
+  const addr = target.split(/[/-]/)[0]
+  if (!/^\d+\.\d+\.\d+\.\d+$/.test(addr)) return true // hostnames / IPv6 are not checked by the mock
+  return db.scopePolicy.allowed.some((cidr) => {
+    const [net, bits] = cidr.split('/')
+    if (!/^\d+\.\d+\.\d+\.\d+$/.test(net)) return false
+    const mask = Number(bits) === 0 ? 0 : (~0 << (32 - Number(bits))) >>> 0
+    return ((ipv4ToInt(addr) & mask) >>> 0) === ((ipv4ToInt(net) & mask) >>> 0)
+  })
+}
+
+function validateNetwork(input: NetworkInput, ignoreId?: string): Record<string, string[]> {
+  const errors: Record<string, string[]> = {}
+  const add = (k: string, m: string) => (errors[k] ??= []).push(m)
+  if (!input.name?.trim()) add('Name', 'Name is required.')
+  else if (db.networks.some((n) => n.name.toLowerCase() === input.name.trim().toLowerCase() && n.id !== ignoreId))
+    add('Name', `A network named "${input.name}" already exists.`)
+  if (!db.zones.some((z) => z.name === input.zone)) add('Zone', `Unknown zone "${input.zone}".`)
+  if (!input.ranges?.length) add('Ranges', 'At least one range is required.')
+  input.ranges?.forEach((r, i) => {
+    const err = validateTarget(r)
+    if (err) add(`Ranges[${i}]`, err)
+    else if (!insideScope(r)) add(`Ranges[${i}]`, `${r} is outside the global scope policy.`)
+  })
+  input.exclusions?.forEach((r, i) => {
+    const err = validateTarget(r)
+    if (err) add(`Exclusions[${i}]`, err)
+  })
+  return errors
+}
+
+function addressCount(ranges: string[]): number {
+  return ranges.reduce((sum, r) => {
+    const [, bits] = r.split('/')
+    if (bits && r.includes('.')) return sum + Math.max(1, 2 ** (32 - Number(bits)) - 2)
+    if (r.includes('-')) {
+      const [a, b] = r.split('-')
+      return sum + (ipv4ToInt(b) - ipv4ToInt(a) + 1)
+    }
+    return sum + 1
+  }, 0)
+}
+
+export function validateWorkflowDefinition(def: ScanWorkflowDefinition): ValidationResult {
+  const errors: string[] = []
+  if (!def || typeof def !== 'object') return { valid: false, errors: ['Definition must be an object.'] }
+  if (!/^[a-z0-9][a-z0-9-]{1,63}$/.test(def.key ?? '')) errors.push('key: must match ^[a-z0-9][a-z0-9-]{1,63}$')
+  if (!def.name?.trim()) errors.push('name: is required')
+  if (!Array.isArray(def.steps) || def.steps.length === 0) errors.push('steps: at least one step is required')
+  const ids = new Set<string>()
+  for (const [i, step] of (def.steps ?? []).entries()) {
+    const where = `steps[${i}]`
+    if (!/^[a-zA-Z][a-zA-Z0-9_-]{0,63}$/.test(step.id ?? '')) errors.push(`${where}.id: invalid step id`)
+    if (ids.has(step.id)) errors.push(`${where}.id: duplicate step id "${step.id}"`)
+    ids.add(step.id)
+    const op = OPERATIONS.find((o) => o.operation === step.operation)
+    if (!op) {
+      errors.push(`${where}.operation: unknown operation "${step.operation}"`)
+      continue
+    }
+    for (const name of Object.keys(step.parameters ?? {}))
+      if (!op.parameters.some((pd) => pd.name === name)) errors.push(`${where}.parameters.${name}: unknown parameter for ${op.operation}`)
+    for (const pd of op.parameters) {
+      const value = step.parameters?.[pd.name]
+      if (value === undefined) continue
+      if (pd.type === 'Integer' && (!/^-?\d+$/.test(value) || (pd.min !== undefined && Number(value) < pd.min) || (pd.max !== undefined && Number(value) > pd.max)))
+        errors.push(`${where}.parameters.${pd.name}: must be an integer in [${pd.min ?? '-∞'}, ${pd.max ?? '∞'}]`)
+      if (pd.type === 'Enum' && !pd.allowedValues?.includes(value)) errors.push(`${where}.parameters.${pd.name}: must be one of ${pd.allowedValues?.join(', ')}`)
+      if (pd.type === 'Boolean' && !['true', 'false'].includes(value)) errors.push(`${where}.parameters.${pd.name}: must be true or false`)
+    }
+  }
+  for (const [i, step] of (def.steps ?? []).entries())
+    for (const dep of [...(step.dependsOn ?? []), ...(step.input?.fromSteps ?? [])])
+      if (!ids.has(dep)) errors.push(`steps[${i}]: unknown step "${dep}" referenced`)
+  if (errors.length === 0 && dagLevels(def.steps).unresolved.length) errors.push('steps: the dependency graph contains a cycle')
+  return { valid: errors.length === 0, errors }
+}
+
+export function validateSignatureContent(kind: SignatureKind, content: string): ValidationResult {
+  const errors: string[] = []
+  const warnings: string[] = []
+  if (!content?.trim()) return { valid: false, errors: ['Content is empty.'], warnings }
+  if (kind === 'NucleiTemplate') {
+    if (!/^id:\s*\S+/m.test(content)) errors.push('Template must declare an "id".')
+    if (!/^info:/m.test(content)) errors.push('Template must contain an "info" block.')
+    for (const protocol of ['code', 'headless', 'javascript', 'file'])
+      if (new RegExp(`^\\s*${protocol}:`, 'm').test(content)) errors.push(`Protocol "${protocol}" is not allowed.`)
+    if (/interactsh/i.test(content)) errors.push('Out-of-band interactions (interactsh) are not allowed.')
+    const tags = /^\s*tags:\s*(.+)$/m.exec(content)?.[1] ?? ''
+    for (const bad of ['intrusive', 'dos', 'fuzz']) if (tags.split(',').map((x) => x.trim()).includes(bad)) errors.push(`Tag "${bad}" is not allowed.`)
+    const severity = /^\s*severity:\s*(\w+)/m.exec(content)?.[1]
+    if (!severity) warnings.push('No severity declared; "info" will be assumed.')
+    else if (!['info', 'low'].includes(severity)) warnings.push(`Severity "${severity}" is above the default info/low.`)
+  } else {
+    try {
+      const parsed = JSON.parse(content) as unknown
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) errors.push('Rule must be a JSON object.')
+      else if (!('description' in parsed)) warnings.push('Rule has no "description".')
+    } catch (err) {
+      errors.push(`Invalid JSON: ${err instanceof Error ? err.message : String(err)}`)
+    }
+  }
+  return { valid: errors.length === 0, errors, warnings }
+}
+
+// ---------- export helpers ----------
+function toCsv(rows: Record<string, unknown>[]): string {
+  if (rows.length === 0) return ''
+  const columns = Object.keys(rows[0])
+  const cell = (v: unknown) => {
+    const s = v === undefined || v === null ? '' : Array.isArray(v) ? v.join(';') : typeof v === 'object' ? JSON.stringify(v) : String(v)
+    return /[",\n;]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+  }
+  return [columns.join(','), ...rows.map((r) => columns.map((c) => cell(r[c])).join(','))].join('\n') + '\n'
+}
+
+function exportResponse(name: string, rows: Record<string, unknown>[], format: string | null) {
+  const csv = format === 'csv'
+  const stamp = new Date().toISOString().slice(0, 10)
+  return new HttpResponse(csv ? toCsv(rows) : JSON.stringify(rows, null, 2), {
+    headers: {
+      'Content-Type': csv ? 'text/csv; charset=utf-8' : 'application/json',
+      'Content-Disposition': `attachment; filename="${name}-${stamp}.${csv ? 'csv' : 'json'}"`,
+    },
+  })
+}
+
+function parseCsv(text: string): Record<string, string>[] {
+  const [header, ...lines] = text.trim().split(/\r?\n/)
+  const cols = header.split(',').map((c) => c.trim())
+  return lines.filter(Boolean).map((line) => Object.fromEntries(line.split(',').map((v, i) => [cols[i], v.trim().replace(/^"|"$/g, '')])))
+}
+
+const runView = (run: MockRun) => {
+  const { steps: _steps, ...rest } = run
+  return { ...rest, progress: progressOf(db, run) }
+}
+
+function createRun(user: MockUser, req: ScanStartRequest, triggeredBy: string): MockRun {
+  const wf = db.workflows.filter((w) => w.key === req.workflowKey).sort((a, b) => b.version - a.version)
+  const version = req.workflowVersion ?? wf[0]?.version ?? 1
+  const now = new Date().toISOString()
+  const run: MockRun = {
+    id: randomGuid(),
+    name: req.name,
+    status: 'Pending',
+    workflowKey: req.workflowKey,
+    workflowVersion: version,
+    networkIds: req.networkIds,
+    triggeredBy,
+    priority: req.priority ?? 50,
+    createdAt: now,
+    notAfter: req.windowMinutes ? new Date(Date.now() + req.windowMinutes * 60_000).toISOString() : undefined,
+    progress: { jobsTotal: 0, jobsQueued: 0, jobsRunning: 0, jobsCompleted: 0, jobsFailed: 0, percent: 0 },
+    coverageComplete: false,
+    steps: [],
+  }
+  const plan = buildRunPlan(db, run, Math.max(2, req.networkIds.length * 2))
+  run.steps = plan.steps
+  db.jobs.push(...plan.jobs)
+  db.runs.unshift(run)
+  emit(db, { type: 'RunCreated', scanRunId: run.id, message: `Run created by ${triggeredBy}` })
+  audit(user, 'scan.started', 'ScanRun', run.id)
+  startRunSimulation(db, run)
+  return run
+}
+
+// ---------- handlers ----------
+export const handlers = [
+  // Identity
+  http.post('*/api/auth/login', async ({ request }) => {
+    const { userName, password } = await body<{ userName: string; password: string }>(request)
+    const user = db.users.find((u) => u.userName.toLowerCase() === userName?.toLowerCase() && u.password === password && u.isActive !== false)
+    if (!user) return problem(401, 'Invalid user name or password.')
+    user.lastLoginAt = new Date().toISOString()
+    return HttpResponse.json({ accessToken: TOKEN_PREFIX + user.id, expiresAt: new Date(Date.now() + 8 * 3_600_000).toISOString(), user: publicUser(user) })
+  }),
+  http.get('*/api/auth/me', route('read', ({ user }) => HttpResponse.json(publicUser(user)))),
+  http.get('*/api/users', route('admin', () => HttpResponse.json(db.users.map(publicUser)))),
+  http.post(
+    '*/api/users',
+    route('admin', async ({ request, user }) => {
+      const input = await body<User & { password: string }>(request)
+      if (db.users.some((u) => u.userName.toLowerCase() === input.userName.toLowerCase()))
+        return validationProblem({ UserName: [`User "${input.userName}" already exists.`] })
+      if (!input.password || input.password.length < 12) return validationProblem({ Password: ['Password must have at least 12 characters.'] })
+      const created: MockUser = { ...input, id: randomGuid(), createdAt: new Date().toISOString(), isActive: input.isActive ?? true }
+      db.users.push(created)
+      audit(user, 'user.created', 'User', created.id)
+      return HttpResponse.json(publicUser(created), { status: 201 })
+    }),
+  ),
+  http.put(
+    '*/api/users/:id',
+    route('admin', async ({ request, params, user }) => {
+      const target = db.users.find((u) => u.id === p(params, 'id'))
+      if (!target) return notFound('User')
+      Object.assign(target, await body<Partial<User>>(request))
+      audit(user, 'user.updated', 'User', target.id)
+      return HttpResponse.json(publicUser(target))
+    }),
+  ),
+  http.delete(
+    '*/api/users/:id',
+    route('admin', ({ params, user }) => {
+      db.users = db.users.filter((u) => u.id !== p(params, 'id'))
+      audit(user, 'user.deleted', 'User', p(params, 'id'))
+      return noContent()
+    }),
+  ),
+  http.post(
+    '*/api/users/:id/password',
+    route('admin', async ({ request, params }) => {
+      const target = db.users.find((u) => u.id === p(params, 'id'))
+      if (!target) return notFound('User')
+      target.password = (await body<{ password: string }>(request)).password
+      return noContent()
+    }),
+  ),
+
+  // Agents & tools
+  http.get('*/api/agents', route('read', () => HttpResponse.json(db.agents))),
+  http.get(
+    '*/api/agents/:agentId',
+    route('read', ({ params }) => {
+      const agent = db.agents.find((a) => a.agentId === p(params, 'agentId'))
+      return agent ? HttpResponse.json(agent) : notFound('Agent')
+    }),
+  ),
+  http.post(
+    '*/api/agents/:agentId/status',
+    route('admin', async ({ request, params, user }) => {
+      const agent = db.agents.find((a) => a.agentId === p(params, 'agentId'))
+      if (!agent) return notFound('Agent')
+      agent.status = (await body<{ status: typeof agent.status }>(request)).status
+      audit(user, `agent.${agent.status.toLowerCase()}`, 'Agent', agent.agentId)
+      return noContent()
+    }),
+  ),
+  http.put(
+    '*/api/agents/:agentId/assignment',
+    route('admin', async ({ request, params, user }) => {
+      const agent = db.agents.find((a) => a.agentId === p(params, 'agentId'))
+      if (!agent) return notFound('Agent')
+      const a = await body<{ authorizedZones: string[]; authorizedNetworkIds: string[]; maxConcurrentJobs?: number; maxRatePerSecond?: number }>(request)
+      agent.authorizedZones = a.authorizedZones
+      agent.authorizedNetworkIds = a.authorizedNetworkIds
+      agent.limits = { maxConcurrentJobs: a.maxConcurrentJobs ?? agent.limits.maxConcurrentJobs, maxRatePerSecond: a.maxRatePerSecond ?? agent.limits.maxRatePerSecond }
+      audit(user, 'agent.assignment.updated', 'Agent', agent.agentId)
+      return noContent()
+    }),
+  ),
+  http.post('*/api/agents/:agentId/rotate-credentials', route('admin', () => noContent())),
+  http.delete(
+    '*/api/agents/:agentId',
+    route('admin', ({ params, user }) => {
+      db.agents = db.agents.filter((a) => a.agentId !== p(params, 'agentId'))
+      audit(user, 'agent.deleted', 'Agent', p(params, 'agentId'))
+      return noContent()
+    }),
+  ),
+  http.get('*/api/enrollment-tokens', route('admin', () => HttpResponse.json(db.tokens.filter((tk) => !tk.revoked)))),
+  http.post(
+    '*/api/enrollment-tokens',
+    route('admin', async ({ request, user }) => {
+      const input = await body<{ name: string; expiresInHours: number; maxUses: number; autoApprove: boolean; zones?: string[] }>(request)
+      if (!input.name?.trim()) return validationProblem({ Name: ['Name is required.'] })
+      const id = randomGuid()
+      const expiresAt = new Date(Date.now() + input.expiresInHours * 3_600_000).toISOString()
+      db.tokens.unshift({ id, name: input.name, expiresAt, maxUses: input.maxUses, usedCount: 0, autoApprove: input.autoApprove, zones: input.zones ?? [], createdAt: new Date().toISOString() })
+      audit(user, 'enrollment-token.created', 'EnrollmentToken', id)
+      const token = Array.from(crypto.getRandomValues(new Uint8Array(24)), (b) => b.toString(16).padStart(2, '0')).join('')
+      return HttpResponse.json({ id, token: `wset_${token}`, expiresAt }, { status: 201 })
+    }),
+  ),
+  http.delete(
+    '*/api/enrollment-tokens/:id',
+    route('admin', ({ params }) => {
+      const token = db.tokens.find((tk) => tk.id === p(params, 'id'))
+      if (token) token.revoked = true
+      return noContent()
+    }),
+  ),
+  http.get('*/api/tools', route('read', () => HttpResponse.json(db.tools))),
+  http.put(
+    '*/api/tools/:toolId',
+    route('admin', async ({ request, params, user }) => {
+      const tool = db.tools.find((tl) => tl.toolId === p(params, 'toolId'))
+      if (!tool) return notFound('Tool')
+      Object.assign(tool, await body<{ approved: boolean; enabled: boolean }>(request))
+      db.agents.forEach((a) => a.tools.filter((tl) => tl.id === tool.toolId).forEach((tl) => (tl.approved = tool.approved)))
+      audit(user, tool.approved ? 'tool.approved' : 'tool.unapproved', 'Tool', tool.toolId)
+      return noContent()
+    }),
+  ),
+
+  // Networks & scope
+  http.get('*/api/networks/export', route('read', ({ url }) => exportResponse('networks', db.networks as unknown as Record<string, unknown>[], url.searchParams.get('format')))),
+  http.post(
+    '*/api/networks/import',
+    route('manage', async ({ request, url, user }) => {
+      const text = await request.text()
+      let rows: Partial<NetworkInput>[]
+      try {
+        rows =
+          url.searchParams.get('format') === 'csv'
+            ? parseCsv(text).map((r) => ({ name: r.name, zone: r.zone, ranges: (r.ranges ?? '').split(';').filter(Boolean), description: r.description }))
+            : (JSON.parse(text) as Partial<NetworkInput>[])
+      } catch {
+        return validationProblem({ File: ['The file could not be parsed.'] })
+      }
+      const result = { created: 0, updated: 0, errors: [] as string[] }
+      rows.forEach((row, i) => {
+        const input = { description: '', exclusions: [], tags: [], enabled: true, ranges: [], zone: '', name: '', ...row } as NetworkInput
+        const existing = db.networks.find((n) => n.name === input.name)
+        const errors = validateNetwork(input, existing?.id)
+        if (Object.keys(errors).length) return result.errors.push(`Row ${i + 1}: ${Object.values(errors).flat().join(' ')}`)
+        if (existing) {
+          Object.assign(existing, input, { addressCount: addressCount(input.ranges), updatedAt: new Date().toISOString() })
+          result.updated++
+        } else {
+          db.networks.push({ ...input, id: randomGuid(), addressCount: addressCount(input.ranges), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() })
+          result.created++
+        }
+      })
+      audit(user, 'network.imported', 'Network')
+      return HttpResponse.json(result)
+    }),
+  ),
+  http.get('*/api/networks', route('read', () => HttpResponse.json(db.networks))),
+  http.get(
+    '*/api/networks/:id',
+    route('read', ({ params }) => {
+      const n = db.networks.find((x) => x.id === p(params, 'id'))
+      return n ? HttpResponse.json(n) : notFound('Network')
+    }),
+  ),
+  http.post(
+    '*/api/networks',
+    route('manage', async ({ request, user }) => {
+      const input = await body<NetworkInput>(request)
+      const errors = validateNetwork(input)
+      if (Object.keys(errors).length) return validationProblem(errors)
+      const now = new Date().toISOString()
+      const network: Network = { ...input, exclusions: input.exclusions ?? [], tags: input.tags ?? [], id: randomGuid(), addressCount: addressCount(input.ranges), createdAt: now, updatedAt: now }
+      db.networks.push(network)
+      audit(user, 'network.created', 'Network', network.id)
+      return HttpResponse.json(network, { status: 201 })
+    }),
+  ),
+  http.put(
+    '*/api/networks/:id',
+    route('edit', async ({ request, params, user }) => {
+      const network = db.networks.find((x) => x.id === p(params, 'id'))
+      if (!network) return notFound('Network')
+      const input = await body<NetworkInput>(request)
+      const errors = validateNetwork(input, network.id)
+      if (Object.keys(errors).length) return validationProblem(errors)
+      Object.assign(network, input, { addressCount: addressCount(input.ranges), updatedAt: new Date().toISOString() })
+      audit(user, 'network.updated', 'Network', network.id)
+      return HttpResponse.json(network)
+    }),
+  ),
+  http.delete(
+    '*/api/networks/:id',
+    route('manage', ({ params, user }) => {
+      db.networks = db.networks.filter((x) => x.id !== p(params, 'id'))
+      audit(user, 'network.deleted', 'Network', p(params, 'id'))
+      return noContent()
+    }),
+  ),
+  http.get('*/api/zones', route('read', () => HttpResponse.json(db.zones.map((z) => ({ ...z, networkCount: db.networks.filter((n) => n.zone === z.name).length }))))),
+  http.post(
+    '*/api/zones',
+    route('manage', async ({ request }) => {
+      const z = await body<{ name: string; description?: string }>(request)
+      if (db.zones.some((x) => x.name === z.name)) return validationProblem({ Name: [`Zone "${z.name}" already exists.`] })
+      db.zones.push(z)
+      return HttpResponse.json({ ...z, networkCount: 0 }, { status: 201 })
+    }),
+  ),
+  http.delete(
+    '*/api/zones/:name',
+    route('manage', ({ params }) => {
+      const name = p(params, 'name')
+      if (db.networks.some((n) => n.zone === name)) return problem(409, 'Zone is in use by networks.')
+      db.zones = db.zones.filter((z) => z.name !== name)
+      return noContent()
+    }),
+  ),
+  http.get('*/api/scope-policy', route('read', () => HttpResponse.json(db.scopePolicy))),
+  http.put(
+    '*/api/scope-policy',
+    route('admin', async ({ request, user }) => {
+      const input = await body<{ allowed: string[]; excluded: string[] }>(request)
+      db.scopePolicy = { ...input, updatedAt: new Date().toISOString() }
+      audit(user, 'scope.updated', 'ScopePolicy')
+      return HttpResponse.json(db.scopePolicy)
+    }),
+  ),
+  http.get('*/api/settings', route('admin', () => HttpResponse.json({ values: db.settings }))),
+  http.put(
+    '*/api/settings',
+    route('admin', async ({ request, user }) => {
+      db.settings = (await body<{ values: Record<string, string> }>(request)).values
+      audit(user, 'settings.updated', 'Settings')
+      return noContent()
+    }),
+  ),
+  http.get(
+    '*/api/audit',
+    route('admin', ({ url }) => {
+      const action = url.searchParams.get('action')?.toLowerCase()
+      const entityType = url.searchParams.get('entityType')?.toLowerCase()
+      const userId = url.searchParams.get('userId')
+      const items = db.audit.filter(
+        (e) => (!action || e.action.toLowerCase().includes(action)) && (!entityType || e.entityType.toLowerCase().includes(entityType)) && (!userId || e.userId === userId),
+      )
+      return HttpResponse.json(paged(items, url))
+    }),
+  ),
+
+  // Operations & workflows
+  http.get(
+    '*/api/operations',
+    route('read', () =>
+      HttpResponse.json({
+        operations: OPERATIONS,
+        capabilityMapping: Object.fromEntries(OPERATIONS.filter((o) => o.requiredCapability).map((o) => [o.operation, o.requiredCapability])),
+      }),
+    ),
+  ),
+  http.post('*/api/workflows/validate', route('read', async ({ request }) => HttpResponse.json(validateWorkflowDefinition(await body<ScanWorkflowDefinition>(request))))),
+  http.get(
+    '*/api/workflows',
+    route('read', () => {
+      const keys = [...new Set(db.workflows.map((w) => w.key))]
+      return HttpResponse.json(
+        keys.map((key) => {
+          const latest = db.workflows.filter((w) => w.key === key).sort((a, b) => b.version - a.version)[0]
+          return { key, latestVersion: latest.version, name: latest.definition.name, description: latest.definition.description, updatedAt: latest.createdAt }
+        }),
+      )
+    }),
+  ),
+  http.get(
+    '*/api/workflows/:key',
+    route('read', ({ params }) => {
+      const latest = db.workflows.filter((w) => w.key === p(params, 'key')).sort((a, b) => b.version - a.version)[0]
+      return latest ? HttpResponse.json(latest) : notFound('Workflow')
+    }),
+  ),
+  http.get('*/api/workflows/:key/versions', route('read', ({ params }) => HttpResponse.json(db.workflows.filter((w) => w.key === p(params, 'key')).sort((a, b) => b.version - a.version)))),
+  http.get(
+    '*/api/workflows/:key/versions/:version',
+    route('read', ({ params }) => {
+      const wf = db.workflows.find((w) => w.key === p(params, 'key') && w.version === Number(p(params, 'version')))
+      return wf ? HttpResponse.json(wf) : notFound('Workflow version')
+    }),
+  ),
+  ...['*/api/workflows', '*/api/workflows/:key/versions'].map((path) =>
+    http.post(
+      path,
+      route('manage', async ({ request, params, user }) => {
+        const def = await body<ScanWorkflowDefinition>(request)
+        const key = params.key ? p(params, 'key') : def.key
+        const result = validateWorkflowDefinition({ ...def, key })
+        if (!result.valid) return validationProblem({ Definition: result.errors.map(String) })
+        const existing = db.workflows.filter((w) => w.key === key)
+        if (!params.key && existing.length) return problem(409, `Workflow "${key}" already exists; create a new version instead.`)
+        const version = existing.length + 1
+        const saved = { key, version, definition: { ...def, key, version }, createdAt: new Date().toISOString(), createdBy: user.userName }
+        db.workflows.push(saved)
+        audit(user, 'workflow.saved', 'Workflow', `${key}@${version}`)
+        return HttpResponse.json(saved, { status: 201 })
+      }),
+    ),
+  ),
+
+  // Schedules
+  http.get('*/api/schedules', route('read', () => HttpResponse.json(db.schedules))),
+  http.post(
+    '*/api/schedules',
+    route('manage', async ({ request, user }) => {
+      const input = await body<ScheduleInput>(request)
+      const schedule = { ...input, id: randomGuid(), nextFireAt: input.enabled ? new Date(Date.now() + 3_600_000).toISOString() : undefined }
+      db.schedules.push(schedule)
+      audit(user, 'schedule.created', 'Schedule', schedule.id)
+      return HttpResponse.json(schedule, { status: 201 })
+    }),
+  ),
+  http.put(
+    '*/api/schedules/:id',
+    route('edit', async ({ request, params }) => {
+      const s = db.schedules.find((x) => x.id === p(params, 'id'))
+      if (!s) return notFound('Schedule')
+      Object.assign(s, await body<ScheduleInput>(request))
+      return HttpResponse.json(s)
+    }),
+  ),
+  http.delete(
+    '*/api/schedules/:id',
+    route('manage', ({ params }) => {
+      db.schedules = db.schedules.filter((x) => x.id !== p(params, 'id'))
+      return noContent()
+    }),
+  ),
+  http.post(
+    '*/api/schedules/:id/trigger',
+    route('edit', ({ params, user }) => {
+      const s = db.schedules.find((x) => x.id === p(params, 'id'))
+      if (!s) return notFound('Schedule')
+      const run = createRun(user, { name: s.name, workflowKey: s.workflowKey, workflowVersion: s.workflowVersion, networkIds: s.networkIds, priority: s.priority }, `schedule:${s.id}`)
+      s.lastRunId = run.id
+      s.lastRunStatus = run.status
+      return HttpResponse.json({ scanRunId: run.id })
+    }),
+  ),
+  ...(['pause', 'resume'] as const).map((action) =>
+    http.post(
+      `*/api/schedules/:id/${action}`,
+      route('edit', ({ params }) => {
+        const s = db.schedules.find((x) => x.id === p(params, 'id'))
+        if (!s) return notFound('Schedule')
+        s.enabled = action === 'resume'
+        s.nextFireAt = s.enabled ? new Date(Date.now() + 3_600_000).toISOString() : undefined
+        return noContent()
+      }),
+    ),
+  ),
+
+  // Scans & jobs
+  http.get(
+    '*/api/scans',
+    route('read', ({ url }) => {
+      const status = url.searchParams.get('status')
+      return HttpResponse.json(paged(db.runs.filter((r) => !status || r.status === status).map(runView), url))
+    }),
+  ),
+  http.post(
+    '*/api/scans',
+    route('edit', async ({ request, user }) => {
+      const req = await body<ScanStartRequest>(request)
+      const errors: Record<string, string[]> = {}
+      if (!req.name?.trim()) errors.Name = ['Name is required.']
+      if (!db.workflows.some((w) => w.key === req.workflowKey)) errors.WorkflowKey = ['Unknown workflow.']
+      if (!req.networkIds?.length) errors.NetworkIds = ['At least one network is required.']
+      if (Object.keys(errors).length) return validationProblem(errors)
+      return HttpResponse.json(runView(createRun(user, req, `manual:${user.userName}`)), { status: 201 })
+    }),
+  ),
+  http.get(
+    '*/api/scans/:id',
+    route('read', ({ params }) => {
+      const run = db.runs.find((r) => r.id === p(params, 'id'))
+      return run ? HttpResponse.json({ ...runView(run), steps: run.steps }) : notFound('Scan')
+    }),
+  ),
+  http.post(
+    '*/api/scans/:id/cancel',
+    route('edit', ({ params, user }) => {
+      const run = db.runs.find((r) => r.id === p(params, 'id'))
+      if (!run) return notFound('Scan')
+      if (!['Pending', 'Running'].includes(run.status)) return problem(409, 'Scan is not active.')
+      stopRunSimulation(run.id)
+      run.status = 'Cancelled'
+      run.finishedAt = new Date().toISOString()
+      run.steps.filter((s) => s.status === 'Pending' || s.status === 'Running').forEach((s) => (s.status = 'Cancelled'))
+      db.jobs.filter((j) => j.scanRunId === run.id && (j.status === 'Queued' || j.status === 'Leased')).forEach((j) => (j.status = 'Cancelled'))
+      emit(db, { type: 'RunCancelled', scanRunId: run.id, message: `Cancelled by ${user.userName}` })
+      return noContent()
+    }),
+  ),
+  http.get('*/api/scans/:id/jobs', route('read', ({ params }) => HttpResponse.json(db.jobs.filter((j) => j.scanRunId === p(params, 'id'))))),
+  http.get(
+    '*/api/scans/:id/events',
+    route('read', ({ params, url }) => {
+      const after = url.searchParams.get('after')
+      return HttpResponse.json(db.events.filter((e) => e.scanRunId === p(params, 'id') && (!after || e.occurredAt > after)))
+    }),
+  ),
+  http.get(
+    '*/api/scans/:id/diff',
+    route('read', ({ params, url }) => {
+      if (!url.searchParams.get('baseline')) return validationProblem({ Baseline: ['Baseline run is required.'] })
+      const hosts = db.hosts.slice(0, 12)
+      const svc = (i: number) => db.services.find((s) => s.hostId === hosts[i].id)
+      return HttpResponse.json({
+        added: [0, 1, 2].map((i) => ({ address: hosts[i].address, port: svc(i)?.port, transport: 'Tcp', serviceName: svc(i)?.serviceName, summary: 'New open port' })),
+        removed: [3, 4].map((i) => ({ address: hosts[i].address, port: 21, transport: 'Tcp', serviceName: 'ftp', summary: 'Port no longer open' })),
+        changed: [5].map((i) => ({ address: hosts[i].address, port: 443, serviceName: 'https', summary: 'Web server version changed', before: 'nginx 1.22.1', after: 'nginx 1.24.0' })),
+        scanRunId: p(params, 'id'),
+      })
+    }),
+  ),
+  http.get(
+    '*/api/jobs',
+    route('read', ({ url }) => {
+      const status = url.searchParams.get('status')
+      const agentId = url.searchParams.get('agentId')
+      const items = db.jobs.filter((j) => (!status || j.status === status) && (!agentId || j.agentId === agentId)).sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      return HttpResponse.json(paged(items, url))
+    }),
+  ),
+  http.get(
+    '*/api/jobs/:id',
+    route('read', ({ params }) => {
+      const job = db.jobs.find((j) => j.id === p(params, 'id'))
+      return job ? HttpResponse.json(job) : notFound('Job')
+    }),
+  ),
+  http.post(
+    '*/api/jobs/:id/cancel',
+    route('edit', ({ params }) => {
+      const job = db.jobs.find((j) => j.id === p(params, 'id'))
+      if (!job) return notFound('Job')
+      job.status = 'Cancelled'
+      emit(db, { type: 'JobCancelled', scanRunId: job.scanRunId, jobId: job.id, stepId: job.stepId })
+      return noContent()
+    }),
+  ),
+  http.post(
+    '*/api/jobs/:id/retry',
+    route('edit', ({ params }) => {
+      const job = db.jobs.find((j) => j.id === p(params, 'id'))
+      if (!job) return notFound('Job')
+      Object.assign(job, { status: 'Queued', attempt: job.attempt + 1, error: undefined, finishedAt: undefined })
+      emit(db, { type: 'JobRetryScheduled', scanRunId: job.scanRunId, jobId: job.id, stepId: job.stepId })
+      return noContent()
+    }),
+  ),
+  http.get('*/api/scan-limits', route('read', () => HttpResponse.json(db.scanLimits))),
+  http.put(
+    '*/api/scan-limits',
+    route('admin', async ({ request }) => {
+      const limits = await body<MockDb['scanLimits']>(request)
+      if (limits.defaultBatchSize < 64 || limits.defaultBatchSize > 1024) return validationProblem({ DefaultBatchSize: ['Must be between 64 and 1024.'] })
+      db.scanLimits = limits
+      return noContent()
+    }),
+  ),
+  http.get(
+    '*/api/stats/planner',
+    route('read', () =>
+      HttpResponse.json({
+        queue: { queued: db.jobs.filter((j) => j.status === 'Queued').length, leased: db.jobs.filter((j) => j.status === 'Leased').length },
+        performance: [
+          { agentId: 'scanner-dmz-01', interfaceName: 'eth0', toolId: 'nmap', jobsCompleted: 182, avgDurationMs: 48_200, avgTargetsPerSecond: 5.3 },
+          { agentId: 'scanner-dmz-01', interfaceName: 'eth0', toolId: 'naabu', jobsCompleted: 96, avgDurationMs: 12_400, avgTargetsPerSecond: 20.6 },
+          { agentId: 'scanner-office-01', interfaceName: 'ens18', toolId: 'nmap', jobsCompleted: 74, avgDurationMs: 61_000, avgTargetsPerSecond: 4.2 },
+        ],
+      }),
+    ),
+  ),
+
+  // Discovery & analytics
+  http.get(
+    '*/api/dashboard/summary',
+    route('read', () => {
+      const dayAgo = new Date(Date.now() - 86_400_000).toISOString()
+      return HttpResponse.json({
+        hostsTotal: db.hosts.length,
+        hostsActive: db.hosts.filter((h) => h.status === 'Active').length,
+        servicesTotal: db.services.filter((s) => s.state === 'Open').length,
+        changesLast24h: db.changes.filter((c) => c.detectedAt > dayAgo).length,
+        findingsOpen: db.findings.filter((f) => f.status === 'Open').length,
+        lastScanAt: db.runs.find((r) => r.finishedAt)?.finishedAt,
+      })
+    }),
+  ),
+  http.get(
+    '*/api/assets/hosts',
+    route('read', ({ url }) => {
+      const search = url.searchParams.get('search')?.toLowerCase()
+      const status = url.searchParams.get('status')
+      const zone = url.searchParams.get('zone')
+      const items = db.hosts.filter(
+        (h) =>
+          (!status || h.status === status) &&
+          (!zone || h.zone === zone) &&
+          (!search || [h.address, ...h.hostnames, ...h.technologies.map(String)].some((v) => v.toLowerCase().includes(search))),
+      )
+      return HttpResponse.json(paged(items, url))
+    }),
+  ),
+  http.get(
+    '*/api/assets/hosts/:id',
+    route('read', ({ params }) => {
+      const host = db.hosts.find((h) => h.id === p(params, 'id'))
+      if (!host) return notFound('Host')
+      const detail: HostDetail = {
+        ...host,
+        services: db.services.filter((s) => s.hostId === host.id),
+        technologies: db.hostTechnologies[host.id] ?? [],
+        certificates: db.certificates[host.id] ?? [],
+        findings: db.findings.filter((f) => f.hostId === host.id),
+        recentChanges: db.changes.filter((c) => c.hostId === host.id).slice(0, 20),
+      }
+      return HttpResponse.json(detail)
+    }),
+  ),
+  http.put(
+    '*/api/assets/hosts/:id/annotation',
+    route('edit', async ({ request, params, user }) => {
+      const host = db.hosts.find((h) => h.id === p(params, 'id'))
+      if (!host) return notFound('Host')
+      host.annotation = await body<NonNullable<typeof host.annotation>>(request)
+      audit(user, 'asset.annotated', 'Host', host.id)
+      return noContent()
+    }),
+  ),
+  http.get(
+    '*/api/assets/services',
+    route('read', ({ url }) => {
+      const search = url.searchParams.get('search')?.toLowerCase()
+      const port = url.searchParams.get('port')
+      const serviceName = url.searchParams.get('serviceName')?.toLowerCase()
+      const items = db.services.filter(
+        (s) =>
+          (!port || String(s.port) === port) &&
+          (!serviceName || (s.serviceName ?? '').toLowerCase().includes(serviceName)) &&
+          (!search || [s.address, s.product ?? '', s.http?.title ?? ''].some((v) => v.toLowerCase().includes(search))),
+      )
+      return HttpResponse.json(paged(items, url))
+    }),
+  ),
+  http.get(
+    '*/api/assets/technologies',
+    route('read', () => {
+      const map = new Map<string, { name: string; version?: string; category?: string; hosts: Set<string>; serviceCount: number; confidence: number[] }>()
+      for (const [hostId, techs] of Object.entries(db.hostTechnologies))
+        for (const tech of techs) {
+          const key = `${tech.name}@${tech.version ?? ''}`
+          const entry = map.get(key) ?? { name: tech.name, version: tech.version, category: tech.category, hosts: new Set(), serviceCount: 0, confidence: [] }
+          entry.hosts.add(hostId)
+          entry.serviceCount++
+          entry.confidence.push(tech.confidence ?? 0.5)
+          map.set(key, entry)
+        }
+      return HttpResponse.json(
+        [...map.values()]
+          .map((e) => ({ name: e.name, version: e.version, category: e.category, hostCount: e.hosts.size, serviceCount: e.serviceCount, confidence: Math.round((e.confidence.reduce((a, b) => a + b, 0) / e.confidence.length) * 100) / 100 }))
+          .sort((a, b) => b.hostCount - a.hostCount),
+      )
+    }),
+  ),
+  http.get('*/api/observations', route('read', ({ url }) => HttpResponse.json(paged([], url)))),
+  http.get(
+    '*/api/changes',
+    route('read', ({ url }) => {
+      const q = (k: string) => url.searchParams.get(k)
+      const items = db.changes.filter(
+        (c: Change) =>
+          (!q('type') || c.type === q('type')) &&
+          (!q('hostId') || c.hostId === q('hostId')) &&
+          (!q('scanRunId') || c.scanRunId === q('scanRunId')) &&
+          (!q('since') || c.detectedAt >= q('since')!),
+      )
+      return HttpResponse.json(paged(items, url))
+    }),
+  ),
+  http.get(
+    '*/api/findings',
+    route('read', ({ url }) => {
+      const severity = url.searchParams.get('severity')
+      const status = url.searchParams.get('status')
+      return HttpResponse.json(paged(db.findings.filter((f) => (!severity || f.severity === severity) && (!status || f.status === status)), url))
+    }),
+  ),
+  http.get(
+    '*/api/export/:kind',
+    route('read', ({ params, url }) => {
+      const kind = p(params, 'kind')
+      const exporters: Record<string, () => Record<string, unknown>[]> = {
+        hosts: () => db.hosts.map(({ annotation, ...h }) => ({ ...h, owner: annotation?.owner, classification: annotation?.classification })),
+        services: () => db.services.map(({ http: h, tls, ...s }) => ({ ...s, httpTitle: h?.title, tlsSubject: tls?.subjectCommonName })),
+        changes: () => db.changes.map((c) => ({ ...c })),
+        findings: () => db.findings.map(({ externalRefs, ...f }) => ({ ...f, externalRefs: externalRefs.map((r) => `${r.system}:${r.externalId}`) })),
+      }
+      const rows = exporters[kind]?.()
+      return rows ? exportResponse(kind, rows, url.searchParams.get('format')) : notFound('Export')
+    }),
+  ),
+  http.post(
+    '*/api/import/assets',
+    route('manage', async ({ request, url }) => {
+      const text = await request.text()
+      try {
+        const rows: Record<string, unknown>[] = url.searchParams.get('format') === 'csv' ? parseCsv(text) : (JSON.parse(text) as Record<string, unknown>[])
+        let updated = 0
+        const errors: string[] = []
+        rows.forEach((r, i) => {
+          const host = db.hosts.find((h) => h.address === r.address)
+          if (!host) return errors.push(`Row ${i + 1}: unknown host ${String(r.address)}`)
+          host.annotation = { description: String(r.description ?? ''), classification: String(r.classification ?? ''), businessState: String(r.businessState ?? ''), owner: String(r.owner ?? ''), tags: String(r.tags ?? '').split(';').filter(Boolean) }
+          updated++
+        })
+        return HttpResponse.json({ imported: 0, updated, errors })
+      } catch {
+        return validationProblem({ File: ['The file could not be parsed.'] })
+      }
+    }),
+  ),
+
+  // Signatures
+  http.post(
+    '*/api/signatures/validate',
+    route('read', async ({ request }) => {
+      const { kind, content } = await body<{ kind: SignatureKind; content: string }>(request)
+      return HttpResponse.json(validateSignatureContent(kind, content))
+    }),
+  ),
+  http.get(
+    '*/api/signatures',
+    route('read', ({ url }) => {
+      const kind = url.searchParams.get('kind')
+      const status = url.searchParams.get('status')
+      return HttpResponse.json(db.signatures.filter((s) => (!kind || s.kind === kind) && (!status || s.status === status)).map(({ versions: _v, ...s }) => s))
+    }),
+  ),
+  http.get(
+    '*/api/signatures/:id',
+    route('read', ({ params }) => {
+      const s = db.signatures.find((x) => x.id === p(params, 'id'))
+      return s ? HttpResponse.json(s) : notFound('Signature')
+    }),
+  ),
+  http.post(
+    '*/api/signatures',
+    route('manage', async ({ request, user }) => {
+      const input = await body<{ id: string; name: string; kind: SignatureKind; content: string }>(request)
+      if (db.signatures.some((s) => s.id === input.id)) return validationProblem({ Id: [`Signature "${input.id}" already exists.`] })
+      const result = validateSignatureContent(input.kind, input.content)
+      if (!result.valid) return validationProblem({ Content: result.errors.map(String) })
+      const now = new Date().toISOString()
+      const severity = /^\s*severity:\s*(\w+)/m.exec(input.content)?.[1] as Severity | undefined
+      db.signatures.unshift({
+        id: input.id,
+        name: input.name,
+        kind: input.kind,
+        latestVersion: 1,
+        status: 'Draft',
+        severity,
+        tags: (/^\s*tags:\s*(.+)$/m.exec(input.content)?.[1] ?? '').split(',').map((x) => x.trim()).filter(Boolean),
+        updatedAt: now,
+        versions: [{ version: 1, content: input.content, sha256: mockId(12).replace(/-/g, '').padEnd(64, '0'), createdAt: now, createdBy: user.userName }],
+      })
+      audit(user, 'signature.created', 'Signature', input.id)
+      return HttpResponse.json(db.signatures[0], { status: 201 })
+    }),
+  ),
+  http.post(
+    '*/api/signatures/:id/versions',
+    route('manage', async ({ request, params, user }) => {
+      const s = db.signatures.find((x) => x.id === p(params, 'id'))
+      if (!s) return notFound('Signature')
+      const { content } = await body<{ content: string }>(request)
+      const result = validateSignatureContent(s.kind, content)
+      if (!result.valid) return validationProblem({ Content: result.errors.map(String) })
+      s.latestVersion += 1
+      s.updatedAt = new Date().toISOString()
+      if (s.status !== 'Approved') s.status = 'Draft'
+      s.versions.push({ version: s.latestVersion, content, sha256: mockId(12).replace(/-/g, '').padEnd(64, '0'), createdAt: s.updatedAt, createdBy: user.userName })
+      return HttpResponse.json({ version: s.latestVersion }, { status: 201 })
+    }),
+  ),
+  http.post(
+    '*/api/signatures/:id/versions/:version/approve',
+    route('admin', ({ params, user }) => {
+      const s = db.signatures.find((x) => x.id === p(params, 'id'))
+      const v = s?.versions.find((x) => x.version === Number(p(params, 'version')))
+      if (!s || !v) return notFound('Signature version')
+      v.approvedAt = new Date().toISOString()
+      v.approvedBy = user.userName
+      s.approvedVersion = v.version
+      s.status = 'Approved'
+      audit(user, 'signature.approved', 'Signature', `${s.id}@${v.version}`)
+      return noContent()
+    }),
+  ),
+  http.post(
+    '*/api/signatures/:id/retire',
+    route('manage', ({ params, user }) => {
+      const s = db.signatures.find((x) => x.id === p(params, 'id'))
+      if (!s) return notFound('Signature')
+      s.status = 'Retired'
+      audit(user, 'signature.retired', 'Signature', s.id)
+      return noContent()
+    }),
+  ),
+
+  // Integrations
+  http.get(
+    '*/api/integrations/defectdojo',
+    route('admin', () => {
+      const { apiKeyValue, ...config } = db.defectDojo
+      return HttpResponse.json({ ...config, hasApiKey: Boolean(apiKeyValue) })
+    }),
+  ),
+  http.put(
+    '*/api/integrations/defectdojo',
+    route('admin', async ({ request, user }) => {
+      const { apiKey, hasApiKey: _ignored, ...config } = await body<MockDb['defectDojo']>(request)
+      if (config.enabled && !/^https?:\/\//.test(config.baseUrl ?? '')) return validationProblem({ BaseUrl: ['A valid http(s) URL is required when enabled.'] })
+      db.defectDojo = { ...db.defectDojo, ...config, apiKeyValue: apiKey || db.defectDojo.apiKeyValue }
+      audit(user, 'integration.defectdojo.updated', 'Integration', 'defectdojo')
+      return noContent()
+    }),
+  ),
+  http.post(
+    '*/api/integrations/defectdojo/test',
+    route('admin', () =>
+      HttpResponse.json(db.defectDojo.apiKeyValue ? { success: true, message: 'Connected to DefectDojo (mock).' } : { success: false, message: 'No API key configured.' }),
+    ),
+  ),
+  http.post(
+    '*/api/integrations/defectdojo/export',
+    route('manage', async ({ request }) => {
+      const { findingIds } = await body<{ findingIds: string[] }>(request)
+      let exported = 0
+      let skipped = 0
+      for (const id of findingIds) {
+        const f = db.findings.find((x) => x.id === id)
+        if (!f || f.externalRefs.some((r) => r.system === 'defectdojo')) {
+          skipped++
+          continue
+        }
+        f.externalRefs.push({ system: 'defectdojo', externalId: String(2000 + Math.floor(Math.random() * 1000)) })
+        exported++
+      }
+      return HttpResponse.json({ exported, skipped, errors: [] })
+    }),
+  ),
+]

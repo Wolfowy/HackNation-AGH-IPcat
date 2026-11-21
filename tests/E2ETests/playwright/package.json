@@ -1,0 +1,18 @@
+{
+  "name": "webscan-e2e",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "test": "playwright test",
+    "test:mocked": "playwright test --project=mocked",
+    "test:stack": "playwright test --project=stack",
+    "install-browsers": "playwright install chromium",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.65.1",
+    "@types/node": "^22.20.5",
+    "typescript": "~5.9"
+  }
+}

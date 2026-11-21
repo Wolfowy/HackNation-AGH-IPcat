@@ -1,0 +1,54 @@
+import { useState } from 'react'
+import { useServices } from '@/api/assets'
+import { ExportButtons } from '@/components/actions'
+import { Loadable } from '@/components/feedback'
+import { FormField } from '@/components/form'
+import { Filters, PageHeader, Pagination } from '@/components/page'
+import { Input } from '@/components/ui/input'
+import { t } from '@/i18n/strings'
+import { useDebounced } from '@/lib/useDebounced'
+import { ServicesTable } from './ServicesTable'
+
+export function ServicesPage() {
+  const [search, setSearch] = useState('')
+  const [port, setPort] = useState('')
+  const [serviceName, setServiceName] = useState('')
+  const [page, setPage] = useState(1)
+  const pageSize = 50
+  const services = useServices({
+    search: useDebounced(search),
+    port: useDebounced(port),
+    serviceName: useDebounced(serviceName),
+    page,
+    pageSize,
+  })
+  const onFilter = (set: (v: string) => void) => (e: React.ChangeEvent<HTMLInputElement>) => {
+    set(e.target.value)
+    setPage(1)
+  }
+
+  return (
+    <>
+      <PageHeader title={t.assets.services} actions={<ExportButtons path="/api/export/services" baseName="services" />} />
+      <Filters>
+        <FormField label={t.common.search}>
+          <Input type="search" placeholder="Address, product, title…" value={search} onChange={onFilter(setSearch)} />
+        </FormField>
+        <FormField label="Port">
+          <Input inputMode="numeric" className="w-28" value={port} onChange={onFilter(setPort)} />
+        </FormField>
+        <FormField label="Service name">
+          <Input className="w-40" placeholder="http, ssh…" value={serviceName} onChange={onFilter(setServiceName)} />
+        </FormField>
+      </Filters>
+      <Loadable query={services}>
+        {(data) => (
+          <>
+            <ServicesTable services={data.items} />
+            <Pagination page={page} pageSize={pageSize} total={data.total} onPageChange={setPage} />
+          </>
+        )}
+      </Loadable>
+    </>
+  )
+}
