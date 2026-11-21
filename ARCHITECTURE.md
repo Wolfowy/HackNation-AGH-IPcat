@@ -179,7 +179,8 @@ Role shorthand: R=CanRead, E=CanEdit, M=CanManage, A=AdminOnly.
   limits:{maxConcurrentJobs, maxRatePerSecond}, load?}] ; `GET /api/agents/{agentId}` (R)
 * `POST /api/agents/{agentId}/status` {status: Active|Disabled|Blocked} (A); `PUT /api/agents/{agentId}/assignment`
   {authorizedZones[], authorizedNetworkIds[], maxConcurrentJobs?, maxRatePerSecond?} (A); `POST /api/agents/{agentId}/rotate-credentials` (A); `DELETE /api/agents/{agentId}` (A)
-* `GET|POST /api/enrollment-tokens`, `DELETE /api/enrollment-tokens/{id}` (A) — create {name, expiresInHours, maxUses, autoApprove} → {id, token (shown once), expiresAt}
+* `GET|POST /api/enrollment-tokens`, `DELETE /api/enrollment-tokens/{id}` (A) — create {name, expiresInHours, maxUses, autoApprove, zones[]} → {id, token (shown once), expiresAt}
+  (`zones[]` = zones pre-authorized for agents enrolling with this token)
 * `GET /api/tools` (R) → [{toolId, approved, enabled, capabilities[], versions[], agentCount, firstSeenAt}]; `PUT /api/tools/{toolId}` {approved, enabled} (A)
 
 **Networks & scope (A)**

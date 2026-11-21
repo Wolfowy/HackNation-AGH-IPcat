@@ -21,3 +21,4 @@ deploy/docker/certs/*.pfx
 deploy/docker/certs/*.key
 deploy/docker/.env
 .env.local
+.claude/
