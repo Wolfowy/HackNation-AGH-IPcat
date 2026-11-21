@@ -181,14 +181,20 @@ function Editor({ initial, onChange, operations, errors, readOnly, keyEditable }
   }, [json])
 
   // Fit once every node (including a just-added one) has been measured.
-  const fitPending = useRef(false)
+  const fitPending = useRef(true) // initial fit once nodes are measured
   const fit = () => {
     fitPending.current = true
   }
   useEffect(() => {
     if (!fitPending.current || !graph.nodes.every((n) => n.measured?.width)) return
     fitPending.current = false
-    void flow.fitView(FIT)
+    void flow.fitView(FIT).then(() => {
+      // Too wide to fit at a readable zoom: show the beginning of the flow (workflows read left to right) instead of its middle.
+      const { zoom, y } = flow.getViewport()
+      if (zoom > FIT.minZoom + 0.001 || graph.nodes.length === 0) return
+      const minX = Math.min(...graph.nodes.map((n) => n.position.x))
+      void flow.setViewport({ x: 32 - minX * zoom, y, zoom })
+    })
   }, [graph.nodes, flow])
 
   const onNodesChange = useCallback(
@@ -263,8 +269,6 @@ function Editor({ initial, onChange, operations, errors, readOnly, keyEditable }
             onConnect={readOnly ? undefined : onConnect}
             nodesConnectable={!readOnly}
             deleteKeyCode={readOnly ? null : ['Backspace', 'Delete']}
-            fitView
-            fitViewOptions={FIT}
             minZoom={0.2}
             proOptions={{ hideAttribution: true }}
           >
