@@ -14,6 +14,8 @@ public sealed class PostgresFixture : IAsyncLifetime
 
     private int _dbCounter;
 
+    static PostgresFixture() => WebScan.Server.UnitTests.Integration.DockerApiVersion.Configure();
+
     public Task InitializeAsync() => _container.StartAsync();
     public Task DisposeAsync() => _container.DisposeAsync().AsTask();
 

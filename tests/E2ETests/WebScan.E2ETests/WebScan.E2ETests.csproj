@@ -16,6 +16,9 @@
     <ProjectReference Include="../../../src/Agent/Core/WebScan.Agent.Core.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="..\..\UnitTests\WebScan.Server.UnitTests\Integration\DockerApiVersion.cs" Link="Infrastructure\DockerApiVersion.cs" />
+  </ItemGroup>
+  <ItemGroup>
     <Using Include="Xunit" />
   </ItemGroup>
 </Project>
