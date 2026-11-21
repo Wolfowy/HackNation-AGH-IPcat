@@ -3,7 +3,8 @@
 # Targets: `toolbox` (runtime + scanning tools only) and the default final stage (toolbox + agent).
 
 # ---------- build: self-contained agent (no ICU needed, InvariantGlobalization is on) ----------
-FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+# SDK pinned to global.json (10.0.203, rollForward latestFeature).
+FROM mcr.microsoft.com/dotnet/sdk:10.0.203 AS build
 ARG TARGETARCH
 WORKDIR /src
 COPY global.json Directory.Build.props Directory.Packages.props ./
@@ -73,8 +74,8 @@ WORKDIR /var/lib/webscan-agent
 # ---------- final: agent ----------
 FROM toolbox AS final
 USER root
+# /out already contains appsettings.json and tools.d/ (published by the Worker project).
 COPY --from=build /out/ /app/
-COPY src/Agent/Worker/tools.d/ /app/tools.d/
 ENV Agent__DataDirectory=/var/lib/webscan-agent \
     DOTNET_gcServer=0
 USER webscan

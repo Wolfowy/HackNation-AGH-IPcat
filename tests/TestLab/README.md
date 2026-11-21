@@ -37,6 +37,18 @@ docker run --rm --network webscan-lab -e Agent__ServerUrl=https://<server> \
   -e Agent__EnrollmentToken=<token> webscan-agent:dev                         # regular agent
 ```
 
+To check a manifest end to end without a server, `--run-job <job.json>` validates one `ScanJob` (scope, parameters,
+signature bundle hash) and runs it through the real adapter/parser path, printing observations as JSON lines:
+
+```bash
+docker run --rm --network webscan-lab -v "$PWD/jobs:/jobs:ro" webscan-agent:dev --run-job /jobs/nmap-port-scan.json
+```
+
+Example job: `{"jobId":"<guid>","scanRunId":"<guid>","operation":"ScanPorts","tool":{"capability":"port-scan","toolId":"naabu"},
+"targets":{"hosts":["172.30.0.8/29"]},"authorizedScope":["172.30.0.0/24"],"parameters":{"ports":"top-100"},
+"limits":{"ratePerSecond":200,"timeoutSeconds":300}}`. Every capability of every shipped manifest (nmap ×4, naabu, httpx,
+nuclei with the lab signature bundle, tlsx) was verified this way against the lab.
+
 The image runs as the non-root user `webscan` (uid 10001); `nmap` and `naabu` carry `cap_net_raw` so SYN scans work
 with Docker's default capabilities (add `--cap-add NET_RAW` on runtimes that drop it).
 
