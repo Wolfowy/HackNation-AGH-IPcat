@@ -113,6 +113,9 @@ public sealed class WorkflowRuntimeTests(TestHost host) : DbTestBase(host)
         Assert.True(persisted.Complete);
         Assert.Contains("10.60.0.0/28", persisted.CoveredHosts);
         Assert.Contains("10.60.0.2:443", persisted.CoveredEndpoints);
+        Assert.Equal([Zone], persisted.CoveredHostsByZone!.Keys); // zone-qualified copy for Discovery's miss counting
+        Assert.Contains("10.60.0.0/28", persisted.CoveredHostsByZone[Zone]);
+        Assert.Contains("10.60.0.2:443", persisted.CoveredEndpointsByZone![Zone]);
         Assert.Contains(ScanOperation.ScanPorts, persisted.OperationsExecuted);
         Assert.Contains(runId, Host.Discovery.Compared);
         Assert.Contains(runId, Host.Findings.Published);

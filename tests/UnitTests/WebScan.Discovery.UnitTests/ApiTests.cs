@@ -104,6 +104,39 @@ public class ApiTests(TestApp app) : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Import_matches_by_zone_or_unambiguous_address_and_reports_ambiguous_rows()
+    {
+        _s.Perspective = ("agent-1", "eth0", "dc-warsaw");
+        await _s.RunAsync(Scenario.ZoneCoverage("dc-warsaw", "10.4.1.0/24"), 3, _s.HostUpWithMac("10.4.1.5", "00:11:22:33:44:55", "Cisco"), _s.HostUp("10.4.1.6"));
+        _s.NextRun().Perspective = ("agent-2", "eth0", "lab");
+        await _s.RunAsync(Scenario.ZoneCoverage("lab", "10.4.1.0/24"), 3, _s.HostUp("10.4.1.5"));
+        var manager = app.Client(Roles.Manager);
+
+        const string csv = "zone,address,owner\r\nlab,10.4.1.5,team-lab\r\n,10.4.1.5,team-x\r\n,10.4.1.6,team-waw\r\n";
+        var result = await (await manager.PostAsync("/api/import/assets?format=csv", new StringContent(csv, Encoding.UTF8, "text/csv")))
+            .Content.ReadFromJsonAsync<ImportResult>(Json);
+        Assert.Equal((2, 0), (result!.Imported, result.Updated));
+        Assert.Equal(["Row 3: address '10.4.1.5' is ambiguous: it exists in zones dc-warsaw, lab; add a zone."], result.Errors);
+
+        const string json = """[{ "zone": "dc-warsaw", "address": "10.4.1.5", "owner": "team-core" }, { "address": "10.4.1.5", "owner": "team-x" }]""";
+        var second = await (await manager.PostAsync("/api/import/assets?format=json", new StringContent(json, Encoding.UTF8, "application/json")))
+            .Content.ReadFromJsonAsync<ImportResult>(Json);
+        Assert.Equal((1, 0, 1), (second!.Imported, second.Updated, second.Errors.Count));
+
+        var hosts = (await app.Client(Roles.Viewer).GetFromJsonAsync<PagedResult<HostListItemDto>>("/api/assets/hosts?search=10.4.1", Json))!.Items;
+        Assert.Equal([("dc-warsaw", "10.4.1.5", "team-core"), ("dc-warsaw", "10.4.1.6", "team-waw"), ("lab", "10.4.1.5", "team-lab")],
+            hosts.Select(h => (h.Zone, h.Address, h.Annotation?.Owner))); // sorted by zone, then address
+        Assert.Equal(("00:11:22:33:44:55", "Cisco"), (hosts[0].MacAddress, hosts[0].MacVendor));
+        Assert.Equal(["lab"], (await app.Client(Roles.Viewer).GetFromJsonAsync<PagedResult<HostListItemDto>>("/api/assets/hosts?zone=lab", Json))!
+            .Items.Select(h => h.Zone));
+
+        var export = Csv.Parse(await app.Client(Roles.Viewer).GetStringAsync("/api/export/hosts?format=csv"));
+        var col = (string name) => export[0].IndexOf(name);
+        Assert.Equal(("dc-warsaw", "10.4.1.5", "00:11:22:33:44:55", "Cisco"),
+            (export[1][col("zone")], export[1][col("address")], export[1][col("macAddress")], export[1][col("macVendor")]));
+    }
+
+    [Fact]
     public async Task Lists_dashboard_changes_observations_and_diff()
     {
         await SeedHostAsync();
@@ -117,19 +150,22 @@ public class ApiTests(TestApp app) : IAsyncLifetime
         Assert.Equal(1, summary.ChangesLast24h); // the first run's changes are two days older
 
         var changes = await viewer.GetFromJsonAsync<PagedResult<ChangeDto>>($"/api/changes?scanRunId={_s.RunId}", Json);
-        Assert.Equal("New open port 10.4.0.1:8443/tcp", Assert.Single(changes!.Items).Summary);
+        Assert.Equal(("New open port 10.4.0.1:8443/tcp", "lab"), (Assert.Single(changes!.Items).Summary, changes.Items[0].Zone));
+        Assert.Empty((await viewer.GetFromJsonAsync<PagedResult<ChangeDto>>("/api/changes?zone=dmz", Json))!.Items);
 
-        var services = await viewer.GetFromJsonAsync<PagedResult<ServiceDto>>("/api/assets/services?port=8443&search=10.4.0", Json);
-        Assert.Equal(1, services!.Total);
+        var services = await viewer.GetFromJsonAsync<PagedResult<ServiceDto>>("/api/assets/services?port=8443&search=10.4.0&zone=lab", Json);
+        Assert.Equal((1, "lab"), (services!.Total, services.Items[0].Zone));
+        Assert.Equal(0, (await viewer.GetFromJsonAsync<PagedResult<ServiceDto>>("/api/assets/services?zone=dmz", Json))!.Total);
 
-        var findings = await viewer.GetFromJsonAsync<PagedResult<FindingDto>>("/api/findings?severity=medium&status=Open", Json);
-        Assert.Equal("exposed-panel", Assert.Single(findings!.Items).SignatureId);
+        var findings = await viewer.GetFromJsonAsync<PagedResult<FindingDto>>("/api/findings?severity=medium&status=Open&zone=lab", Json);
+        Assert.Equal(("exposed-panel", "lab"), (Assert.Single(findings!.Items).SignatureId, findings.Items[0].Zone));
+        Assert.Empty((await viewer.GetFromJsonAsync<PagedResult<FindingDto>>("/api/findings?zone=dmz", Json))!.Items);
 
         var observations = await viewer.GetFromJsonAsync<PagedResult<ObservationDto>>($"/api/observations?scanRunId={_s.RunId}&pageSize=2", Json);
         Assert.Equal((3, 2), (observations!.Total, observations.Items.Count));
 
         var diff = await viewer.GetFromJsonAsync<RunDiffDto>($"/api/scans/{_s.RunId}/diff?baseline={firstRun}", Json);
-        Assert.Equal(["endpoint|10.4.0.1|8443|tcp"], diff!.Added.Select(a => a.Key));
+        Assert.Equal(["endpoint|lab|10.4.0.1|8443|tcp"], diff!.Added.Select(a => a.Key));
         Assert.Empty(diff.Removed);
         Assert.Equal(HttpStatusCode.UnprocessableEntity, (await viewer.GetAsync($"/api/scans/{_s.RunId}/diff")).StatusCode);
     }

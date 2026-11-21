@@ -19,7 +19,7 @@ export const perspectiveKey = (p: { agentId: string; interfaceName?: string }) =
 /** Host node size grows with the number of open ports (capped). */
 export const hostSize = (h: TopologyHost) => ({ width: 150, height: 40 + Math.min(h.openPortCount, 16) * 3 })
 
-const SIZES = { perspective: { width: 200, height: 56 }, subnet: { width: 190, height: 56 } }
+const SIZES = { perspective: { width: 200, height: 56 }, subnet: { width: 240, height: 56 } }
 
 export interface TopologyGraphOptions {
   isCollapsed?: (subnetId: string) => boolean

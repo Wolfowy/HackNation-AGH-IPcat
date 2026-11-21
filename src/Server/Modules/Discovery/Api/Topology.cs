@@ -24,6 +24,9 @@ internal static class Topology
         return $"{new IPAddress(bytes)}/{prefix}";
     }
 
+    /// <summary>Subnet node id: subnets are per zone (identical ranges in two zones are different networks).</summary>
+    public static string SubnetId(string zone, string cidr) => $"{zone}|{cidr}";
+
     public static bool IsWebName(string? serviceName) => serviceName is not null && serviceName.StartsWith("http", StringComparison.Ordinal);
 
     public static bool IsTls(string? serviceName, string? tunnel, bool certificateSeen) =>

@@ -5,7 +5,7 @@ import { EmptyState } from '@/components/feedback'
 import { Chips } from '@/components/page'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { formatRelative } from '@/lib/format'
+import { formatRelative, zoneLabel } from '@/lib/format'
 
 export function ServicesTable({ services, showHost = true }: { services: Service[]; showHost?: boolean }) {
   if (services.length === 0) return <EmptyState>No services.</EmptyState>
@@ -13,6 +13,7 @@ export function ServicesTable({ services, showHost = true }: { services: Service
     <Table>
       <TableHeader>
         <TableRow>
+          {showHost && <TableHead>Zone</TableHead>}
           {showHost && <TableHead>Host</TableHead>}
           <TableHead>Endpoint</TableHead>
           <TableHead>State</TableHead>
@@ -26,6 +27,7 @@ export function ServicesTable({ services, showHost = true }: { services: Service
       <TableBody>
         {services.map((s) => (
           <TableRow key={s.id} data-testid="service-row">
+            {showHost && <TableCell>{zoneLabel(s.zone)}</TableCell>}
             {showHost && (
               <TableCell>
                 <Link to={`/assets/hosts/${s.hostId}`} className="font-mono hover:underline">

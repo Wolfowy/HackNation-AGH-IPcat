@@ -12,12 +12,12 @@ public sealed record AnnotationDto(string? Description, string? Classification, 
 
 public sealed record HostListItemDto(
     Guid Id, string Address, IReadOnlyList<string> Hostnames, HostStatus Status, bool Unstable, DateTimeOffset FirstSeenAt,
-    DateTimeOffset LastSeenAt, DateTimeOffset? LastScannedAt, int OpenPortCount, IReadOnlyList<string> Technologies, string? Zone,
-    AnnotationDto? Annotation, IReadOnlyList<string> Classifications);
+    DateTimeOffset LastSeenAt, DateTimeOffset? LastScannedAt, int OpenPortCount, IReadOnlyList<string> Technologies, string Zone,
+    AnnotationDto? Annotation, IReadOnlyList<string> Classifications, string? MacAddress, string? MacVendor);
 
 public sealed record HostDetailDto(
     Guid Id, string Address, IReadOnlyList<string> Hostnames, HostStatus Status, bool Unstable, DateTimeOffset FirstSeenAt,
-    DateTimeOffset LastSeenAt, DateTimeOffset? LastScannedAt, int OpenPortCount, string? Zone, AnnotationDto? Annotation,
+    DateTimeOffset LastSeenAt, DateTimeOffset? LastScannedAt, int OpenPortCount, string Zone, AnnotationDto? Annotation,
     IReadOnlyList<string> Classifications, string? MacAddress, string? MacVendor, string? OsGuess, int ConsecutiveMisses, int StateChangeCount,
     IReadOnlyList<ServiceDto> Services, IReadOnlyList<TechnologyDto> Technologies, IReadOnlyList<CertificateDto> Certificates,
     IReadOnlyList<FindingDto> Findings, IReadOnlyList<ChangeDto> RecentChanges);
@@ -30,7 +30,7 @@ public sealed record ServiceDto(
     Guid Id, Guid HostId, string Address, int Port, TransportProtocol Transport, ServiceState State, string? ServiceName, string? Product,
     string? Version, string? Banner, IReadOnlyList<string> Cpe, HttpInfoDto? Http, TlsInfoDto? Tls, IReadOnlyList<string> Technologies,
     double? Confidence, string? ConfidenceMethod, bool TimeOfDayVariance, DateTimeOffset FirstSeenAt, DateTimeOffset LastSeenAt,
-    string? Url);
+    string? Url, string Zone);
 
 /// <summary>Graph read model of <c>GET /api/topology</c>: scan perspectives → subnets → hosts (current state).</summary>
 public sealed record TopologyDto(
@@ -40,12 +40,13 @@ public sealed record TopologyDto(
 /// <summary>Agent interface that delivered observations (zone of its observations).</summary>
 public sealed record TopologyPerspectiveDto(string AgentId, string? InterfaceName, string? Zone);
 
-/// <summary>IPv4 /24 or IPv6 /64 grouping (<c>id</c> = <c>cidr</c>; "other" for hosts known only by name).</summary>
-public sealed record TopologySubnetDto(string Id, string Cidr, string? Zone, int HostCount);
+/// <summary>IPv4 /24 or IPv6 /64 grouping per zone (<c>id</c> = "{zone}|{cidr}"; cidr "other" for hosts known only by name).</summary>
+public sealed record TopologySubnetDto(string Id, string Cidr, string Zone, int HostCount);
 
+/// <param name="Subnet">Id of the host's <see cref="TopologySubnetDto"/>.</param>
 public sealed record TopologyHostDto(
-    Guid Id, string Address, IReadOnlyList<string> Hostnames, HostStatus Status, bool Unstable, string Subnet, string? Zone,
-    DateTimeOffset LastSeenAt, string? MacVendor, int OpenPortCount, IReadOnlyList<TopologyServiceDto> Services, IReadOnlyList<string> Technologies,
+    Guid Id, string Address, IReadOnlyList<string> Hostnames, HostStatus Status, bool Unstable, string Subnet, string Zone,
+    DateTimeOffset LastSeenAt, string? MacAddress, string? MacVendor, int OpenPortCount, IReadOnlyList<TopologyServiceDto> Services, IReadOnlyList<string> Technologies,
     IReadOnlyList<ObservedByDto> ObservedBy);
 
 public sealed record TopologyServiceDto(
@@ -69,11 +70,11 @@ public sealed record FindingDto(
     Guid Id, string SignatureId, int? SignatureVersion, string Name, string Severity, Guid HostId, string Address, int? Port,
     DateTimeOffset MatchedAt, string? Evidence, FindingStatus Status, DateTimeOffset FirstSeenAt, DateTimeOffset LastSeenAt,
     IReadOnlyList<ExternalRefDto> ExternalRefs, string Source, double Confidence, string ConfidenceMethod, string? MatchedUrl,
-    string? ClassificationTag, IReadOnlyList<string> Tags);
+    string? ClassificationTag, IReadOnlyList<string> Tags, string Zone);
 
 public sealed record ChangeDto(
     Guid Id, DateTimeOffset DetectedAt, Guid ScanRunId, AssetChangeType Type, Guid? HostId, string Address, int? Port, string Summary,
-    string? Before, string? After, string Severity);
+    string? Before, string? After, string Severity, string Zone);
 
 public sealed record ObservationDto(
     long Id, Guid ScanRunId, Guid JobId, Guid BatchId, string AgentId, string? InterfaceName, string? Zone, DateTimeOffset ReceivedAt,
@@ -81,7 +82,9 @@ public sealed record ObservationDto(
 
 public sealed record AnnotationRequest(string? Description, string? Classification, string? BusinessState, string? Owner, IReadOnlyList<string>? Tags);
 
-public sealed record AssetImportRow(string? Address, string? Description, string? Classification, string? BusinessState, string? Owner, IReadOnlyList<string>? Tags);
+/// <param name="Zone">Null/empty: matched by address when the address exists in exactly one zone, otherwise reported as ambiguous.</param>
+public sealed record AssetImportRow(string? Address, string? Description, string? Classification, string? BusinessState, string? Owner, IReadOnlyList<string>? Tags,
+    string? Zone = null);
 
 public sealed record ImportResult(int Imported, int Updated, IReadOnlyList<string> Errors);
 
@@ -91,12 +94,12 @@ internal static class DtoMapping
         a is null ? null : new AnnotationDto(a.Description, a.Classification, a.BusinessState, a.Owner, a.Tags);
 
     public static ChangeDto ToDto(this ChangeEvent c) =>
-        new(c.Id, c.DetectedAt, c.ScanRunId, c.Type, c.HostId, c.Address, c.Port, c.Summary, c.Before, c.After, c.Severity);
+        new(c.Id, c.DetectedAt, c.ScanRunId, c.Type, c.HostId, c.Address, c.Port, c.Summary, c.Before, c.After, c.Severity, c.Zone);
 
     public static FindingDto ToDto(this SignatureMatch m) =>
         new(m.Id, m.SignatureId, m.SignatureVersion, m.Name, m.Severity, m.HostId, m.Address, m.Port, m.MatchedAt, m.Evidence, m.Status,
             m.FirstSeenAt, m.LastSeenAt, m.ExternalRefs.Select(r => new ExternalRefDto(r.System, r.ExternalId)).ToList(), m.Source,
-            m.ConfidenceScore, m.ConfidenceMethod, m.MatchedUrl, m.ClassificationTag, m.Tags);
+            m.ConfidenceScore, m.ConfidenceMethod, m.MatchedUrl, m.ClassificationTag, m.Tags, m.Zone);
 
     public static TechnologyDto ToDto(this Technology t) =>
         new(t.Id, t.Name, t.Version, t.Category, t.Port, t.Confidence, t.ConfidenceMethod, t.Sources, t.FirstSeenAt, t.LastSeenAt);

@@ -26,7 +26,7 @@ test.describe('inventory graph', () => {
     await expect.poll(() => hosts.count()).toBeLessThan(total)
 
     await page.getByLabel('Zone').selectOption('lab')
-    await expect(page.getByTestId('graph-network')).toHaveCount(1)
+    await expect(page.getByTestId('graph-network')).toHaveCount(2) // lab range + the lab's reuse of the DMZ range
     await hosts.first().click()
     await expect(page).toHaveURL(/\/assets\/hosts\/[0-9a-f-]+$/)
     await expect(page.getByRole('tab', { name: /Services/ })).toBeVisible()

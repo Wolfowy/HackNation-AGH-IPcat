@@ -12,7 +12,8 @@ namespace WebScan.Server.Modules.Discovery.Ingestion;
 /// <summary>
 /// Applies normalized observations to the current-state model ("last seen", attributes, facts). Never marks anything
 /// gone and never changes host/service status of known assets — that is the job of the run comparison.
-/// Loads the state of the involved addresses once, mutates tracked entities; the caller saves.
+/// Loads the state of the involved addresses of one zone once (hosts are identified by (zone, address)), mutates tracked
+/// entities; the caller saves.
 /// </summary>
 internal sealed class AssetStateUpdater
 {
@@ -32,7 +33,7 @@ internal sealed class AssetStateUpdater
 
     private readonly DiscoveryDbContext _db;
     private readonly Guid _runId;
-    private readonly string? _zone;
+    private readonly string _zone;
     private readonly DateTimeOffset _now;
     private readonly Dictionary<string, Host> _hosts;
     private readonly Dictionary<(Guid, int, TransportProtocol), Service> _services;
@@ -41,7 +42,7 @@ internal sealed class AssetStateUpdater
     private readonly Dictionary<(Guid, string), Certificate> _certificates;
     private readonly Dictionary<(Guid, string, int, string), HttpSnapshot> _snapshots;
 
-    private AssetStateUpdater(DiscoveryDbContext db, Guid runId, string? zone, DateTimeOffset now, List<Host> hosts, List<Service> services,
+    private AssetStateUpdater(DiscoveryDbContext db, Guid runId, string zone, DateTimeOffset now, List<Host> hosts, List<Service> services,
         List<Technology> technologies, List<SignatureMatch> matches, List<Certificate> certificates, List<HttpSnapshot> snapshots)
     {
         _db = db;
@@ -56,11 +57,11 @@ internal sealed class AssetStateUpdater
         _snapshots = snapshots.ToDictionary(s => (s.ServiceId, s.Path, s.HourBucket, s.Fingerprint));
     }
 
-    public static async Task<AssetStateUpdater> LoadAsync(DiscoveryDbContext db, Guid runId, string? zone, IEnumerable<string> addresses,
+    public static async Task<AssetStateUpdater> LoadAsync(DiscoveryDbContext db, Guid runId, string zone, IEnumerable<string> addresses,
         DateTimeOffset now, CancellationToken ct)
     {
         var addressList = addresses.Distinct().ToList();
-        var hosts = await db.Hosts.Where(h => addressList.Contains(h.Address)).ToListAsync(ct);
+        var hosts = await db.Hosts.Where(h => h.Zone == zone && addressList.Contains(h.Address)).ToListAsync(ct);
         var hostIds = hosts.Select(h => h.Id).ToList();
         return new AssetStateUpdater(db, runId, zone, now, hosts,
             await db.Services.Where(s => hostIds.Contains(s.HostId)).ToListAsync(ct),
@@ -88,8 +89,12 @@ internal sealed class AssetStateUpdater
         switch (o.Kind)
         {
             case ObservationKind.HostUp when o.Host is { } h:
-                host.MacAddress = h.MacAddress ?? host.MacAddress;
-                host.MacVendor = h.MacVendor ?? host.MacVendor;
+                if (h.MacAddress is not null)
+                {
+                    // Latest value only; history stays in the raw observations. A new MAC without vendor drops the stale vendor.
+                    host.MacVendor = h.MacVendor ?? (h.MacAddress == host.MacAddress ? host.MacVendor : null);
+                    host.MacAddress = h.MacAddress;
+                }
                 host.OsGuess = h.OsGuess ?? host.OsGuess;
                 break;
             case ObservationKind.Service when service is not null && o.Service is { } s:
@@ -162,7 +167,6 @@ internal sealed class AssetStateUpdater
         }
         if (seenAt >= host.LastSeenAt) host.LastSeenAt = seenAt;
         host.LastSeenRunId = _runId;
-        host.Zone = _zone ?? host.Zone;
         return host;
     }
 
@@ -172,7 +176,7 @@ internal sealed class AssetStateUpdater
         {
             service = new Service
             {
-                Id = Guid.CreateVersion7(), HostId = host.Id, Address = host.Address, Port = port, Transport = transport, State = ServiceState.Open,
+                Id = Guid.CreateVersion7(), HostId = host.Id, Zone = host.Zone, Address = host.Address, Port = port, Transport = transport, State = ServiceState.Open,
                 FirstSeenAt = seenAt, LastSeenAt = seenAt, FirstSeenRunId = _runId, LastSeenRunId = _runId,
             };
             _services[(host.Id, port, transport)] = service;
@@ -331,7 +335,7 @@ internal sealed class AssetStateUpdater
         {
             match = new SignatureMatch
             {
-                Id = Guid.CreateVersion7(), HostId = host.Id, Address = host.Address, Port = port, Transport = transport, SignatureId = signatureId,
+                Id = Guid.CreateVersion7(), HostId = host.Id, Zone = host.Zone, Address = host.Address, Port = port, Transport = transport, SignatureId = signatureId,
                 Name = name, Severity = severity, Source = source, ConfidenceMethod = method, FirstSeenAt = seenAt, MatchedAt = seenAt,
             };
             _matches[(host.Id, port, signatureId)] = match;

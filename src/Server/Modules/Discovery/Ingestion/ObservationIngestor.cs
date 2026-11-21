@@ -32,6 +32,7 @@ internal sealed class ObservationIngestor(DiscoveryDbContext db, IInterpretation
         }
 
         var now = time.GetUtcNow();
+        var zone = Normalizer.CanonicalZone(context.Zone);
         var candidates = new List<(DiscoveryObservation Raw, DiscoveryObservation Normalized)>();
         foreach (var raw in batch.Observations.DistinctBy(o => o.ObservationId))
         {
@@ -57,14 +58,14 @@ internal sealed class ObservationIngestor(DiscoveryDbContext db, IInterpretation
             db.Observations.Add(new ObservationRecord
             {
                 ScanRunId = context.ScanRunId, JobId = batch.JobId, BatchId = batch.BatchId, ObservationId = raw.ObservationId,
-                AgentId = context.AgentId, InterfaceName = context.InterfaceName, Zone = context.Zone, WorkflowStepId = context.WorkflowStepId,
+                AgentId = context.AgentId, InterfaceName = context.InterfaceName, Zone = zone, WorkflowStepId = context.WorkflowStepId,
                 Operation = context.Operation, Kind = normalized.Kind, Address = normalized.Address, Port = normalized.Port,
                 Transport = normalized.Transport, ObservedAt = normalized.ObservedAt, ReceivedAt = now,
                 Payload = JsonSerializer.Serialize(raw, ContractJson.Options),
             });
         }
 
-        var updater = await AssetStateUpdater.LoadAsync(db, context.ScanRunId, context.Zone, fresh.Select(f => f.Normalized.Address), now, ct);
+        var updater = await AssetStateUpdater.LoadAsync(db, context.ScanRunId, zone, fresh.Select(f => f.Normalized.Address), now, ct);
         foreach (var (_, normalized) in fresh) updater.Apply(normalized);
 
         db.ProcessedBatches.Add(new ProcessedBatch

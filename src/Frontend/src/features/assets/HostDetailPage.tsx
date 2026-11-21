@@ -15,7 +15,7 @@ import { Input, Textarea } from '@/components/ui/input'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { t } from '@/i18n/strings'
-import { formatDateTime, formatRelative, splitList } from '@/lib/format'
+import { formatDateTime, formatRelative, splitList, zoneLabel } from '@/lib/format'
 import { ChangesTable } from '../changes/ChangesTable'
 import { FindingsTable } from '../findings/FindingsTable'
 import { ConfidenceBar } from './ConfidenceBar'
@@ -123,7 +123,9 @@ export function HostDetailPage() {
               <CardContent>
                 <KeyValues
                   items={[
-                    ['Zone', h.zone ?? '—'],
+                    ['Zone', zoneLabel(h.zone)],
+                    ['MAC address', <span className="font-mono">{h.macAddress ?? '—'}</span>],
+                    ['MAC vendor', h.macVendor ?? '—'],
                     ['First seen', formatDateTime(h.firstSeenAt)],
                     ['Last seen', `${formatDateTime(h.lastSeenAt)} (${formatRelative(h.lastSeenAt)})`],
                     ['Last scanned', formatDateTime(h.lastScannedAt)],

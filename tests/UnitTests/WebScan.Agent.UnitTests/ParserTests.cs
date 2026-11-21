@@ -26,6 +26,17 @@ public class ParserTests
     }
 
     [Fact]
+    public async Task Nmap_arp_discovery_maps_mac_address_and_vendor()
+    {
+        var observations = await Parsing.ParseFixtureAsync(new NmapXmlParser(), "nmap-host-discovery-arp.xml");
+
+        var web = observations.Single(o => o.Address == "172.30.0.10").Host!;
+        Assert.Equal(("arp-response", "02:42:AC:1E:00:0A", "Docker"), (web.Reason, web.MacAddress, web.MacVendor));
+        var self = observations.Single(o => o.Address == "172.30.0.2").Host!; // own interface: no MAC element
+        Assert.Equal(((string?)null, (string?)null), (self.MacAddress, self.MacVendor));
+    }
+
+    [Fact]
     public async Task Nmap_port_scan_reports_open_ports_and_hosts_proven_up()
     {
         var observations = await Parsing.ParseFixtureAsync(new NmapXmlParser(), "nmap-port-scan.xml");

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE nmaprun>
+<!-- Privileged nmap (NMAP_PRIVILEGED=1) on the same L2 segment: ARP ping reports the MAC and its OUI vendor. -->
+<nmaprun scanner="nmap" args="nmap -sn -n -T4 -oX /work/out.xml -iL /work/in.txt" start="1795287415" version="7.93" xmloutputversion="1.05">
+<host><status state="up" reason="arp-response" reason_ttl="0"/>
+<address addr="172.30.0.10" addrtype="ipv4"/>
+<address addr="02:42:AC:1E:00:0A" addrtype="mac" vendor="Docker"/>
+<hostnames>
+</hostnames>
+<times srtt="120" rttvar="5000" to="100000"/>
+</host>
+<host><status state="up" reason="localhost-response" reason_ttl="0"/>
+<address addr="172.30.0.2" addrtype="ipv4"/>
+<hostnames>
+</hostnames>
+</host>
+<runstats><finished time="1795287417" elapsed="0.31" exit="success"/><hosts up="2" down="0" total="2"/>
+</runstats>
+</nmaprun>

@@ -106,6 +106,7 @@ function tick(db: MockDb, run: MockRun) {
       scanRunId: run.id,
       type: 'NewPort',
       hostId: host.id,
+      zone: host.zone,
       address: host.address,
       port: 8443,
       summary: 'New open port 8443/tcp',

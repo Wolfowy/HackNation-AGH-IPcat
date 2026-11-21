@@ -85,6 +85,9 @@ let rand = mulberry32(42)
 const pick = <T,>(items: readonly T[]): T => items[Math.floor(rand() * items.length)]
 const int = (min: number, max: number) => min + Math.floor(rand() * (max - min + 1))
 
+const mockMac = (octet: number, zone: string) =>
+  `00:1A:2B:${zone === 'lab' ? '5A' : '0F'}:00:${octet.toString(16).padStart(2, '0').toUpperCase()}`
+
 let idCounter = 0
 /** Deterministic GUID-like ids (stable across reloads, unique within the db). */
 export function mockId(prefix = 0): string {
@@ -402,6 +405,7 @@ export function createDb(): MockDb {
         services.push({
           id: sid,
           hostId: id,
+          zone,
           address,
           port: svc.port,
           transport: 'Tcp',
@@ -448,6 +452,8 @@ export function createDb(): MockDb {
         openPortCount: status === 'Gone' ? 0 : catalog.length,
         technologies: techs.map((x) => x.name),
         zone,
+        // Scanners see MACs only on their own L2 segment (office/lab), not behind the DMZ router. Derived, not random: keeps the seed stable.
+        ...(zone === 'dmz' ? {} : { macAddress: mockMac(octet, zone), macVendor: octet % 3 === 0 ? 'Dell Inc.' : octet % 3 === 1 ? 'Hewlett Packard' : 'Raspberry Pi Trading Ltd' }),
         annotation:
           rand() < 0.35
             ? {
@@ -585,7 +591,7 @@ export function createDb(): MockDb {
   for (let i = 0; i < 45; i++) {
     const h = pick(hosts)
     const [type, severity, make] = pick(changeTypes)
-    changes.push({ id: mockId(8), detectedAt: ago(int(10, 60 * 24 * 6)), scanRunId: pick(runs).id, type, hostId: h.id, address: h.address, severity, ...make(h) })
+    changes.push({ id: mockId(8), detectedAt: ago(int(10, 60 * 24 * 6)), scanRunId: pick(runs).id, type, hostId: h.id, zone: h.zone, address: h.address, severity, ...make(h) })
   }
   changes.sort((a, b) => b.detectedAt.localeCompare(a.detectedAt))
 
@@ -610,6 +616,7 @@ export function createDb(): MockDb {
       name,
       severity,
       hostId: h.id,
+      zone: h.zone,
       address: h.address,
       port,
       matchedUrl: evidence.startsWith('/') ? `http://${h.address}:${port}${evidence}` : undefined,
@@ -788,6 +795,43 @@ ${extra}    matchers:
       details: { source: 'ui' },
       ipAddress: `10.99.0.${10 + (i % 5)}`,
     }
+  })
+
+  // Overlapping private ranges: the lab reuses a DMZ address. A different machine with the same IP — hosts are keyed by (zone, address).
+  // Added last and without rand() so the seeded data above stays unchanged.
+  const twin = hosts.filter((h) => h.zone === 'dmz').at(-1)!
+  const twinId = mockId(4)
+  services.push({
+    id: mockId(6),
+    hostId: twinId,
+    zone: 'lab',
+    address: twin.address,
+    port: 22,
+    transport: 'Tcp',
+    state: 'Open',
+    serviceName: 'ssh',
+    product: 'OpenSSH',
+    version: '9.6p1',
+    technologies: ['OpenSSH'],
+    confidence: 0.9,
+    firstSeenAt: ago(60 * 24 * 3),
+    lastSeenAt: ago(30),
+  })
+  hostTechnologies[twinId] = [{ name: 'OpenSSH', version: '9.6p1', category: 'remote-access', port: 22, confidence: 0.9, confidenceMethod: 'version-probe' }]
+  hosts.push({
+    id: twinId,
+    address: twin.address,
+    hostnames: ['twin.lab.example.internal'],
+    status: 'Active',
+    unstable: false,
+    firstSeenAt: ago(60 * 24 * 3),
+    lastSeenAt: ago(30),
+    lastScannedAt: ago(30),
+    openPortCount: 1,
+    technologies: ['OpenSSH'],
+    zone: 'lab',
+    macAddress: '52:54:00:AB:CD:EF',
+    macVendor: 'QEMU virtual NIC',
   })
 
   return {

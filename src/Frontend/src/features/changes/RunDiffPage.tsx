@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { NativeSelect } from '@/components/ui/input'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { t } from '@/i18n/strings'
-import { formatDateTime } from '@/lib/format'
+import { formatDateTime, zoneLabel } from '@/lib/format'
 
 const show = (v: unknown) => (v === undefined || v === null ? '' : typeof v === 'string' ? v : JSON.stringify(v))
 
@@ -40,6 +40,7 @@ function DiffSection({ title, entries, tone }: { title: string; entries: DiffEnt
                   <TableCell className="font-mono text-xs whitespace-nowrap">
                     <TargetLink address={e.address} port={e.port} serviceName={e.kind === 'endpoint' ? e.name : undefined} />
                     {e.transport && `/${e.transport.toLowerCase()}`}
+                    <div className="text-muted-foreground">{zoneLabel(e.zone)}</div>
                   </TableCell>
                   <TableCell className="text-xs">{e.kind}</TableCell>
                   <TableCell>{e.name ?? '—'}</TableCell>

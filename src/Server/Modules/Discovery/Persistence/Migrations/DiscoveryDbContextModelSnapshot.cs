@@ -26,6 +26,9 @@ namespace WebScan.Server.Modules.Discovery.Persistence.Migrations
 
             modelBuilder.Entity("WebScan.Server.Modules.Discovery.Domain.AssetAnnotation", b =>
                 {
+                    b.Property<string>("Zone")
+                        .HasColumnType("text");
+
                     b.Property<string>("Address")
                         .HasColumnType("text");
 
@@ -51,7 +54,7 @@ namespace WebScan.Server.Modules.Discovery.Persistence.Migrations
                     b.Property<string>("UpdatedBy")
                         .HasColumnType("text");
 
-                    b.HasKey("Address");
+                    b.HasKey("Zone", "Address");
 
                     b.ToTable("asset_annotations", "discovery");
                 });
@@ -94,9 +97,13 @@ namespace WebScan.Server.Modules.Discovery.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("text[]");
 
+                    b.Property<string>("Zone")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.HasKey("Id");
 
-                    b.HasIndex("Address", "ChangedAt");
+                    b.HasIndex("Zone", "Address", "ChangedAt");
 
                     b.ToTable("asset_annotation_revisions", "discovery");
                 });
@@ -210,6 +217,10 @@ namespace WebScan.Server.Modules.Discovery.Persistence.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)");
 
+                    b.Property<string>("Zone")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.HasKey("Id");
 
                     b.HasIndex("DetectedAt");
@@ -282,14 +293,17 @@ namespace WebScan.Server.Modules.Discovery.Persistence.Migrations
                         .HasColumnType("boolean");
 
                     b.Property<string>("Zone")
+                        .IsRequired()
                         .HasColumnType("text");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("Address")
-                        .IsUnique();
+                    b.HasIndex("Address");
 
                     b.HasIndex("Status");
+
+                    b.HasIndex("Zone", "Address")
+                        .IsUnique();
 
                     b.ToTable("hosts", "discovery");
                 });
@@ -421,6 +435,7 @@ namespace WebScan.Server.Modules.Discovery.Persistence.Migrations
                         .HasColumnType("text");
 
                     b.Property<string>("Zone")
+                        .IsRequired()
                         .HasColumnType("text");
 
                     b.HasKey("Id");
@@ -480,6 +495,9 @@ namespace WebScan.Server.Modules.Discovery.Persistence.Migrations
 
                     b.Property<DateTimeOffset?>("ComparedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CoverageByZone")
+                        .HasColumnType("jsonb");
 
                     b.Property<bool>("CoverageComplete")
                         .HasColumnType("boolean");
@@ -612,6 +630,10 @@ namespace WebScan.Server.Modules.Discovery.Persistence.Migrations
                     b.Property<string>("Version")
                         .HasColumnType("text");
 
+                    b.Property<string>("Zone")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.HasKey("Id");
 
                     b.HasIndex("Port", "State");
@@ -715,6 +737,10 @@ namespace WebScan.Server.Modules.Discovery.Persistence.Migrations
                     b.Property<string>("Transport")
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)");
+
+                    b.Property<string>("Zone")
+                        .IsRequired()
+                        .HasColumnType("text");
 
                     b.HasKey("Id");
 

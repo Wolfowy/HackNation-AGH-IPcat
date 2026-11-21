@@ -18,6 +18,16 @@ public class NormalizationTests
     public void Canonical_addresses(string input, string? expected) => Assert.Equal(expected, Normalizer.CanonicalAddress(input));
 
     [Theory]
+    [InlineData("aa:bb:cc:dd:ee:ff", "AA:BB:CC:DD:EE:FF")]
+    [InlineData("AA-BB-CC-DD-EE-0F", "AA:BB:CC:DD:EE:0F")]
+    [InlineData("aabb.ccdd.eeff", "AA:BB:CC:DD:EE:FF")]
+    [InlineData(" 0011223344ff ", "00:11:22:33:44:FF")]
+    [InlineData("00:11:22:33:44", null)]
+    [InlineData("zz:11:22:33:44:55", null)]
+    [InlineData("", null)]
+    public void Canonical_mac_addresses(string input, string? expected) => Assert.Equal(expected, Normalizer.CanonicalMac(input));
+
+    [Theory]
     [InlineData("www", null, "http")]
     [InlineData("http-alt", null, "http")]
     [InlineData("HTTP-Proxy", null, "http")]

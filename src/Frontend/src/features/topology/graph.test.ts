@@ -9,6 +9,7 @@ const host = (id: string, address: string, subnet: string, extra: Partial<Topolo
   status: 'Active',
   unstable: false,
   subnet,
+  zone: '',
   lastSeenAt: '2026-11-20T10:00:00Z',
   openPortCount: 0,
   services: [],
@@ -91,6 +92,29 @@ describe('buildTopologyGraph', () => {
     expect(ids(nodes)).toEqual(['g:2001:db8::/64', 'h:h3', 'p:a1/eth0', 'p:a2/wg0', 's:10.0.1.0/24', 's:2001:db8::/64'])
     expect(nodes.find((n) => n.id === 's:10.0.1.0/24')?.data).toMatchObject({ collapsed: true })
     expect(edges.map((e) => e.id)).toContain('p:a1/eth0->s:10.0.1.0/24')
+  })
+
+  it('keeps the same cidr and IP in two zones apart (subnet ids are zone-qualified)', () => {
+    const zoned: Topology = {
+      perspectives: [
+        { agentId: 'a1', interfaceName: 'eth0', zone: 'dc-warsaw' },
+        { agentId: 'a2', interfaceName: 'wg0', zone: 'lab' },
+      ],
+      subnets: [
+        { id: 'dc-warsaw|10.0.0.0/24', cidr: '10.0.0.0/24', zone: 'dc-warsaw', hostCount: 1 },
+        { id: 'lab|10.0.0.0/24', cidr: '10.0.0.0/24', zone: 'lab', hostCount: 1 },
+      ],
+      hosts: [
+        host('w', '10.0.0.5', 'dc-warsaw|10.0.0.0/24', { zone: 'dc-warsaw', observedBy: [{ agentId: 'a1', interfaceName: 'eth0' }] }),
+        host('l', '10.0.0.5', 'lab|10.0.0.0/24', { zone: 'lab', observedBy: [{ agentId: 'a2', interfaceName: 'wg0' }] }),
+      ],
+      truncated: false,
+    }
+    const { nodes, edges } = buildTopologyGraph(zoned)
+    expect(nodes.filter((n) => n.type === 'subnet')).toHaveLength(2)
+    expect(nodes.find((n) => n.id === 'h:l')?.parentId).toBe('g:lab|10.0.0.0/24')
+    expect(ids(edges).filter((id) => id.startsWith('p:'))).toEqual(['p:a1/eth0->s:dc-warsaw|10.0.0.0/24', 'p:a2/wg0->s:lab|10.0.0.0/24'])
+    expect(ids(buildInventoryGraph(zoned).nodes).filter((id) => id.startsWith('net:'))).toEqual(['net:dc-warsaw|10.0.0.0/24', 'net:lab|10.0.0.0/24'])
   })
 })
 

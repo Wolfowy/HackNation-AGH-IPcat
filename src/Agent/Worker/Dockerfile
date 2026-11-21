@@ -68,6 +68,10 @@ RUN setcap cap_net_raw+eip /usr/bin/nmap \
  && mkdir -p /var/lib/webscan-agent \
  && chown webscan:webscan /var/lib/webscan-agent \
  && chmod 0700 /var/lib/webscan-agent
+# Non-root nmap ignores file capabilities and falls back to connect()-based probes unless told it is privileged. With raw
+# sockets host discovery on a directly attached subnet uses ARP and reports MAC address + vendor. Port scans keep the
+# explicit -sT of the "connect" scanType (the default), so only discovery changes.
+ENV NMAP_PRIVILEGED=1
 USER webscan
 WORKDIR /var/lib/webscan-agent
 

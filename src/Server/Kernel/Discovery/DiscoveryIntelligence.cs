@@ -71,8 +71,11 @@ public sealed record ChangeRule(string SignatureId, int Version, string Name, IR
 public interface IObservationReader
 {
     /// <summary>All observations of a scan run, already normalized (canonical addresses, service and technology names).</summary>
-    IAsyncEnumerable<DiscoveryObservation> ReadRunObservationsAsync(Guid scanRunId, CancellationToken ct = default);
+    IAsyncEnumerable<RunObservation> ReadRunObservationsAsync(Guid scanRunId, CancellationToken ct = default);
 }
+
+/// <summary>Observation with the zone of the network it was scanned in ("" = default zone); assets are identified by (zone, address).</summary>
+public sealed record RunObservation(string Zone, DiscoveryObservation Observation);
 
 /// <summary>Signature-match findings (Discovery module) for publishing/export (Integrations module).</summary>
 public interface IFindingStore

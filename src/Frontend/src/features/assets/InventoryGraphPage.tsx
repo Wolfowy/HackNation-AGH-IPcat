@@ -8,6 +8,7 @@ import { EmptyState, Loadable } from '@/components/feedback'
 import { emptyGraphFilters, GraphCanvas, GraphFilters, GraphLegend } from '@/components/graph/GraphCanvas'
 import { PageHeader, StatusBadge } from '@/components/page'
 import { t } from '@/i18n/strings'
+import { zoneLabel } from '@/lib/format'
 import { useDebounced } from '@/lib/useDebounced'
 import { cn } from '@/lib/utils'
 import { UnstableBadge } from './HostsPage'
@@ -25,12 +26,12 @@ const ToggleHost = createContext<(hostId: string) => void>(() => {})
 
 function NetworkCard({ data }: NodeProps<NetworkNode>) {
   return (
-    <div className={cn('h-16 w-[210px] rounded-lg border-2 px-3 py-2', STYLES.network)} data-testid="graph-network">
-      <div className="flex items-center gap-1.5 font-mono text-sm font-semibold">
-        <Network className="size-4 shrink-0 text-sky-600" /> {data.subnet.cidr}
+    <div className={cn('h-16 w-[250px] rounded-lg border-2 px-3 py-2', STYLES.network)} data-testid="graph-network">
+      <div className="flex items-center gap-1.5 truncate font-mono text-sm font-semibold">
+        <Network className="size-4 shrink-0 text-sky-600" /> {zoneLabel(data.subnet.zone)} · {data.subnet.cidr}
       </div>
       <div className="text-muted-foreground text-xs">
-        {data.subnet.zone ?? 'no zone'} · {data.hostCount} {data.hostCount === 1 ? 'host' : 'hosts'}
+        {data.hostCount} {data.hostCount === 1 ? 'host' : 'hosts'}
       </div>
       <Handle type="source" position={Position.Right} isConnectable={false} />
     </div>
@@ -39,7 +40,7 @@ function NetworkCard({ data }: NodeProps<NetworkNode>) {
 
 function HostCard({ data: { host: h, collapsed } }: NodeProps<HostNode>) {
   const toggle = useContext(ToggleHost)
-  const details = [h.hostnames[0], h.macVendor].filter(Boolean).join(' · ')
+  const details = [h.hostnames[0], h.macAddress, h.macVendor].filter(Boolean).join(' · ')
   return (
     <div
       className={cn('h-[88px] w-[240px] cursor-pointer rounded-lg border-2 px-3 py-2 shadow-xs', STYLES.host, h.status === 'Gone' && 'opacity-60')}
