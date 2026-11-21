@@ -1,3 +1,4 @@
+using WebScan.Server.Kernel.Scanning;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -38,7 +39,8 @@ internal sealed class DiscoveryRunProcessor(
     IMessageBus bus,
     TimeProvider time,
     IOptions<DiscoveryOptions> options,
-    ILogger<DiscoveryRunProcessor> logger) : IDiscoveryRunProcessor
+    ILogger<DiscoveryRunProcessor> logger,
+    IRunBatchCatalog? batchCatalog = null) : IDiscoveryRunProcessor
 {
     public async Task<PersistRunResult> PersistRunAsync(Guid scanRunId, RunCoverage coverage, CancellationToken ct = default)
     {
@@ -156,9 +158,30 @@ internal sealed class DiscoveryRunProcessor(
 
     private async Task WaitForIngestionAsync(Guid scanRunId, CancellationToken ct)
     {
+        var deadline = time.GetUtcNow() + TimeSpan.FromSeconds(options.Value.IngestMaxWaitSeconds);
+        if (batchCatalog is not null)
+        {
+            // Exact: every batch Scanning accepted for this run must be ingested (messages may still be in flight).
+            var accepted = (await batchCatalog.GetAcceptedBatchIdsAsync(scanRunId, ct)).ToHashSet();
+            while (accepted.Count > 0)
+            {
+                var processed = await db.ProcessedBatches.AsNoTracking().Where(b => b.ScanRunId == scanRunId).Select(b => b.BatchId).ToListAsync(ct);
+                accepted.ExceptWith(processed);
+                if (accepted.Count == 0) return;
+                if (time.GetUtcNow() >= deadline)
+                {
+                    logger.LogWarning("Run {RunId}: {Count} accepted result batches not ingested after {Seconds}s; persisting what is available.",
+                        scanRunId, accepted.Count, options.Value.IngestMaxWaitSeconds);
+                    return;
+                }
+                await Task.Delay(TimeSpan.FromMilliseconds(250), time, ct);
+            }
+            return;
+        }
+
+        // Fallback without a catalog (module tests): wait for a quiet period.
         var settle = TimeSpan.FromSeconds(options.Value.IngestSettleSeconds);
         if (settle <= TimeSpan.Zero) return;
-        var deadline = time.GetUtcNow() + TimeSpan.FromSeconds(options.Value.IngestMaxWaitSeconds);
         while (true)
         {
             var last = await db.ProcessedBatches.Where(b => b.ScanRunId == scanRunId).MaxAsync(b => (DateTimeOffset?)b.ProcessedAt, ct);

@@ -22,3 +22,5 @@ deploy/docker/certs/*.key
 deploy/docker/.env
 .env.local
 .claude/
+deploy/docker/certs/*.crt
+deploy/docker/certs/*.srl

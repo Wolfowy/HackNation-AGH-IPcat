@@ -261,3 +261,35 @@ PostgreSQL 5432; RabbitMQ 5672 / 15672; Grafana 3000. Compose files in `deploy/d
 * Quartz RAM store + DB as source of truth for schedules; `(scheduleId, fireTime)` uniqueness for idempotent triggering.
 * Deterministic weighted planner (no ML). Tool selection by capability, tool definitions by manifest.
 * Own JSON DAG engine behind `IWorkflowRuntime`; Elsa 3 can be plugged in later by hosting `IStepExecutor`s as activities.
+
+## 16. Implementation notes (after integration)
+
+Deviations and clarifications agreed during integration (code is the source of truth):
+
+* Validation errors return **422** ProblemDetails with an `errors` dictionary (not 400). Conflicts (duplicate names/ids) return 409 ProblemDetails.
+* `/api/scans*` endpoints live in the Workflows module (run detail needs step state); Workflows references Scanning directly.
+  `/api/scans/{id}/jobs` is paged like `/api/jobs`. Job events go to the SignalR run group (`JoinRun`); run-level events go to all clients.
+* Disabled/Blocked agents authenticate but every agent policy rejects them (403). Re-enrolling an existing agent id returns 409;
+  agents persist credentials in `Agent:DataDirectory` (`/var/lib/webscan-agent` in the image, a volume in Compose).
+* Inventory hash = SHA-256 of the contract JSON of `{tools, interfaces, routes}` (agent); the server adopts it from the first
+  heartbeat after registration and requests re-registration on mismatch.
+* Cron uses Quartz syntax (seconds first). Skipped schedule fires are reported as `RunCancelled` events without a run id and
+  `data.reason` = `outside-window` | `previous-run-active` | `window-over`.
+* `RunCoverage.Complete` is false if any job failed/was cancelled or the window expired. After window expiry only
+  `PersistObservations` runs (after leased jobs drained) — partial data kept, nothing marked gone.
+* PersistObservations waits until every result batch accepted by Scanning for the run is ingested (`IRunBatchCatalog`), bounded by
+  `Discovery:IngestMaxWaitSeconds`.
+* Classification-rule results are stored as info findings (source `classification-rule`); host DTOs expose `classifications[]`.
+* Signature approval of high/critical versions requires a note (`requiresApprovalNote`); bundle hash format shared with the agent:
+  SHA-256 over UTF-8 `{id}\n{version}\n{content}\n` per item, ordered by id.
+* DefectDojo export uses `POST /api/v2/findings/` within a lazily created "WebScan" test (Generic Findings Import) and `PATCH` for
+  changed findings; external id + content hash stored per finding.
+* Quartz keeps a process-wide static log provider; hosts created repeatedly in one process (tests) must reset it
+  (`LogContext.SetCurrentLogProvider`).
+* Agent tool manifest format and extensibility: [docs/TOOLS.md](docs/TOOLS.md). Additional placeholder `{ports}` (nmap groups hosts by
+  identical port sets so it never scans endpoints outside the job).
+
+Known limitations (MVP): JWTs stay valid until expiry after user deactivation; forwarded headers not configured (audit IP = proxy);
+job rate fixed at lease time; PortGone does not know the exact port list of the previous ScanPorts step; HTTP change detection ignores
+body hashes; UDP endpoints not mapped to nmap `-sU`; Quartz uses an in-memory store (single active scheduler node — DB uniqueness on
+`(scheduleId, fireTime)` prevents duplicate runs); visual workflow editor and topology map are prepared as extension points only.
