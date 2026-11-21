@@ -76,8 +76,16 @@ public sealed class JobQueue(
             var performance = await Db.Performance.AsNoTracking()
                 .Select(p => new PerformanceSample(p.AgentId, p.InterfaceName, p.ToolId, p.AvgTargetsPerSecond)).ToListAsync(ct);
 
+            var runIds = candidates.Select(c => c.ScanRunId).Distinct().ToList();
+            var pinned = (await Db.Jobs.AsNoTracking()
+                    .Where(j => j.AgentId == agentId && j.InterfaceName != null && runIds.Contains(j.ScanRunId) && j.StartedAt != null)
+                    .Select(j => new { j.ScanRunId, j.NetworkId, j.InterfaceName, j.StartedAt })
+                    .ToListAsync(ct))
+                .GroupBy(j => (j.ScanRunId, j.NetworkId))
+                .ToDictionary(g => g.Key, g => g.OrderBy(j => j.StartedAt).First().InterfaceName!);
+
             var decisions = ClaimSelector.Select(agent, AgentReach.Build(agent, options.AllowDefaultRoute),
-                candidates.Select(ToCandidate).ToList(), running, limits, performance, options, request.Interfaces, maxJobs, now);
+                candidates.Select(ToCandidate).ToList(), running, limits, performance, options, request.Interfaces, maxJobs, now, pinned);
 
             var byId = candidates.ToDictionary(c => c.Id);
             foreach (var decision in decisions)

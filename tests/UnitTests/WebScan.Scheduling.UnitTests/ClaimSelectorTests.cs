@@ -14,16 +14,17 @@ public sealed class ClaimSelectorTests
     private static readonly ScanLimits Limits = new() { MaxConcurrentJobsPerInterface = 4, MaxConcurrentJobsPerZone = 100, MaxConcurrentJobsPerSubnet = 100, MaxRatePerSecondGlobal = 100_000 };
 
     private static ClaimCandidate Candidate(string target = "10.0.1.0/24", int priority = 50, int ageMinutes = 0, string step = "s", string? lastAgent = null,
-        int rate = 500, int stepConcurrency = 50, string zone = "dc1", string? subnet = "10.0.0.0/16") =>
-        new(Guid.NewGuid(), Run, step, priority, Now.AddMinutes(-ageMinutes), new JobRequirement(zone, Network, ToolCapabilities.PortScan, null, [target]),
+        int rate = 500, int stepConcurrency = 50, string zone = "dc1", string? subnet = "10.0.0.0/16", Guid? network = null) =>
+        new(Guid.NewGuid(), Run, step, priority, Now.AddMinutes(-ageMinutes), new JobRequirement(zone, network ?? Network, ToolCapabilities.PortScan, null, [target]),
             subnet, rate, stepConcurrency, lastAgent);
 
     private static RunningJob Running(string agent = "other", string nic = "eth0", string zone = "dc1", string? subnet = "10.0.0.0/16", string step = "s", int rate = 500) =>
         new(agent, nic, zone, subnet, Run, step, rate);
 
     private static IReadOnlyList<ClaimDecision> Select(AgentSnapshot agent, IReadOnlyList<ClaimCandidate> candidates, IReadOnlyCollection<RunningJob>? running = null,
-        ScanLimits? limits = null, IReadOnlyCollection<PerformanceSample>? performance = null, int maxJobs = 10, IReadOnlyCollection<string>? interfaces = null) =>
-        ClaimSelector.Select(agent, AgentReach.Build(agent, true), candidates, running ?? [], limits ?? Limits, performance ?? [], Options, interfaces, maxJobs, Now);
+        ScanLimits? limits = null, IReadOnlyCollection<PerformanceSample>? performance = null, int maxJobs = 10, IReadOnlyCollection<string>? interfaces = null,
+        IReadOnlyDictionary<(Guid, Guid), string>? pinned = null) =>
+        ClaimSelector.Select(agent, AgentReach.Build(agent, true), candidates, running ?? [], limits ?? Limits, performance ?? [], Options, interfaces, maxJobs, Now, pinned);
 
     private static AgentSnapshot TwoNics(int maxJobs = 10, int maxRate = 10_000) =>
         Agents.Create("a1", ["dc1"], new() { ["eth0"] = ["10.0.0.5/16"], ["eth1"] = ["10.0.0.6/16"] }, maxJobs: maxJobs, maxRate: maxRate);
@@ -39,11 +40,40 @@ public sealed class ClaimSelectorTests
     [Fact]
     public void Interface_cap_spills_over_to_another_interface_and_both_run_in_parallel()
     {
+        // Different networks of the run may use different interfaces of the same agent in parallel.
         var limits = Limits with { MaxConcurrentJobsPerInterface = 2 };
-        var decisions = Select(TwoNics(), Enumerable.Range(0, 6).Select(_ => Candidate()).ToList(), limits: limits);
+        var networks = Enumerable.Range(0, 6).Select(_ => Guid.NewGuid()).ToList();
+        var decisions = Select(TwoNics(), networks.Select(n => Candidate(network: n)).ToList(), limits: limits);
         Assert.Equal(4, decisions.Count);
         Assert.Equal(2, decisions.Count(d => d.InterfaceName == "eth0"));
         Assert.Equal(2, decisions.Count(d => d.InterfaceName == "eth1"));
+    }
+
+    [Fact]
+    public void One_interface_per_run_and_network_across_jobs_and_claims()
+    {
+        var limits = Limits with { MaxConcurrentJobsPerInterface = 2 };
+        var first = Select(TwoNics(), Enumerable.Range(0, 4).Select(_ => Candidate()).ToList(), limits: limits);
+        Assert.Equal(2, first.Count); // the pinned interface is full: remaining jobs wait instead of switching perspective
+        Assert.Single(first.Select(d => d.InterfaceName).Distinct());
+
+        // A later claim (e.g. the next workflow step) honours the interface already used for this run/network,
+        // even when the other interface looks better (free capacity, measured throughput).
+        var pinned = new Dictionary<(Guid, Guid), string> { [(Run, Network)] = "eth1" };
+        var performance = new[] { new PerformanceSample("a1", "eth0", "naabu", 1000), new PerformanceSample("a1", "eth1", "naabu", 1) };
+        var later = Select(TwoNics(), [Candidate(step: "ports"), Candidate(step: "ports")], [Running(agent: "a1", nic: "eth1")],
+            limits: Limits, performance: performance, pinned: pinned);
+        Assert.All(later, d => Assert.Equal("eth1", d.InterfaceName));
+        Assert.Equal(2, later.Count);
+    }
+
+    [Fact]
+    public void Pin_is_ignored_when_the_pinned_interface_cannot_reach_the_targets()
+    {
+        var agent = Agents.Create("a1", ["dc1"], new() { ["eth0"] = ["10.0.0.5/16"], ["eth1"] = ["10.9.0.5/16"] });
+        var pinned = new Dictionary<(Guid, Guid), string> { [(Run, Network)] = "eth1" };
+        var decision = Assert.Single(Select(agent, [Candidate(target: "10.0.1.0/24")], pinned: pinned));
+        Assert.Equal("eth0", decision.InterfaceName);
     }
 
     [Fact]

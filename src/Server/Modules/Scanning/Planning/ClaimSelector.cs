@@ -57,8 +57,15 @@ public static class ClaimSelector
     public static IReadOnlyList<ClaimDecision> Select(
         AgentSnapshot agent, AgentReach reach, IReadOnlyList<ClaimCandidate> candidates, IReadOnlyCollection<RunningJob> running,
         ScanLimits limits, IReadOnlyCollection<PerformanceSample> performance, PlannerOptions options,
-        IReadOnlyCollection<string>? allowedInterfaces, int maxJobs, DateTimeOffset now)
+        IReadOnlyCollection<string>? allowedInterfaces, int maxJobs, DateTimeOffset now,
+        IReadOnlyDictionary<(Guid ScanRunId, Guid NetworkId), string>? pinnedInterfaces = null)
     {
+        // One perspective per run and network: once this agent scanned part of a run's network through an interface,
+        // every later job of that run/network (all workflow steps) uses the same interface, so results stay comparable.
+        var pins = pinnedInterfaces is null
+            ? new Dictionary<(Guid, Guid), string>()
+            : new Dictionary<(Guid, Guid), string>(pinnedInterfaces);
+
         var byAgent = running.Count(r => r.AgentId == agent.AgentId);
         var byInterface = running.Where(r => r.AgentId == agent.AgentId).GroupBy(r => r.InterfaceName).ToDictionary(g => g.Key, g => g.Count());
         var byZone = running.GroupBy(r => r.Zone, StringComparer.OrdinalIgnoreCase).ToDictionary(g => g.Key, g => g.Count(), StringComparer.OrdinalIgnoreCase);
@@ -103,9 +110,15 @@ public static class ClaimSelector
             if (byZone.GetValueOrDefault(c.Requirement.Zone) >= limits.MaxConcurrentJobsPerZone) continue;
             if (c.SubnetKey is not null && bySubnet.GetValueOrDefault(c.SubnetKey) >= limits.MaxConcurrentJobsPerSubnet) continue;
 
-            var option = opts.Where(o => byInterface.GetValueOrDefault(o.InterfaceName) < limits.MaxConcurrentJobsPerInterface)
+            var pinKey = (c.ScanRunId, c.Requirement.NetworkId);
+            var pinnedOpts = pins.TryGetValue(pinKey, out var pinned) && opts.Any(o => o.InterfaceName == pinned)
+                ? opts.Where(o => o.InterfaceName == pinned).ToList()
+                : opts;
+            // A pinned interface at its cap means "wait", never "switch perspective".
+            var option = pinnedOpts.Where(o => byInterface.GetValueOrDefault(o.InterfaceName) < limits.MaxConcurrentJobsPerInterface)
                 .OrderByDescending(o => PerspectiveScore(c, o)).ThenBy(o => o.InterfaceName, StringComparer.Ordinal).FirstOrDefault();
             if (option is null) continue;
+            pins.TryAdd(pinKey, option.InterfaceName);
 
             // The global budget is shared: a new job gets at most an equal share and never more than what is left.
             // shortcut: rates are fixed at lease time (the job heartbeat contract cannot lower them later); rebalance on heartbeat if the contract grows a rate field.
