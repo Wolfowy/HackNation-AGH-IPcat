@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE nmaprun>
+<?xml-stylesheet href="file:///usr/bin/../share/nmap/nmap.xsl" type="text/xsl"?>
+<!-- Nmap 7.93 scan initiated Sat Nov 21 18:56:55 2026 as: nmap -sn -n -T4 -&#45;max-rate 100 -oX /work/nmap-host-discovery.xml -iL /work/hd-input.txt -PS22,80,443,3389,8080 -&#45;max-retries 1 -->
+<nmaprun scanner="nmap" args="nmap -sn -n -T4 -&#45;max-rate 100 -oX /work/nmap-host-discovery.xml -iL /work/hd-input.txt -PS22,80,443,3389,8080 -&#45;max-retries 1" start="1795287415" startstr="Sat Nov 21 18:56:55 2026" version="7.93" xmloutputversion="1.05">
+<verbose level="0"/>
+<debugging level="0"/>
+<host><status state="up" reason="conn-refused" reason_ttl="0"/>
+<address addr="172.30.0.1" addrtype="ipv4"/>
+<hostnames>
+</hostnames>
+<times srtt="382" rttvar="5000" to="100000"/>
+</host>
+<host><status state="up" reason="conn-refused" reason_ttl="0"/>
+<address addr="172.30.0.2" addrtype="ipv4"/>
+<hostnames>
+</hostnames>
+<times srtt="177" rttvar="5000" to="100000"/>
+</host>
+<host><status state="up" reason="conn-refused" reason_ttl="0"/>
+<address addr="172.30.0.10" addrtype="ipv4"/>
+<hostnames>
+</hostnames>
+<times srtt="466" rttvar="5000" to="100000"/>
+</host>
+<host><status state="up" reason="conn-refused" reason_ttl="0"/>
+<address addr="172.30.0.11" addrtype="ipv4"/>
+<hostnames>
+</hostnames>
+<times srtt="630" rttvar="5000" to="100000"/>
+</host>
+<host><status state="up" reason="conn-refused" reason_ttl="0"/>
+<address addr="172.30.0.12" addrtype="ipv4"/>
+<hostnames>
+</hostnames>
+<times srtt="1209" rttvar="5000" to="100000"/>
+</host>
+<host><status state="up" reason="conn-refused" reason_ttl="0"/>
+<address addr="172.30.0.13" addrtype="ipv4"/>
+<hostnames>
+</hostnames>
+<times srtt="206" rttvar="5000" to="100000"/>
+</host>
+<host><status state="up" reason="conn-refused" reason_ttl="0"/>
+<address addr="172.30.0.14" addrtype="ipv4"/>
+<hostnames>
+</hostnames>
+<times srtt="258" rttvar="3756" to="100000"/>
+</host>
+<runstats><finished time="1795287417" timestr="Sat Nov 21 18:56:57 2026" summary="Nmap done at Sat Nov 21 18:56:57 2026; 16 IP addresses (7 hosts up) scanned in 1.64 seconds" elapsed="1.64" exit="success"/><hosts up="7" down="9" total="16"/>
+</runstats>
+</nmaprun>

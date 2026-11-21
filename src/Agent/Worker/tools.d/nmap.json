@@ -1,0 +1,56 @@
+// Nmap: host discovery, port scan, service/version detection and TLS certificates (ssl-cert NSE script).
+// Flags are unprivileged-friendly (connect scans, TCP ping); "scanType": "syn" requires raw-socket capabilities.
+{
+  "id": "nmap",
+  "displayName": "Nmap",
+  "executable": "nmap",
+  "versionArgs": ["--version"],
+  "versionRegex": "Nmap version (?<version>\\d+\\.\\d+(?:\\.\\d+)?)",
+  "maxConcurrency": 2,
+  "defaultTimeoutSeconds": 3600,
+  "capabilities": {
+    "host-discovery": {
+      "parser": "nmap-xml",
+      "input": { "mode": "file", "format": "hosts" },
+      "output": { "mode": "file" },
+      "arguments": ["-sn", "-n", "-T4", "--max-rate", "{rate}", "-oX", "{output}", "-iL", "{input}"],
+      "parameterArguments": {
+        // TCP ping on probePorts is always used; "method" adds further probe types.
+        "probePorts": ["-PS{value}"],
+        "method": { "default": [], "tcp-syn": [], "icmp": ["-PE"], "tcp-ack": ["-PA80,443"], "arp": ["-PR"], "none": ["-Pn"] },
+        "retries": ["--max-retries", "{value}"]
+      },
+      "interfaceArguments": ["-e", "{interface}"]
+    },
+    "port-scan": {
+      "parser": "nmap-xml",
+      "input": { "mode": "file", "format": "hosts" },
+      "output": { "mode": "file" },
+      "arguments": ["-n", "-Pn", "-T4", "--open", "--max-rate", "{rate}", "-oX", "{output}", "-iL", "{input}"],
+      "parameterArguments": {
+        "ports": { "top-*": ["--top-ports", "{value}"], "*": ["-p", "{value}"] },
+        "scanType": { "connect": ["-sT"], "syn": ["-sS", "--privileged"] },
+        "retries": ["--max-retries", "{value}"]
+      },
+      "interfaceArguments": ["-e", "{interface}"]
+    },
+    "service-detection": {
+      "parser": "nmap-xml",
+      "input": { "mode": "file", "format": "hosts" },
+      "output": { "mode": "file" },
+      "arguments": ["-n", "-Pn", "-sT", "-sV", "-T4", "--open", "--max-rate", "{rate}", "-p", "{ports}", "-oX", "{output}", "-iL", "{input}"],
+      "parameterArguments": {
+        "versionIntensity": ["--version-intensity", "{value}"],
+        "grabBanner": { "true": ["--script", "banner"], "false": [] }
+      },
+      "interfaceArguments": ["-e", "{interface}"]
+    },
+    "tls-probe": {
+      "parser": "nmap-xml",
+      "input": { "mode": "file", "format": "hosts" },
+      "output": { "mode": "file" },
+      "arguments": ["-n", "-Pn", "-sT", "-sV", "--version-light", "-T4", "--open", "--script", "ssl-cert", "--max-rate", "{rate}", "-p", "{ports}", "-oX", "{output}", "-iL", "{input}"],
+      "interfaceArguments": ["-e", "{interface}"]
+    }
+  }
+}

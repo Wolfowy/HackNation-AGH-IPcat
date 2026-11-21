@@ -1,0 +1,28 @@
+// httpx (ProjectDiscovery): HTTP probing, JSONL output. Response headers are masked by the parser; bodies are never stored (hash only).
+{
+  "id": "httpx",
+  "displayName": "httpx",
+  "executable": "httpx",
+  "versionArgs": ["-version"],
+  "versionRegex": "[Vv]ersion:?\\s*v?(?<version>\\d+\\.\\d+\\.\\d+)",
+  "maxConcurrency": 2,
+  "defaultTimeoutSeconds": 3600,
+  "capabilities": {
+    "http-probe": {
+      "parser": "httpx-jsonl",
+      "input": { "mode": "file", "format": "urls" },
+      "output": { "mode": "file" },
+      "arguments": ["-l", "{input}", "-json", "-o", "{output}", "-silent", "-no-color", "-disable-update-check",
+                    "-rate-limit", "{rate}", "-threads", "{parallelism}", "-timeout", "10",
+                    "-status-code", "-title", "-web-server", "-content-type", "-content-length", "-ip",
+                    "-hash", "sha256", "-include-response-header", "-tls-grab"],
+      "parameterArguments": {
+        "followRedirects": { "true": ["-follow-redirects"], "false": [] },
+        "maxRedirects": ["-max-redirects", "{value}"],
+        "techDetect": { "true": ["-tech-detect"], "false": [] },
+        "faviconHash": { "true": ["-favicon"], "false": [] },
+        "paths": ["-path", "{value}"]
+      }
+    }
+  }
+}

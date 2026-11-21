@@ -10,8 +10,22 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../../../src/Agent/Core/WebScan.Agent.Core.csproj" />
+    <!-- Built but not referenced: loaded at runtime from bin/plugins through the plugin loader. -->
+    <ProjectReference Include="TestPlugin/WebScan.Agent.TestPlugin.csproj" ReferenceOutputAssembly="false" />
   </ItemGroup>
   <ItemGroup>
     <Using Include="Xunit" />
+    <Compile Remove="TestPlugin/**" />
+    <None Remove="TestPlugin/**" />
+    <EmbeddedResource Remove="TestPlugin/**" />
+    <!-- Real tool output captured from the TestLab (tests/TestLab). -->
+    <None Include="Fixtures/**" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../../src/Agent/Worker/tools.d/*.json" Link="tools.d/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
+  <Target Name="CopyTestPlugin" AfterTargets="Build">
+    <MSBuild Projects="TestPlugin/WebScan.Agent.TestPlugin.csproj" Targets="GetTargetPath" Properties="Configuration=$(Configuration)">
+      <Output TaskParameter="TargetOutputs" ItemName="TestPluginAssembly" />
+    </MSBuild>
+    <Copy SourceFiles="@(TestPluginAssembly)" DestinationFolder="$(OutDir)plugins" SkipUnchangedFiles="true" />
+  </Target>
 </Project>

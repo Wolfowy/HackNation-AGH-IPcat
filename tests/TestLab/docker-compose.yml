@@ -1,0 +1,59 @@
+# WebScan TestLab: deliberately simple targets on an isolated bridge network for AUTHORIZED LOCAL TESTING ONLY.
+#   docker compose -f tests/TestLab/docker-compose.yml up -d --build
+#   docker compose -f tests/TestLab/docker-compose.yml --profile change up -d      # adds 172.30.0.15:8081
+#   docker compose -f tests/TestLab/docker-compose.yml --profile change down
+name: webscan-testlab
+
+networks:
+  lab:
+    name: webscan-lab
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
+
+services:
+  nginx:
+    image: nginx:1.27-alpine
+    networks:
+      lab:
+        ipv4_address: 172.30.0.10
+
+  apache:
+    image: httpd:2.4-alpine
+    networks:
+      lab:
+        ipv4_address: 172.30.0.11
+
+  webapp:
+    build: ./apps/webapp
+    image: webscan-testlab-webapp:dev
+    networks:
+      lab:
+        ipv4_address: 172.30.0.12
+
+  admin-panel:
+    image: nginx:1.27-alpine
+    volumes:
+      - ./apps/admin-panel/index.html:/usr/share/nginx/html/index.html:ro
+      - ./apps/admin-panel/favicon.png:/usr/share/nginx/html/favicon.ico:ro
+    networks:
+      lab:
+        ipv4_address: 172.30.0.13
+
+  banner:
+    image: alpine:3
+    command: ["nc", "-lk", "-p", "2323", "-e", "echo", "WEBSCAN-TESTLAB-BANNER v1.0"]
+    networks:
+      lab:
+        ipv4_address: 172.30.0.14
+
+  change:
+    image: nginx:1.27-alpine
+    profiles: ["change"]
+    volumes:
+      - ./apps/change/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./apps/change/index.html:/usr/share/nginx/html/index.html:ro
+    networks:
+      lab:
+        ipv4_address: 172.30.0.15

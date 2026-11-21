@@ -9,4 +9,8 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Hosting" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- Shipped tool manifests (Agent:ToolManifestPaths defaults to <app>/tools.d). -->
+    <None Include="tools.d\*.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

@@ -1,0 +1,28 @@
+// nuclei (ProjectDiscovery): runs ONLY the approved signature templates delivered with the job ({templatesDir}).
+// No template downloads, no update checks, no interactsh (out-of-band) callbacks.
+{
+  "id": "nuclei",
+  "displayName": "Nuclei",
+  "executable": "nuclei",
+  "versionArgs": ["-version", "-disable-update-check"],
+  "versionRegex": "[Vv]ersion:?\\s*v?(?<version>\\d+\\.\\d+\\.\\d+)",
+  "maxConcurrency": 1,
+  "defaultTimeoutSeconds": 3600,
+  "environment": {
+    "DISABLE_NUCLEI_TEMPLATES_PUBLIC_DOWNLOAD": "true"
+  },
+  "capabilities": {
+    "signature-scan": {
+      "parser": "nuclei-jsonl",
+      "input": { "mode": "file", "format": "urls" },
+      "output": { "mode": "file" },
+      "arguments": ["-l", "{input}", "-t", "{templatesDir}", "-jsonl", "-o", "{output}", "-silent", "-no-color",
+                    "-disable-update-check", "-no-interactsh", "-rate-limit", "{rate}", "-concurrency", "{parallelism}", "-timeout", "10"],
+      "parameterArguments": {
+        "severities": ["-severity", "{value}"],
+        "signatureTags": ["-tags", "{value}"],
+        "signatureIds": ["-template-id", "{value}"]
+      }
+    }
+  }
+}
