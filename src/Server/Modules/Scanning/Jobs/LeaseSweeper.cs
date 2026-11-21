@@ -4,13 +4,15 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using WebScan.Server.Kernel.Messaging;
+using WebScan.Server.Kernel.Ports;
 using WebScan.Server.Modules.Scanning.Persistence;
 using WebScan.Server.Modules.Scanning.Planning;
 
 namespace WebScan.Server.Modules.Scanning.Jobs;
 
 /// <summary>Releases lost leases (expired, timed out, agent offline) so other perspectives can take the jobs.</summary>
-public sealed class LeaseSweeper(IServiceScopeFactory scopes, IOptions<ScanningOptions> options, TimeProvider time, ILogger<LeaseSweeper> logger)
+public sealed class LeaseSweeper(
+    IServiceScopeFactory scopes, IOptions<ScanningOptions> options, IOptions<PlannerOptions> plannerOptions, TimeProvider time, ILogger<LeaseSweeper> logger)
 {
     private long _queuedJobs;
 
@@ -36,7 +38,53 @@ public sealed class LeaseSweeper(IServiceScopeFactory scopes, IOptions<ScanningO
         var released = 0;
         foreach (var (id, leaseId, timedOut) in lost)
             if (await ReleaseAsync(id, leaseId, timedOut ? "Job exceeded its timeout" : "Lease expired (no job heartbeat)", timedOut, ct)) released++;
+        await CancelUnassignableAsync(ct);
         return released;
+    }
+
+    /// <summary>
+    /// Jobs queued longer than <see cref="ScanLimits.UnassignedJobTimeoutSeconds"/> with no online agent eligible for them
+    /// (zone, network restriction, approved tool, reachability) are cancelled so the scan finishes with the agents available.
+    /// Jobs that only wait for a busy eligible agent keep waiting.
+    /// </summary>
+    public async Task<int> CancelUnassignableAsync(CancellationToken ct = default)
+    {
+        List<(Guid Id, string Reason)> doomed = [];
+        await using (var scope = scopes.CreateAsyncScope())
+        {
+            var limits = await scope.ServiceProvider.GetRequiredService<ScanLimitsStore>().GetAsync(ct);
+            if (limits.UnassignedJobTimeoutSeconds <= 0) return 0;
+            var cutoff = time.GetUtcNow().AddSeconds(-limits.UnassignedJobTimeoutSeconds);
+            var db = scope.ServiceProvider.GetRequiredService<ScanningDbContext>();
+            // Wait period restarts when a job was requeued after running (StartedAt).
+            var stale = await db.Jobs.AsNoTracking()
+                .Where(j => j.Status == JobStatus.Queued && !j.CancelRequested && (j.StartedAt ?? j.CreatedAt) < cutoff)
+                .ToListAsync(ct);
+            if (stale.Count == 0) return 0;
+
+            var planner = plannerOptions.Value;
+            var agents = scope.ServiceProvider.GetRequiredService<IAgentDirectory>();
+            var online = (await agents.GetActiveAgentsAsync(ct)).Where(a => a.IsOnline)
+                .Select(a => (Agent: a, Reach: AgentReach.Build(a, planner.AllowDefaultRoute))).ToList();
+            var minutes = limits.UnassignedJobTimeoutSeconds / 60.0;
+            foreach (var job in stale)
+            {
+                var requirement = JobQueue.RequirementOf(job);
+                var results = online.Select(o => Eligibility.Evaluate(o.Agent, o.Reach, requirement, planner)).ToList();
+                if (results.Any(r => r.IsEligible)) continue;
+                var why = results.Select(r => r.Reason).FirstOrDefault(r => r is not null) ?? "no online agent";
+                doomed.Add((job.Id, $"No eligible agent within {minutes:0.#} min ({why}); targets skipped and reported as not covered"));
+            }
+        }
+
+        var cancelled = 0;
+        foreach (var (id, reason) in doomed)
+        {
+            await using var scope = scopes.CreateAsyncScope(); // one scope per transition (outbox rule)
+            if (await scope.ServiceProvider.GetRequiredService<JobQueue>().CancelUnassignableAsync(id, reason, ct)) cancelled++;
+        }
+        if (cancelled > 0) logger.LogWarning("Cancelled {Count} queued jobs that no online agent can take", cancelled);
+        return cancelled;
     }
 
     /// <summary>Immediately releases every lease of an agent that went offline.</summary>

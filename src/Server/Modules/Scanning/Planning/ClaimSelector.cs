@@ -14,6 +14,12 @@ public sealed record ScanLimits
     public int SubnetPrefixLength { get; init; } = 16;
     public int MaxRatePerSecondGlobal { get; init; } = 50_000;
 
+    /// <summary>
+    /// How long a queued job may wait while no online, authorized agent can reach its targets. After that it is cancelled
+    /// (targets reported as not covered) and the scan continues with the agents it has. 0 = wait forever.
+    /// </summary>
+    public int UnassignedJobTimeoutSeconds { get; init; } = 900;
+
     /// <summary>Validation errors keyed by camelCase field name (empty = valid).</summary>
     public Dictionary<string, string[]> Validate()
     {
@@ -27,6 +33,7 @@ public sealed record ScanLimits
         Check(MaxConcurrentJobsPerSubnet, 1, 100_000, "maxConcurrentJobsPerSubnet");
         Check(SubnetPrefixLength, 8, 32, "subnetPrefixLength");
         Check(MaxRatePerSecondGlobal, 1, 100_000_000, "maxRatePerSecondGlobal");
+        if (UnassignedJobTimeoutSeconds != 0) Check(UnassignedJobTimeoutSeconds, 60, 7 * 24 * 3600, "unassignedJobTimeoutSeconds");
         return errors;
     }
 }

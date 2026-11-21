@@ -133,6 +133,10 @@ Tools are **data, not code paths**. Nothing on the server switches on tool names
 * Lease: `leaseId`, `expiresAt`, `attempt`. Job heartbeat extends; expiry or `AgentWentOffline` → back to queue (attempt+1) until
   `maxAttempts` → Failed. Calls with a stale lease → 409 (no duplicate results). Results idempotent by `batchId`.
 * Execution metrics are recorded per job (duration, targets/s) and feed the weights.
+* Unassignable jobs: a queued job that no **online, authorized** agent can take (zone, network restriction, approved tool,
+  reachability) for `unassignedJobTimeoutSeconds` (scan limits, default 900 s, 0 = wait forever) is cancelled by the sweeper.
+  Its targets count as not covered: the step continues with the other jobs, the run ends `PartiallyCompleted` (or the step fails
+  if none of its jobs could run), and nothing is marked gone. Jobs waiting only for a busy eligible agent keep waiting.
 
 ## 9. Workflow engine (stream C)
 

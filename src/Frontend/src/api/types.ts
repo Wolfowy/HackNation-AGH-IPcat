@@ -502,6 +502,8 @@ export interface ScanLimits {
   maxConcurrentJobsPerSubnet: number
   subnetPrefixLength: number
   maxRatePerSecondGlobal: number
+  /** 0 = wait forever for an eligible agent. */
+  unassignedJobTimeoutSeconds: number
 }
 
 export interface PlannerStats {

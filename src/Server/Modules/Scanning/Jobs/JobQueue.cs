@@ -303,6 +303,24 @@ public sealed class JobQueue(
         return true;
     }
 
+    /// <summary>
+    /// Sweeper: cancels a queued job nobody can take (no online agent eligible after the wait period). Its targets count as
+    /// not covered, so the run ends PartiallyCompleted and nothing is marked gone because of it.
+    /// </summary>
+    public async Task<bool> CancelUnassignableAsync(Guid jobId, string reason, CancellationToken ct = default)
+    {
+        var job = await Db.Jobs.FirstOrDefaultAsync(j => j.Id == jobId, ct);
+        if (job is null || job.Status != JobStatus.Queued) return false;
+        job.Error = Truncate(reason, 2000);
+        MarkTerminal(job, JobStatus.Cancelled, time.GetUtcNow());
+        if (!await SaveTransitionAsync(job, ct)) return false;
+        await events.PublishAsync(time, ScanExecutionEventType.JobCancelled, job.ScanRunId, reason, job.WorkflowRunId, job.StepId, job.Id, ct: ct);
+        return true;
+    }
+
+    /// <summary>Requirement used for eligibility checks outside the claim path (sweeper).</summary>
+    internal static JobRequirement RequirementOf(ScanJobRecord job) => ToCandidate(job).Requirement;
+
     /// <summary>UI cancel: queued jobs end immediately, leased jobs get <c>CancelRequested</c> (agent stops and reports).</summary>
     public async Task<JobCallResult<bool>> CancelAsync(Guid jobId, CancellationToken ct = default)
     {

@@ -67,6 +67,13 @@ const LIMIT_FIELDS: { name: keyof ScanLimits; label: string; min: number; max: n
   { name: 'maxConcurrentJobsPerSubnet', label: 'Max concurrent jobs per subnet', min: 1, max: 100_000 },
   { name: 'subnetPrefixLength', label: 'Subnet prefix length', min: 8, max: 32 },
   { name: 'maxRatePerSecondGlobal', label: 'Global max rate (pps)', min: 1, max: 100_000_000 },
+  {
+    name: 'unassignedJobTimeoutSeconds',
+    label: 'Wait for an eligible agent (s)',
+    min: 0,
+    max: 604_800,
+    hint: 'Queued jobs no online agent can reach are skipped after this time (not covered); the scan continues. 0 = wait forever, otherwise ≥ 60.',
+  },
 ]
 
 function ScanLimitsForm({ limits }: { limits: ScanLimits }) {

@@ -79,6 +79,31 @@ public sealed class JobQueueTests(TestHost host) : DbTestBase(host)
     }
 
     [Fact]
+    public async Task Jobs_no_online_agent_can_take_are_cancelled_after_the_wait_period_busy_ones_keep_waiting()
+    {
+        var reachable = Host.Scope.Add(Zone, ["10.237.0.0/24"]);
+        var unreachable = Host.Scope.Add(Zone, ["10.238.0.0/24"]);
+        var (_, waiting) = await QueueJobsAsync(reachable);
+        var (_, orphaned) = await QueueJobsAsync(unreachable);
+        Host.Agents.Set(Agents.Simple("busy-" + Zone, Zone, "10.237.0.0/16")); // eligible for 10.237/24 only, never claims here
+
+        Host.Time.Advance(TimeSpan.FromSeconds(899));
+        Assert.Equal(0, await Host.WithScopeAsync(sp => sp.GetRequiredService<LeaseSweeper>().CancelUnassignableAsync()));
+
+        Host.Time.Advance(TimeSpan.FromSeconds(2));
+        await Host.WithScopeAsync(sp => sp.GetRequiredService<LeaseSweeper>().SweepOnceAsync());
+
+        var jobs = await Host.DbAsync(db => db.Jobs.AsNoTracking()
+            .Where(j => j.TargetSummary.StartsWith("10.237.") || j.TargetSummary.StartsWith("10.238.")).ToListAsync());
+        var orphanJob = Assert.Single(jobs, j => j.TargetSummary.StartsWith("10.238."));
+        Assert.Equal(JobStatus.Cancelled, orphanJob.Status);
+        Assert.Contains("No eligible agent", orphanJob.Error);
+        Assert.Equal(JobStatus.Queued, Assert.Single(jobs, j => j.TargetSummary.StartsWith("10.237.")).Status);
+        Assert.Equal(1, waiting.JobsCreated);
+        Assert.Equal(1, orphaned.JobsCreated);
+    }
+
+    [Fact]
     public async Task Lease_expiry_after_the_last_attempt_fails_the_job()
     {
         var net = Host.Scope.Add(Zone, ["10.43.0.0/24"]);

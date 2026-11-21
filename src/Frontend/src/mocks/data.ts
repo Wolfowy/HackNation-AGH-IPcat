@@ -825,6 +825,7 @@ ${extra}    matchers:
       maxConcurrentJobsPerSubnet: 2,
       subnetPrefixLength: 16,
       maxRatePerSecondGlobal: 20000,
+      unassignedJobTimeoutSeconds: 900,
     },
     audit,
     defectDojo: {

@@ -54,6 +54,7 @@ const SCAN_LIMIT_RANGES: Record<keyof MockDb['scanLimits'], [number, number]> = 
   maxConcurrentJobsPerSubnet: [1, 100_000],
   subnetPrefixLength: [8, 32],
   maxRatePerSecondGlobal: [1, 100_000_000],
+  unassignedJobTimeoutSeconds: [0, 604_800],
 }
 
 const publicUser = ({ password: _password, ...u }: MockUser): User => u
