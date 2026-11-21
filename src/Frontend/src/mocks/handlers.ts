@@ -164,6 +164,10 @@ export function validateWorkflowDefinition(def: ScanWorkflowDefinition): Validat
       if (pd.type === 'Enum' && !pd.allowedValues?.includes(value)) errors.push(`${where}.parameters.${pd.name}: must be one of ${pd.allowedValues?.join(', ')}`)
       if (pd.type === 'Boolean' && !['true', 'false'].includes(value)) errors.push(`${where}.parameters.${pd.name}: must be true or false`)
     }
+    // Same target rules as the server's WorkflowValidator.
+    if (op.plane === 'Server' && op.operation !== 'EvaluateCondition' && (step.input || step.when)) errors.push(`${where}: server step ${op.operation} has no targets (input/when are not allowed)`)
+    if ((op.inputKind === 'Endpoints' || op.operation === 'EvaluateCondition') && !step.input) errors.push(`${where}: ${op.operation} needs input.fromSteps`)
+    if (step.when && !step.input && op.plane === 'Agent') errors.push(`${where}: 'when' requires input.fromSteps`)
   }
   for (const [i, step] of (def.steps ?? []).entries())
     for (const dep of [...(step.dependsOn ?? []), ...(step.input?.fromSteps ?? [])])

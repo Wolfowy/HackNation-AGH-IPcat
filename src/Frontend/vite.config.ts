@@ -27,6 +27,7 @@ export default defineConfig({
         manualChunks: {
           react: ['react', 'react-dom', 'react-router'],
           vendor: ['@tanstack/react-query', '@microsoft/signalr', 'radix-ui', 'react-hook-form', 'sonner', 'lucide-react'],
+          graph: ['@xyflow/react', '@dagrejs/dagre'],
         },
       },
     },

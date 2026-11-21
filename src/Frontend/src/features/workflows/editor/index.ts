@@ -1,7 +1,6 @@
-// Editor boundary: pages import `WorkflowEditor` from here. Swap the implementation for a visual DAG editor
-// that satisfies `WorkflowEditorProps` without touching the pages.
-import { JsonWorkflowEditor } from './JsonWorkflowEditor'
+// Editor boundary: pages import `WorkflowEditor` from here. Default: visual node-graph editor (with a JSON tab).
+import { VisualWorkflowEditor } from './VisualWorkflowEditor'
 import type { WorkflowEditorComponent } from './types'
 
-export const WorkflowEditor: WorkflowEditorComponent = JsonWorkflowEditor
+export const WorkflowEditor: WorkflowEditorComponent = VisualWorkflowEditor
 export type { WorkflowEditorChange, WorkflowEditorProps, WorkflowEditorComponent } from './types'

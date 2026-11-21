@@ -145,6 +145,7 @@ function defaultWorkflows(): WorkflowVersion[] {
         operation: 'HttpProbe',
         dependsOn: ['services'],
         input: { fromSteps: ['services'], filter: { field: 'service.name', operator: 'In', values: ['http', 'https', 'http-proxy'] } },
+        when: { field: 'service.name', operator: 'In', values: ['http', 'https', 'http-proxy'] },
         parameters: { techDetect: 'true', paths: '/' },
       },
       {

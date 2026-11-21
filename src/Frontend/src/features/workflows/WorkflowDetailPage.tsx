@@ -60,7 +60,7 @@ export function WorkflowDetailPage() {
               <TabsTrigger value="json">JSON</TabsTrigger>
             </TabsList>
             <TabsContent value="graph">
-              <WorkflowGraph definition={wf.definition} />
+              <WorkflowGraph key={`${wf.key}@${wf.version}`} definition={wf.definition} />
             </TabsContent>
             <TabsContent value="json">
               <pre className="bg-muted max-h-[36rem] overflow-auto rounded-md p-4 font-mono text-xs" data-testid="workflow-json">
