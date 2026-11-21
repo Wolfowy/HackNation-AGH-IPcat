@@ -29,7 +29,29 @@ public sealed record TlsInfoDto(string? SubjectCommonName, string? Issuer, DateT
 public sealed record ServiceDto(
     Guid Id, Guid HostId, string Address, int Port, TransportProtocol Transport, ServiceState State, string? ServiceName, string? Product,
     string? Version, string? Banner, IReadOnlyList<string> Cpe, HttpInfoDto? Http, TlsInfoDto? Tls, IReadOnlyList<string> Technologies,
-    double? Confidence, string? ConfidenceMethod, bool TimeOfDayVariance, DateTimeOffset FirstSeenAt, DateTimeOffset LastSeenAt);
+    double? Confidence, string? ConfidenceMethod, bool TimeOfDayVariance, DateTimeOffset FirstSeenAt, DateTimeOffset LastSeenAt,
+    string? Url);
+
+/// <summary>Graph read model of <c>GET /api/topology</c>: scan perspectives → subnets → hosts (current state).</summary>
+public sealed record TopologyDto(
+    IReadOnlyList<TopologyPerspectiveDto> Perspectives, IReadOnlyList<TopologySubnetDto> Subnets, IReadOnlyList<TopologyHostDto> Hosts,
+    bool Truncated);
+
+/// <summary>Agent interface that delivered observations (zone of its observations).</summary>
+public sealed record TopologyPerspectiveDto(string AgentId, string? InterfaceName, string? Zone);
+
+/// <summary>IPv4 /24 or IPv6 /64 grouping (<c>id</c> = <c>cidr</c>; "other" for hosts known only by name).</summary>
+public sealed record TopologySubnetDto(string Id, string Cidr, string? Zone, int HostCount);
+
+public sealed record TopologyHostDto(
+    Guid Id, string Address, IReadOnlyList<string> Hostnames, HostStatus Status, bool Unstable, string Subnet, string? Zone,
+    DateTimeOffset LastSeenAt, string? MacVendor, int OpenPortCount, IReadOnlyList<TopologyServiceDto> Services, IReadOnlyList<string> Technologies,
+    IReadOnlyList<ObservedByDto> ObservedBy);
+
+public sealed record TopologyServiceDto(
+    int Port, TransportProtocol Transport, string? ServiceName, string? Product, string? Version, string? Url, bool IsWeb, bool Tls);
+
+public sealed record ObservedByDto(string AgentId, string? InterfaceName);
 
 public sealed record TechnologyDto(
     Guid Id, string Name, string? Version, string? Category, int? Port, double Confidence, string ConfidenceMethod,

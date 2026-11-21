@@ -1,5 +1,6 @@
 import { Link } from 'react-router'
 import type { Service } from '@/api/types'
+import { EndpointLink } from '@/components/EndpointLink'
 import { EmptyState } from '@/components/feedback'
 import { Chips } from '@/components/page'
 import { Badge } from '@/components/ui/badge'
@@ -13,7 +14,7 @@ export function ServicesTable({ services, showHost = true }: { services: Service
       <TableHeader>
         <TableRow>
           {showHost && <TableHead>Host</TableHead>}
-          <TableHead>Port</TableHead>
+          <TableHead>Endpoint</TableHead>
           <TableHead>State</TableHead>
           <TableHead>Service</TableHead>
           <TableHead>HTTP</TableHead>
@@ -32,8 +33,9 @@ export function ServicesTable({ services, showHost = true }: { services: Service
                 </Link>
               </TableCell>
             )}
-            <TableCell className="font-mono">
-              {s.port}/{s.transport.toLowerCase()}
+            <TableCell className="font-mono whitespace-nowrap">
+              <EndpointLink address={s.address} port={s.port} url={s.url} serviceName={s.serviceName} tls={!!s.tls} />
+              <span className="text-muted-foreground">/{s.transport.toLowerCase()}</span>
             </TableCell>
             <TableCell>
               <Badge variant={s.state === 'Open' ? 'success' : 'outline'}>{s.state}</Badge>

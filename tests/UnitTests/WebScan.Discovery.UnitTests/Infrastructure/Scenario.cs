@@ -39,9 +39,13 @@ public sealed class Scenario(TestApp app)
             BatchId = batchId, JobId = JobId, LeaseId = Guid.NewGuid(), Sequence = 0, CreatedAt = app.Clock.GetUtcNow(), Observations = observations,
         }));
 
+    /// <summary>Scan perspective of the next ingests.</summary>
+    public (string AgentId, string? InterfaceName, string? Zone) Perspective { get; set; } = ("agent-1", "eth0", "lab");
+
     public IngestContext Context() => new()
     {
-        ScanRunId = RunId, JobId = JobId, Operation = ScanOperation.ScanPorts, AgentId = "agent-1", InterfaceName = "eth0", Zone = "lab",
+        ScanRunId = RunId, JobId = JobId, Operation = ScanOperation.ScanPorts, AgentId = Perspective.AgentId,
+        InterfaceName = Perspective.InterfaceName, Zone = Perspective.Zone,
     };
 
     /// <summary>Ingests, persists and compares one run; returns the change events of the run.</summary>

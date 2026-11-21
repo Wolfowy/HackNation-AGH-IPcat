@@ -2,11 +2,13 @@ using System.Globalization;
 using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
 using WebScan.Contracts;
 using WebScan.Server.Kernel.Discovery;
 using WebScan.Server.Kernel.Networking;
+using WebScan.Server.Kernel.Ports;
 using WebScan.Server.Kernel.Security;
 using WebScan.Server.Modules.Discovery.Domain;
 using WebScan.Server.Modules.Discovery.Normalization;
@@ -42,7 +44,14 @@ internal static class DiscoveryEndpoints
             return q.ServicesAsync(new ServiceQuery(port, serviceName, search), p, size, ct);
         }).RequireAuthorization(Policies.CanRead);
 
-        api.MapGet("/assets/technologies", (AssetQueries q, CancellationToken ct) => q.TechnologiesAsync(ct)).RequireAuthorization(Policies.CanRead);
+        api.MapGet("/topology", async (AssetQueries q, [FromServices] INetworkScopeService scope, string? zone, Guid? networkId, string? search,
+            CancellationToken ct) =>
+        {
+            var network = networkId is { } id ? await scope.ResolveAsync([id], ct) : null;
+            return await q.TopologyAsync(new TopologyQuery(zone, search), network, ct);
+        }).RequireAuthorization(Policies.CanRead);
+
+        api.MapGet("/assets/technologies",(AssetQueries q, CancellationToken ct) => q.TechnologiesAsync(ct)).RequireAuthorization(Policies.CanRead);
 
         api.MapGet("/observations", async (AssetQueries q, Guid? hostId, Guid? scanRunId, ObservationKind? kind, int? page, int? pageSize, CancellationToken ct) =>
         {

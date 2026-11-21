@@ -62,6 +62,8 @@ export const routes: RouteObject[] = [
       { path: 'assets/hosts/:id', element: <HostDetailPage /> },
       { path: 'assets/services', element: <ServicesPage /> },
       { path: 'assets/technologies', element: <TechnologiesPage /> },
+      // Lazy: keeps React Flow and dagre out of the main bundle.
+      { path: 'assets/graph', lazy: async () => ({ Component: (await import('@/features/assets/InventoryGraphPage')).InventoryGraphPage }) },
       { path: 'changes', element: <ChangesPage /> },
       { path: 'changes/diff', element: <RunDiffPage /> },
       { path: 'findings', element: <FindingsPage /> },

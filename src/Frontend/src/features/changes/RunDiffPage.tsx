@@ -1,6 +1,7 @@
 import { useSearchParams } from 'react-router'
 import { useScanDiff, useScans } from '@/api/scans'
 import type { DiffEntry } from '@/api/types'
+import { TargetLink } from '@/components/EndpointLink'
 import { EmptyState, Loadable } from '@/components/feedback'
 import { FormField } from '@/components/form'
 import { Filters, PageHeader } from '@/components/page'
@@ -37,8 +38,7 @@ function DiffSection({ title, entries, tone }: { title: string; entries: DiffEnt
               {entries.map((e) => (
                 <TableRow key={e.key}>
                   <TableCell className="font-mono text-xs whitespace-nowrap">
-                    {e.address}
-                    {e.port !== undefined && `:${e.port}`}
+                    <TargetLink address={e.address} port={e.port} serviceName={e.kind === 'endpoint' ? e.name : undefined} />
                     {e.transport && `/${e.transport.toLowerCase()}`}
                   </TableCell>
                   <TableCell className="text-xs">{e.kind}</TableCell>

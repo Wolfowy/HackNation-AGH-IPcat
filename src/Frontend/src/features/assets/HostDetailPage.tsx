@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import { useHost, useUpdateAnnotation } from '@/api/assets'
 import type { HostDetail } from '@/api/types'
 import { useCan } from '@/auth/AuthProvider'
+import { EndpointLink } from '@/components/EndpointLink'
 import { EmptyState, Loadable } from '@/components/feedback'
 import { FormField, submitHandler } from '@/components/form'
 import { Chips, KeyValues, PageHeader, StatusBadge } from '@/components/page'
@@ -186,7 +187,7 @@ export function HostDetailPage() {
                     <TableRow>
                       <TableHead>Subject</TableHead>
                       <TableHead>Issuer</TableHead>
-                      <TableHead>Port</TableHead>
+                      <TableHead>Endpoint</TableHead>
                       <TableHead>Valid</TableHead>
                       <TableHead>SHA-256</TableHead>
                     </TableRow>
@@ -205,7 +206,13 @@ export function HostDetailPage() {
                           <TableCell className="text-sm">
                             {c.issuer ?? '—'} {c.selfSigned && <Badge variant="warning">self-signed</Badge>}
                           </TableCell>
-                          <TableCell>{c.port ?? '—'}</TableCell>
+                          <TableCell>
+                            {c.port === undefined ? (
+                              '—'
+                            ) : (
+                              <EndpointLink address={h.address} port={c.port} url={h.services.find((s) => s.port === c.port)?.url} tls />
+                            )}
+                          </TableCell>
                           <TableCell className="text-xs whitespace-nowrap">
                             {c.notBefore?.slice(0, 10)} → <span className={expired ? 'text-destructive' : undefined}>{c.notAfter?.slice(0, 10)}</span>
                           </TableCell>
@@ -220,7 +227,7 @@ export function HostDetailPage() {
               )}
             </TabsContent>
             <TabsContent value="findings">
-              <FindingsTable findings={h.findings} />
+              <FindingsTable findings={h.findings} urlFor={(port) => h.services.find((s) => s.port === port)?.url} />
             </TabsContent>
             <TabsContent value="changes">
               <ChangesTable changes={h.recentChanges} />

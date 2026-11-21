@@ -4,6 +4,7 @@ import { useAgents } from '@/api/agents'
 import { useChanges, useDashboardSummary } from '@/api/assets'
 import { useJoinActiveRuns } from '@/api/scanHub'
 import { useScans } from '@/api/scans'
+import { TargetLink } from '@/components/EndpointLink'
 import { EmptyState, Loadable } from '@/components/feedback'
 import { PageHeader, ProgressCell, StatusBadge } from '@/components/page'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -104,6 +105,7 @@ export function DashboardPage() {
                       <TableRow>
                         <TableHead>When</TableHead>
                         <TableHead>Type</TableHead>
+                        <TableHead>Target</TableHead>
                         <TableHead>Summary</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -113,6 +115,9 @@ export function DashboardPage() {
                           <TableCell className="text-muted-foreground whitespace-nowrap">{formatRelative(c.detectedAt)}</TableCell>
                           <TableCell>
                             <StatusBadge status={c.type} />
+                          </TableCell>
+                          <TableCell className="text-xs whitespace-nowrap">
+                            <TargetLink hostId={c.hostId} address={c.address} port={c.port} />
                           </TableCell>
                           <TableCell>{c.summary}</TableCell>
                         </TableRow>
