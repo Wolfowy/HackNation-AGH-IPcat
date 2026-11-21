@@ -15,6 +15,7 @@ Rozproszona platforma inwentaryzacji i obserwacji infrastruktury sieciowej (10 0
 |---|---|
 | [docs/RUNNING.md](docs/RUNNING.md) | uruchomienie (Docker Compose, dev), testy, konfiguracja |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | architektura, kontrakty, API, bezpieczeństwo, decyzje |
+| [docs/LOCAL-NETWORK.md](docs/LOCAL-NETWORK.md) | skanowanie własnej sieci lokalnej (agent natywny) |
 | [docs/TOOLS.md](docs/TOOLS.md) | rozszerzalne narzędzia: format manifestu, pluginy, zatwierdzanie |
 | [tests/TestLab/README.md](tests/TestLab/README.md) | lokalna sieć testowa (tylko autoryzowane testy) |
 

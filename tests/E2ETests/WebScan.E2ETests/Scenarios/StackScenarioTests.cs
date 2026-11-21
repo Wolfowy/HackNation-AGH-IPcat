@@ -90,15 +90,23 @@ public sealed class StackScenarioTests
         Assert.DoesNotContain(findings, f => f.Str("signatureId") == SignatureId && f.Str("address") != "172.30.0.13");
 
         // Scenario 9 with a real change: a new service appears in the lab.
+        // On a fresh database it is a NewHost/NewPort event. On reruns the host may still be known (it becomes Gone only after
+        // `missingThreshold` covered misses, by design), so the run diff against the baseline is the history-independent check.
+        var knownBefore = (await AllAsync(api, "/api/assets/hosts?search=172.30.0.15")).Any(h => h.Str("address") == "172.30.0.15");
         StartChangeService();
         try
         {
             var after = await RunScanAsync(api, lab, "stack-after-change");
-            var changes = await AllAsync(api, $"/api/changes?scanRunId={after}");
-            Assert.Contains(changes, c => c.Str("address") == "172.30.0.15" && c.Str("type") is "NewHost" or "HostReappeared");
-            Assert.Contains(changes, c => c.Str("address") == "172.30.0.15" && c.Str("type") == "NewPort" && c["port"]!.GetValue<int>() == 8081);
             var diff = await api.GetAsync($"/api/scans/{after}/diff?baseline={baseline}");
-            Assert.Contains(diff["added"]!.AsArray(), e => e!.Str("address") == "172.30.0.15");
+            Assert.Contains(diff["added"]!.AsArray(), e => e!.Str("address") == "172.30.0.15" && e["port"]?.GetValue<int>() == 8081);
+            var host = (await AllAsync(api, "/api/assets/hosts?search=172.30.0.15")).Single(h => h.Str("address") == "172.30.0.15");
+            Assert.Equal("Active", host.Str("status"));
+            if (!knownBefore)
+            {
+                var changes = await AllAsync(api, $"/api/changes?scanRunId={after}");
+                Assert.Contains(changes, c => c.Str("address") == "172.30.0.15" && c.Str("type") == "NewHost");
+                Assert.Contains(changes, c => c.Str("address") == "172.30.0.15" && c.Str("type") == "NewPort" && c["port"]!.GetValue<int>() == 8081);
+            }
         }
         finally
         {
