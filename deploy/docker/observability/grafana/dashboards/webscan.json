@@ -1,0 +1,84 @@
+{
+  "uid": "webscan-overview",
+  "title": "WebScan overview",
+  "tags": ["webscan"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "panels": [
+    {
+      "id": 1, "type": "stat", "title": "Active agents",
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "refId": "A", "expr": "sum(webscan_agents_active)" }]
+    },
+    {
+      "id": 2, "type": "stat", "title": "Queued jobs",
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "refId": "A", "expr": "sum(webscan_queue_length)" }]
+    },
+    {
+      "id": 3, "type": "stat", "title": "IPs scanned / s (5m)",
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "refId": "A", "expr": "sum(rate(webscan_ips_scanned_total[5m]))" }]
+    },
+    {
+      "id": 4, "type": "stat", "title": "Observations ingested / s (5m)",
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "refId": "A", "expr": "sum(rate(webscan_observations_ingested_total[5m]))" }]
+    },
+    {
+      "id": 5, "type": "timeseries", "title": "IPs scanned / s by agent",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 5 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [{ "refId": "A", "expr": "sum by (agent) (rate(webscan_ips_scanned_total[1m]))", "legendFormat": "{{agent}}" }]
+    },
+    {
+      "id": 6, "type": "timeseries", "title": "Job duration (p50 / p95)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 5 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "histogram_quantile(0.5, sum by (le) (rate(webscan_job_duration_seconds_bucket[5m])))", "legendFormat": "p50" },
+        { "refId": "B", "expr": "histogram_quantile(0.95, sum by (le) (rate(webscan_job_duration_seconds_bucket[5m])))", "legendFormat": "p95" }
+      ]
+    },
+    {
+      "id": 7, "type": "timeseries", "title": "Job failures and timeouts / min",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 13 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(webscan_job_failures_total[5m])) * 60", "legendFormat": "failures" },
+        { "refId": "B", "expr": "sum(rate(webscan_job_timeouts_total[5m])) * 60", "legendFormat": "timeouts" }
+      ]
+    },
+    {
+      "id": 8, "type": "timeseries", "title": "Queue length and active agents",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 13 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "refId": "A", "expr": "sum(webscan_queue_length)", "legendFormat": "queued jobs" },
+        { "refId": "B", "expr": "sum(webscan_agents_active)", "legendFormat": "active agents" }
+      ]
+    },
+    {
+      "id": 9, "type": "timeseries", "title": "Workflow step duration p95 by operation",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 21 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "targets": [{ "refId": "A", "expr": "histogram_quantile(0.95, sum by (le, operation) (rate(webscan_workflow_step_duration_seconds_bucket[5m])))", "legendFormat": "{{operation}}" }]
+    },
+    {
+      "id": 10, "type": "timeseries", "title": "HTTP requests / s by route",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 21 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "refId": "A", "expr": "sum by (http_route) (rate(http_server_request_duration_seconds_count[5m]))", "legendFormat": "{{http_route}}" }]
+    }
+  ]
+}

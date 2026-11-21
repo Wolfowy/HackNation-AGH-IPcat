@@ -1,3 +1,5 @@
+using WebScan.Server.Api;
+using WebScan.Server.Infrastructure;
 using WebScan.Server.Infrastructure.Persistence;
 using WebScan.Server.Modules.Agents;
 using WebScan.Server.Modules.Analytics;
@@ -12,8 +14,9 @@ using WebScan.Server.Modules.Workflows;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// TODO(Agent A): infrastructure (auth schemes + policies, Wolverine/RabbitMQ incl. ModuleAssemblies.All,
-// OpenTelemetry, ProblemDetails, request decompression, SignalR, Data Protection, audit, CORS, health checks).
+// Persistence, auth (JWT + policies), audit, secrets, Wolverine (handlers from ModuleAssemblies.All), OpenTelemetry,
+// ProblemDetails, request decompression, OpenAPI, SignalR JSON protocol, health checks.
+builder.AddWebScanInfrastructure([typeof(Program).Assembly, .. ModuleAssemblies.All]);
 
 builder.Services
     .AddIdentityModule(builder.Configuration)
@@ -34,6 +37,8 @@ var app = builder.Build();
 if (app.Configuration.GetValue("Database:MigrateOnStartup", true))
     await app.Services.MigrateModuleDatabasesAsync();
 
+app.UseWebScanInfrastructure();
+
 app.MapIdentityEndpoints();
 app.MapAgentsEndpoints();
 app.MapNetworksEndpoints();
@@ -44,8 +49,6 @@ app.MapSignaturesEndpoints();
 app.MapDiscoveryEndpoints();
 app.MapAnalyticsEndpoints();
 app.MapIntegrationsEndpoints();
-
-app.MapGet("/health/live", () => Results.Ok(new { status = "ok" }));
 
 app.Run();
 

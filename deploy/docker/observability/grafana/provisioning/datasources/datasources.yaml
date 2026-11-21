@@ -1,0 +1,22 @@
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+
+  # Read-only role created by deploy/docker/postgres/init-readonly-user.sh (needs GRAFANA_DB_PASSWORD).
+  - name: WebScan PostgreSQL
+    uid: webscan-postgres
+    type: grafana-postgresql-datasource
+    url: postgres:5432
+    user: grafana_ro
+    jsonData:
+      database: webscan
+      sslmode: disable
+      postgresVersion: 1700
+    secureJsonData:
+      password: $GRAFANA_DB_PASSWORD
