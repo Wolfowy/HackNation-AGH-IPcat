@@ -25,8 +25,8 @@ function AssignmentDialog({ agent, open, onOpenChange }: { agent: Agent; open: b
   const update = useUpdateAgentAssignment()
   const [authorizedZones, setZones] = useState(agent.authorizedZones)
   const [authorizedNetworkIds, setNetworks] = useState(agent.authorizedNetworkIds)
-  const [maxJobs, setMaxJobs] = useState(String(agent.limits.maxConcurrentJobs))
-  const [maxRate, setMaxRate] = useState(String(agent.limits.maxRatePerSecond))
+  const [maxJobs, setMaxJobs] = useState(String(agent.limitOverrides?.maxConcurrentJobs ?? ''))
+  const [maxRate, setMaxRate] = useState(String(agent.limitOverrides?.maxRatePerSecond ?? ''))
 
   const save = async () => {
     await update.mutateAsync({

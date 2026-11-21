@@ -105,8 +105,8 @@ function DefectDojoForm({ config }: { config: DefectDojoConfig }) {
           onClick={() =>
             test.mutate(undefined, {
               onSuccess: (r) => {
-                if (r?.success === false) toast.error(r.message ?? 'Connection failed')
-                else toast.success(r?.message ?? 'Connection OK')
+                if (!r.ok) toast.error(r.message ?? 'Connection failed')
+                else toast.success(r.message ?? 'Connection OK')
               },
             })
           }

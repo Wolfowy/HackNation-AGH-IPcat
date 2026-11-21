@@ -28,21 +28,22 @@ function DiffSection({ title, entries, tone }: { title: string; entries: DiffEnt
             <TableHeader>
               <TableRow>
                 <TableHead>Target</TableHead>
-                <TableHead>Service</TableHead>
+                <TableHead>Kind</TableHead>
+                <TableHead>Name</TableHead>
                 <TableHead>Details</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {entries.map((e, i) => (
-                <TableRow key={i}>
+              {entries.map((e) => (
+                <TableRow key={e.key}>
                   <TableCell className="font-mono text-xs whitespace-nowrap">
                     {e.address}
                     {e.port !== undefined && `:${e.port}`}
                     {e.transport && `/${e.transport.toLowerCase()}`}
                   </TableCell>
-                  <TableCell>{e.serviceName ?? '—'}</TableCell>
+                  <TableCell className="text-xs">{e.kind}</TableCell>
+                  <TableCell>{e.name ?? '—'}</TableCell>
                   <TableCell className="text-xs">
-                    {e.summary}
                     {(e.before !== undefined || e.after !== undefined) && (
                       <div className="text-muted-foreground font-mono">
                         {show(e.before) || '∅'} → {show(e.after) || '∅'}

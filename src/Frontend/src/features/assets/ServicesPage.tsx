@@ -15,9 +15,11 @@ export function ServicesPage() {
   const [serviceName, setServiceName] = useState('')
   const [page, setPage] = useState(1)
   const pageSize = 50
+  const debouncedPort = useDebounced(port)
   const services = useServices({
     search: useDebounced(search),
-    port: useDebounced(port),
+    // The server binds `port` as an int: anything non-numeric would be a 400.
+    port: /^\d+$/.test(debouncedPort) ? debouncedPort : undefined,
     serviceName: useDebounced(serviceName),
     page,
     pageSize,

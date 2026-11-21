@@ -47,6 +47,11 @@ public class SignatureWorkflowTests(TestApp app) : IAsyncLifetime
         Assert.Equal(HttpStatusCode.Created, created.StatusCode);
         Assert.DoesNotContain((await BundleAsync()).Items, i => i.Id == "wf-check");
 
+        var duplicate = await manager.PostAsJsonAsync("/api/signatures", new { id = "wf-check", name = "Workflow check", kind = "NucleiTemplate", content = Template("wf-check") }, Json);
+        Assert.Equal(HttpStatusCode.Conflict, duplicate.StatusCode);
+        Assert.Equal("application/problem+json", duplicate.Content.Headers.ContentType?.MediaType);
+        Assert.Equal("Signature 'wf-check' already exists.", (await duplicate.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("title").GetString());
+
         Assert.Equal(HttpStatusCode.Forbidden, (await manager.PostAsync("/api/signatures/wf-check/versions/1/approve", null)).StatusCode);
         var approve = await app.Client(Roles.Administrator).PostAsync("/api/signatures/wf-check/versions/1/approve", null);
         Assert.Equal(HttpStatusCode.OK, approve.StatusCode);

@@ -4,7 +4,7 @@ import { Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useSettings, useUpdateSettings } from '@/api/admin'
 import { usePlannerStats, useScanLimits, useUpdateScanLimits } from '@/api/scans'
-import type { ScanLimits } from '@/api/types'
+import type { ScanLimits, Settings } from '@/api/types'
 import { EmptyState, Loadable } from '@/components/feedback'
 import { FormField, submitHandler } from '@/components/form'
 import { PageHeader } from '@/components/page'
@@ -15,9 +15,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { t } from '@/i18n/strings'
 import { formatDuration } from '@/lib/format'
 
-function SettingsEditor({ values }: { values: Record<string, string> }) {
+function SettingsEditor({ values }: { values: Settings['values'] }) {
   const update = useUpdateSettings()
-  const [rows, setRows] = useState(() => Object.entries(values).map(([key, value]) => ({ key, value })))
+  const [rows, setRows] = useState(() => Object.entries(values).map(([key, value]) => ({ key, value: value ?? '' })))
   const setRow = (i: number, patch: Partial<{ key: string; value: string }>) =>
     setRows((r) => r.map((row, idx) => (idx === i ? { ...row, ...patch } : row)))
   const keys = rows.map((r) => r.key.trim()).filter(Boolean)
@@ -28,8 +28,10 @@ function SettingsEditor({ values }: { values: Record<string, string> }) {
       className="grid gap-2"
       onSubmit={(e) => {
         e.preventDefault()
-        const values = Object.fromEntries(rows.filter((r) => r.key.trim()).map((r) => [r.key.trim(), r.value]))
-        update.mutate({ values }, { onSuccess: () => toast.success(t.common.saved) })
+        const next: Settings['values'] = Object.fromEntries(rows.filter((r) => r.key.trim()).map((r) => [r.key.trim(), r.value]))
+        // The server upserts sent keys and only deletes keys sent as null.
+        for (const key of Object.keys(values)) if (!(key in next)) next[key] = null
+        update.mutate({ values: next }, { onSuccess: () => toast.success(t.common.saved) })
       }}
     >
       {rows.length === 0 && <EmptyState>No settings.</EmptyState>}

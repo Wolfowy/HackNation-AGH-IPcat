@@ -30,6 +30,9 @@ import type {
 } from '@/api/types'
 import { OPERATIONS } from './operations'
 
+/** Mirrors the server rule: high/critical severity signatures need an approval note. */
+export const requiresApprovalNote = (content: string) => /severity"?\s*:\s*"?(high|critical)\b/i.test(content)
+
 /** Mock-only credentials: every seeded user signs in with this password. */
 export const MOCK_PASSWORD = 'webscan'
 
@@ -282,6 +285,9 @@ export function createDb(): MockDb {
       authorizedZones: ['dmz'],
       authorizedNetworkIds: [],
       limits: { maxConcurrentJobs: 4, maxRatePerSecond: 5000 },
+      reportedLimits: { maxConcurrentJobs: 8, maxRatePerSecond: 5000 },
+      limitOverrides: { maxConcurrentJobs: 4 },
+      rotateRequested: false,
       load: { cpuPercent: 23.5, memoryUsedMb: 812, runningJobs: 1, bufferedBatches: 0, runningJobsPerInterface: { eth0: 1 } },
     },
     {
@@ -308,6 +314,9 @@ export function createDb(): MockDb {
       authorizedZones: ['office', 'lab'],
       authorizedNetworkIds: [],
       limits: { maxConcurrentJobs: 2, maxRatePerSecond: 1000 },
+      reportedLimits: { maxConcurrentJobs: 2, maxRatePerSecond: 1000 },
+      limitOverrides: {},
+      rotateRequested: false,
       load: { cpuPercent: 8.1, memoryUsedMb: 455, runningJobs: 0, bufferedBatches: 0 },
     },
     {
@@ -327,6 +336,9 @@ export function createDb(): MockDb {
       authorizedZones: [],
       authorizedNetworkIds: [],
       limits: { maxConcurrentJobs: 2, maxRatePerSecond: 2000 },
+      reportedLimits: { maxConcurrentJobs: 2, maxRatePerSecond: 2000 },
+      limitOverrides: {},
+      rotateRequested: false,
     },
   ]
 
@@ -349,8 +361,9 @@ export function createDb(): MockDb {
   ]
 
   const tokens: EnrollmentToken[] = [
-    { id: mockId(3), name: 'lab rollout', expiresAt: ago(-60 * 20), maxUses: 5, usedCount: 1, autoApprove: false, zones: ['lab'], createdAt: ago(60 * 7) },
-    { id: mockId(3), name: 'dmz replacement', expiresAt: ago(-60 * 2), maxUses: 1, usedCount: 0, autoApprove: true, zones: ['dmz'], createdAt: ago(60) },
+    { id: mockId(3), name: 'lab rollout', expiresAt: ago(-60 * 20), maxUses: 5, uses: 1, autoApprove: false, zones: ['lab'], revoked: false, createdAt: ago(60 * 7) },
+    { id: mockId(3), name: 'dmz replacement', expiresAt: ago(-60 * 2), maxUses: 1, uses: 0, autoApprove: true, zones: ['dmz'], revoked: false, createdAt: ago(60) },
+    { id: mockId(3), name: 'old office batch', expiresAt: ago(-60 * 48), maxUses: 10, uses: 3, autoApprove: false, zones: ['office'], revoked: true, createdAt: ago(60 * 24 * 3) },
   ]
 
   const workflows = defaultWorkflows()
@@ -401,7 +414,7 @@ export function createDb(): MockDb {
           firstSeenAt: ago(firstSeen),
           lastSeenAt: ago(lastSeen),
         })
-        techs.push({ ...svc.tech, port: svc.port, confidence: Math.round((0.55 + rand() * 0.45) * 100) / 100, method: pick(['tool-reported', 'banner-match', 'version-probe', 'signature-match']) })
+        techs.push({ ...svc.tech, port: svc.port, confidence: Math.round((0.55 + rand() * 0.45) * 100) / 100, confidenceMethod: pick(['tool-reported', 'banner-match', 'version-probe', 'signature-match']) })
         if ('tls' in svc) {
           const notAfter = ago(-60 * 24 * int(-20, 300))
           certificates[id] = [
@@ -584,19 +597,22 @@ export function createDb(): MockDb {
   for (let i = 0; i < 16; i++) {
     const h = pick(hosts)
     const [signatureId, name, severity, port, evidence] = pick(findingDefs)
+    const status = rand() < 0.8 ? 'Open' : 'Resolved'
+    const firstSeenAt = ago(int(60 * 24, 60 * 24 * 20))
     findings.push({
       id: mockId(9),
       signatureId,
-      signatureVersion: 1,
+      signatureVersion: i % 7 === 3 ? undefined : 1,
       name,
       severity,
       hostId: h.id,
       address: h.address,
       port,
-      matchedAt: `http://${h.address}:${port}${evidence.startsWith('/') ? evidence : '/'}`,
+      matchedUrl: evidence.startsWith('/') ? `http://${h.address}:${port}${evidence}` : undefined,
       evidence,
-      status: rand() < 0.8 ? 'Open' : 'Resolved',
-      firstSeenAt: ago(int(60 * 24, 60 * 24 * 20)),
+      status,
+      firstSeenAt,
+      matchedAt: firstSeenAt,
       lastSeenAt: ago(int(10, 60 * 24)),
       externalRefs: i % 5 === 0 ? [{ system: 'defectdojo', externalId: String(1200 + i) }] : [],
     })
@@ -624,6 +640,7 @@ ${extra}    matchers:
     version,
     content,
     sha256: sha(version * 31 + content.length),
+    requiresApprovalNote: requiresApprovalNote(content),
     createdAt: ago(60 * 24 * days),
     createdBy: 'manager',
     approvedAt: approved ? ago(60 * 24 * (days - 1)) : undefined,
@@ -667,6 +684,17 @@ ${extra}    matchers:
       tags: ['panel', 'grafana'],
       updatedAt: ago(60 * 5),
       versions: [sigVersion(1, nuclei1('grafana-login', 'Grafana', 'info'), false, 0.2)],
+    },
+    {
+      id: 'mysql-exposed',
+      name: 'MySQL reachable from DMZ',
+      kind: 'NucleiTemplate',
+      latestVersion: 1,
+      status: 'Draft',
+      severity: 'high',
+      tags: ['network', 'mysql'],
+      updatedAt: ago(60 * 3),
+      versions: [sigVersion(1, nuclei1('mysql-exposed', 'MySQL', 'high'), false, 0.1)],
     },
     {
       id: 'windows-server-rdp',
@@ -741,7 +769,7 @@ ${extra}    matchers:
     },
   ]
 
-  const actions = ['network.created', 'network.updated', 'agent.approved', 'tool.approved', 'signature.approved', 'user.created', 'scope.updated', 'schedule.paused']
+  const actions = ['network.created', 'network.updated', 'agent.approved', 'tool.approved', 'signature.approved', 'user.created', 'scope_policy.updated', 'schedule.paused']
   const audit: AuditEntry[] = Array.from({ length: 64 }, (_, i) => {
     const action = actions[i % actions.length]
     const u = users[i % 2]
@@ -751,9 +779,9 @@ ${extra}    matchers:
       userId: u.id,
       userName: u.userName,
       action,
-      entityType: action.split('.')[0].replace(/^./, (c) => c.toUpperCase()),
+      entityType: action.split('.')[0],
       entityId: String(1000 + i),
-      details: JSON.stringify({ source: 'ui' }),
+      details: { source: 'ui' },
       ipAddress: `10.99.0.${10 + (i % 5)}`,
     }
   })

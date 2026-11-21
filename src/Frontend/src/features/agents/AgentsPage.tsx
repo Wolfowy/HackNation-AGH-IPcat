@@ -215,26 +215,35 @@ function EnrollmentTokens() {
               <TableBody>
                 {list.map((tok) => (
                   <TableRow key={tok.id}>
-                    <TableCell className="font-medium">{tok.name}</TableCell>
+                    <TableCell className="font-medium">
+                      {tok.name}
+                      {tok.revoked && (
+                        <Badge variant="destructive" className="ml-2">
+                          Revoked
+                        </Badge>
+                      )}
+                    </TableCell>
                     <TableCell>{formatDateTime(tok.expiresAt)}</TableCell>
                     <TableCell>
-                      {tok.usedCount ?? 0}/{tok.maxUses}
+                      {tok.uses}/{tok.maxUses}
                     </TableCell>
                     <TableCell>{tok.autoApprove ? t.common.yes : t.common.no}</TableCell>
                     <TableCell>
                       <Chips values={tok.zones} />
                     </TableCell>
                     <TableCell className="text-right">
-                      <ConfirmButton
-                        variant="outline"
-                        size="sm"
-                        title={`Revoke token "${tok.name}"?`}
-                        description="Agents can no longer enroll with it. Already enrolled agents are not affected."
-                        confirmLabel={t.agents.revoke}
-                        onConfirm={() => revoke.mutateAsync(tok.id)}
-                      >
-                        {t.agents.revoke}
-                      </ConfirmButton>
+                      {!tok.revoked && (
+                        <ConfirmButton
+                          variant="outline"
+                          size="sm"
+                          title={`Revoke token "${tok.name}"?`}
+                          description="Agents can no longer enroll with it. Already enrolled agents are not affected."
+                          confirmLabel={t.agents.revoke}
+                          onConfirm={() => revoke.mutateAsync(tok.id)}
+                        >
+                          {t.agents.revoke}
+                        </ConfirmButton>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}

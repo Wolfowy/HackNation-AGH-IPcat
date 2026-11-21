@@ -102,8 +102,12 @@ export interface Agent {
   declaredZones: string[]
   authorizedZones: string[]
   authorizedNetworkIds: Guid[]
+  /** Effective limits: min(reported, override). */
   limits: { maxConcurrentJobs: number; maxRatePerSecond: number }
+  reportedLimits?: { maxConcurrentJobs?: number; maxRatePerSecond?: number }
+  limitOverrides?: { maxConcurrentJobs?: number; maxRatePerSecond?: number }
   load?: AgentLoad
+  rotateRequested?: boolean
 }
 
 export interface AgentAssignment {
@@ -118,11 +122,11 @@ export interface EnrollmentToken {
   name: string
   expiresAt: Instant
   maxUses: number
-  usedCount?: number
+  uses: number
   autoApprove: boolean
   zones?: string[]
   createdAt?: Instant
-  revoked?: boolean
+  revoked: boolean
 }
 
 export interface EnrollmentTokenCreate {
@@ -187,7 +191,8 @@ export interface ImportResult {
 }
 
 export interface Settings {
-  values: Record<string, string>
+  /** On PUT: sent keys are upserted, `null` deletes, unsent keys stay unchanged. */
+  values: Record<string, string | null>
 }
 
 export interface AuditEntry {
@@ -198,7 +203,8 @@ export interface AuditEntry {
   action: string
   entityType: string
   entityId?: string
-  details?: string
+  /** Arbitrary JSON written by the server. */
+  details?: unknown
   ipAddress?: string
 }
 
@@ -552,7 +558,7 @@ export interface HostTechnology {
   version?: string
   category?: string
   confidence?: number
-  method?: string
+  confidenceMethod?: string
   port?: number
 }
 
@@ -631,18 +637,21 @@ export interface Change {
   severity: string
 }
 
+/** Analytics/RunDiff.cs DiffItem. */
 export interface DiffEntry {
-  address?: string
+  kind: 'endpoint' | 'technology'
+  key: string
+  address: string
   port?: number
   transport?: string
-  serviceName?: string
-  summary?: string
+  name?: string
   before?: unknown
   after?: unknown
-  [key: string]: unknown
 }
 
 export interface ScanDiff {
+  scanRunId?: Guid
+  baselineRunId?: Guid
   added: DiffEntry[]
   removed: DiffEntry[]
   changed: DiffEntry[]
@@ -654,13 +663,14 @@ export type Severity = (typeof SEVERITIES)[number]
 export interface Finding {
   id: Guid
   signatureId: string
-  signatureVersion: number
+  signatureVersion?: number
   name: string
   severity: Severity
   hostId: Guid
   address: string
   port?: number
-  matchedAt: string
+  matchedAt: Instant
+  matchedUrl?: string
   evidence?: string
   status: 'Open' | 'Resolved'
   firstSeenAt: Instant
@@ -690,10 +700,13 @@ export interface SignatureVersion {
   version: number
   content: string
   sha256: string
+  /** High/critical severity: approving requires a note. */
+  requiresApprovalNote: boolean
   createdAt: Instant
   createdBy?: string
   approvedAt?: Instant
   approvedBy?: string
+  approvalNote?: string
 }
 
 export interface SignatureDetail extends Signature {

@@ -59,7 +59,8 @@ export function FindingsTable({ findings, selection }: { findings: Finding[]; se
             <TableCell>
               <div className="font-medium">{f.name}</div>
               <Link to={`/signatures/${encodeURIComponent(f.signatureId)}`} className="text-muted-foreground font-mono text-xs hover:underline">
-                {f.signatureId} v{f.signatureVersion}
+                {f.signatureId}
+                {f.signatureVersion !== undefined && ` v${f.signatureVersion}`}
               </Link>
             </TableCell>
             <TableCell className="font-mono text-xs">
@@ -67,7 +68,7 @@ export function FindingsTable({ findings, selection }: { findings: Finding[]; se
                 {f.address}
                 {f.port !== undefined && `:${f.port}`}
               </Link>
-              <div className="text-muted-foreground max-w-56 truncate">{f.matchedAt}</div>
+              {f.matchedUrl && <div className="text-muted-foreground max-w-56 truncate">{f.matchedUrl}</div>}
             </TableCell>
             <TableCell>
               <StatusBadge status={f.status} />

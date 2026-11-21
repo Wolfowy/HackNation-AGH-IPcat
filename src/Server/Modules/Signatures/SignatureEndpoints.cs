@@ -68,7 +68,7 @@ internal static class SignatureEndpoints
 
         var validation = ValidateContent(r.Kind, r.Id!, r.Content);
         if (validation.Errors.Count > 0) return Results.ValidationProblem(new Dictionary<string, string[]> { ["content"] = [.. validation.Errors] }, statusCode: StatusCodes.Status422UnprocessableEntity);
-        if (await db.Signatures.AnyAsync(s => s.Id == r.Id, ct)) return Results.Conflict(new { error = $"Signature '{r.Id}' already exists." });
+        if (await db.Signatures.AnyAsync(s => s.Id == r.Id, ct)) return Results.Problem(statusCode: StatusCodes.Status409Conflict, title: $"Signature '{r.Id}' already exists.");
 
         var now = time.GetUtcNow();
         var signature = new Signature

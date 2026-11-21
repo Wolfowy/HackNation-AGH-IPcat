@@ -30,7 +30,7 @@ export function AuditPage() {
           <Input placeholder="e.g. network.created" value={action} onChange={(e) => filter(setAction)(e.target.value)} />
         </FormField>
         <FormField label="Entity type">
-          <Input placeholder="e.g. Network" value={entityType} onChange={(e) => filter(setEntityType)(e.target.value)} />
+          <Input placeholder="e.g. network" value={entityType} onChange={(e) => filter(setEntityType)(e.target.value)} />
         </FormField>
         <FormField label="User">
           <NativeSelect value={userId} onChange={(e) => filter(setUserId)(e.target.value)}>
@@ -61,21 +61,24 @@ export function AuditPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {data.items.map((e) => (
-                    <TableRow key={e.id}>
-                      <TableCell className="text-muted-foreground whitespace-nowrap">{formatDateTime(e.occurredAt)}</TableCell>
-                      <TableCell>{e.userName ?? e.userId ?? 'system'}</TableCell>
-                      <TableCell className="font-mono text-xs">{e.action}</TableCell>
-                      <TableCell className="text-xs">
-                        {e.entityType}
-                        {e.entityId && <div className="text-muted-foreground font-mono">{e.entityId}</div>}
-                      </TableCell>
-                      <TableCell className="max-w-96 truncate font-mono text-xs" title={e.details}>
-                        {e.details ?? ''}
-                      </TableCell>
-                      <TableCell className="font-mono text-xs">{e.ipAddress ?? '—'}</TableCell>
-                    </TableRow>
-                  ))}
+                  {data.items.map((e) => {
+                    const details = e.details == null ? '' : typeof e.details === 'string' ? e.details : JSON.stringify(e.details)
+                    return (
+                      <TableRow key={e.id}>
+                        <TableCell className="text-muted-foreground whitespace-nowrap">{formatDateTime(e.occurredAt)}</TableCell>
+                        <TableCell>{e.userName ?? e.userId ?? 'system'}</TableCell>
+                        <TableCell className="font-mono text-xs">{e.action}</TableCell>
+                        <TableCell className="text-xs">
+                          {e.entityType}
+                          {e.entityId && <div className="text-muted-foreground font-mono">{e.entityId}</div>}
+                        </TableCell>
+                        <TableCell className="max-w-96 truncate font-mono text-xs" title={details}>
+                          {details}
+                        </TableCell>
+                        <TableCell className="font-mono text-xs">{e.ipAddress ?? '—'}</TableCell>
+                      </TableRow>
+                    )
+                  })}
                 </TableBody>
               </Table>
               <Pagination page={page} pageSize={pageSize} total={data.total} onPageChange={setPage} />

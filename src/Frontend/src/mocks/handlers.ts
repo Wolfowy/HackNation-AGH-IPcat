@@ -16,7 +16,7 @@ import type {
 import { hasPermission, type Permission } from '@/auth/roles'
 import { dagLevels } from '@/features/workflows/dag'
 import { validateTarget } from '@/lib/targets'
-import { buildRunPlan, createDb, mockId, randomGuid, type MockDb, type MockRun, type MockUser } from './data'
+import { buildRunPlan, createDb, mockId, randomGuid, requiresApprovalNote, type MockDb, type MockRun, type MockUser } from './data'
 import { OPERATIONS } from './operations'
 import { emit, progressOf, startRunSimulation, stopAllSimulations, stopRunSimulation } from './simulation'
 
@@ -53,7 +53,7 @@ function audit(user: MockUser, action: string, entityType: string, entityId?: st
     action,
     entityType,
     entityId,
-    details: '{"source":"ui"}',
+    details: { source: 'ui' },
     ipAddress: '127.0.0.1',
   })
 }
@@ -244,7 +244,7 @@ function createRun(user: MockUser, req: ScanStartRequest, triggeredBy: string): 
   db.jobs.push(...plan.jobs)
   db.runs.unshift(run)
   emit(db, { type: 'RunCreated', scanRunId: run.id, message: `Run created by ${triggeredBy}` })
-  audit(user, 'scan.started', 'ScanRun', run.id)
+  audit(user, 'scan.started', 'scan_run', run.id)
   startRunSimulation(db, run)
   return run
 }
@@ -270,7 +270,7 @@ export const handlers = [
       if (!input.password || input.password.length < 12) return validationProblem({ Password: ['Password must have at least 12 characters.'] })
       const created: MockUser = { ...input, id: randomGuid(), createdAt: new Date().toISOString(), isActive: input.isActive ?? true }
       db.users.push(created)
-      audit(user, 'user.created', 'User', created.id)
+      audit(user, 'user.created', 'user', created.id)
       return HttpResponse.json(publicUser(created), { status: 201 })
     }),
   ),
@@ -280,7 +280,7 @@ export const handlers = [
       const target = db.users.find((u) => u.id === p(params, 'id'))
       if (!target) return notFound('User')
       Object.assign(target, await body<Partial<User>>(request))
-      audit(user, 'user.updated', 'User', target.id)
+      audit(user, 'user.updated', 'user', target.id)
       return HttpResponse.json(publicUser(target))
     }),
   ),
@@ -288,7 +288,7 @@ export const handlers = [
     '*/api/users/:id',
     route('admin', ({ params, user }) => {
       db.users = db.users.filter((u) => u.id !== p(params, 'id'))
-      audit(user, 'user.deleted', 'User', p(params, 'id'))
+      audit(user, 'user.deleted', 'user', p(params, 'id'))
       return noContent()
     }),
   ),
@@ -317,7 +317,7 @@ export const handlers = [
       const agent = db.agents.find((a) => a.agentId === p(params, 'agentId'))
       if (!agent) return notFound('Agent')
       agent.status = (await body<{ status: typeof agent.status }>(request)).status
-      audit(user, `agent.${agent.status.toLowerCase()}`, 'Agent', agent.agentId)
+      audit(user, `agent.${agent.status.toLowerCase()}`, 'agent', agent.agentId)
       return noContent()
     }),
   ),
@@ -329,8 +329,13 @@ export const handlers = [
       const a = await body<{ authorizedZones: string[]; authorizedNetworkIds: string[]; maxConcurrentJobs?: number; maxRatePerSecond?: number }>(request)
       agent.authorizedZones = a.authorizedZones
       agent.authorizedNetworkIds = a.authorizedNetworkIds
-      agent.limits = { maxConcurrentJobs: a.maxConcurrentJobs ?? agent.limits.maxConcurrentJobs, maxRatePerSecond: a.maxRatePerSecond ?? agent.limits.maxRatePerSecond }
-      audit(user, 'agent.assignment.updated', 'Agent', agent.agentId)
+      agent.limitOverrides = { maxConcurrentJobs: a.maxConcurrentJobs, maxRatePerSecond: a.maxRatePerSecond }
+      const reported = agent.reportedLimits ?? agent.limits
+      agent.limits = {
+        maxConcurrentJobs: Math.min(reported.maxConcurrentJobs ?? Infinity, a.maxConcurrentJobs ?? Infinity),
+        maxRatePerSecond: Math.min(reported.maxRatePerSecond ?? Infinity, a.maxRatePerSecond ?? Infinity),
+      }
+      audit(user, 'agent.assignment.updated', 'agent', agent.agentId)
       return noContent()
     }),
   ),
@@ -339,11 +344,11 @@ export const handlers = [
     '*/api/agents/:agentId',
     route('admin', ({ params, user }) => {
       db.agents = db.agents.filter((a) => a.agentId !== p(params, 'agentId'))
-      audit(user, 'agent.deleted', 'Agent', p(params, 'agentId'))
+      audit(user, 'agent.deleted', 'agent', p(params, 'agentId'))
       return noContent()
     }),
   ),
-  http.get('*/api/enrollment-tokens', route('admin', () => HttpResponse.json(db.tokens.filter((tk) => !tk.revoked)))),
+  http.get('*/api/enrollment-tokens', route('admin', () => HttpResponse.json(db.tokens))),
   http.post(
     '*/api/enrollment-tokens',
     route('admin', async ({ request, user }) => {
@@ -351,8 +356,8 @@ export const handlers = [
       if (!input.name?.trim()) return validationProblem({ Name: ['Name is required.'] })
       const id = randomGuid()
       const expiresAt = new Date(Date.now() + input.expiresInHours * 3_600_000).toISOString()
-      db.tokens.unshift({ id, name: input.name, expiresAt, maxUses: input.maxUses, usedCount: 0, autoApprove: input.autoApprove, zones: input.zones ?? [], createdAt: new Date().toISOString() })
-      audit(user, 'enrollment-token.created', 'EnrollmentToken', id)
+      db.tokens.unshift({ id, name: input.name, expiresAt, maxUses: input.maxUses, uses: 0, autoApprove: input.autoApprove, zones: input.zones ?? [], revoked: false, createdAt: new Date().toISOString() })
+      audit(user, 'enrollment-token.created', 'enrollment_token', id)
       const token = Array.from(crypto.getRandomValues(new Uint8Array(24)), (b) => b.toString(16).padStart(2, '0')).join('')
       return HttpResponse.json({ id, token: `wset_${token}`, expiresAt }, { status: 201 })
     }),
@@ -373,7 +378,7 @@ export const handlers = [
       if (!tool) return notFound('Tool')
       Object.assign(tool, await body<{ approved: boolean; enabled: boolean }>(request))
       db.agents.forEach((a) => a.tools.filter((tl) => tl.id === tool.toolId).forEach((tl) => (tl.approved = tool.approved)))
-      audit(user, tool.approved ? 'tool.approved' : 'tool.unapproved', 'Tool', tool.toolId)
+      audit(user, tool.approved ? 'tool.approved' : 'tool.unapproved', 'tool', tool.toolId)
       return noContent()
     }),
   ),
@@ -407,7 +412,7 @@ export const handlers = [
           result.created++
         }
       })
-      audit(user, 'network.imported', 'Network')
+      audit(user, 'network.imported', 'network')
       return HttpResponse.json(result)
     }),
   ),
@@ -428,7 +433,7 @@ export const handlers = [
       const now = new Date().toISOString()
       const network: Network = { ...input, exclusions: input.exclusions ?? [], tags: input.tags ?? [], id: randomGuid(), addressCount: addressCount(input.ranges), createdAt: now, updatedAt: now }
       db.networks.push(network)
-      audit(user, 'network.created', 'Network', network.id)
+      audit(user, 'network.created', 'network', network.id)
       return HttpResponse.json(network, { status: 201 })
     }),
   ),
@@ -441,7 +446,7 @@ export const handlers = [
       const errors = validateNetwork(input, network.id)
       if (Object.keys(errors).length) return validationProblem(errors)
       Object.assign(network, input, { addressCount: addressCount(input.ranges), updatedAt: new Date().toISOString() })
-      audit(user, 'network.updated', 'Network', network.id)
+      audit(user, 'network.updated', 'network', network.id)
       return HttpResponse.json(network)
     }),
   ),
@@ -449,7 +454,7 @@ export const handlers = [
     '*/api/networks/:id',
     route('manage', ({ params, user }) => {
       db.networks = db.networks.filter((x) => x.id !== p(params, 'id'))
-      audit(user, 'network.deleted', 'Network', p(params, 'id'))
+      audit(user, 'network.deleted', 'network', p(params, 'id'))
       return noContent()
     }),
   ),
@@ -478,7 +483,7 @@ export const handlers = [
     route('admin', async ({ request, user }) => {
       const input = await body<{ allowed: string[]; excluded: string[] }>(request)
       db.scopePolicy = { ...input, updatedAt: new Date().toISOString() }
-      audit(user, 'scope.updated', 'ScopePolicy')
+      audit(user, 'scope.updated', 'scope_policy')
       return HttpResponse.json(db.scopePolicy)
     }),
   ),
@@ -486,9 +491,13 @@ export const handlers = [
   http.put(
     '*/api/settings',
     route('admin', async ({ request, user }) => {
-      db.settings = (await body<{ values: Record<string, string> }>(request)).values
-      audit(user, 'settings.updated', 'Settings')
-      return noContent()
+      const { values } = await body<{ values: Record<string, string | null> }>(request)
+      for (const [key, value] of Object.entries(values)) {
+        if (value === null) delete db.settings[key]
+        else db.settings[key] = value
+      }
+      audit(user, 'settings.updated', 'settings')
+      return HttpResponse.json({ values: db.settings })
     }),
   ),
   http.get(
@@ -555,7 +564,7 @@ export const handlers = [
         const version = existing.length + 1
         const saved = { key, version, definition: { ...def, key, version }, createdAt: new Date().toISOString(), createdBy: user.userName }
         db.workflows.push(saved)
-        audit(user, 'workflow.saved', 'Workflow', `${key}@${version}`)
+        audit(user, 'workflow.saved', 'workflow', `${key}@${version}`)
         return HttpResponse.json(saved, { status: 201 })
       }),
     ),
@@ -569,7 +578,7 @@ export const handlers = [
       const input = await body<ScheduleInput>(request)
       const schedule = { ...input, id: randomGuid(), nextFireAt: input.enabled ? new Date(Date.now() + 3_600_000).toISOString() : undefined }
       db.schedules.push(schedule)
-      audit(user, 'schedule.created', 'Schedule', schedule.id)
+      audit(user, 'schedule.created', 'schedule', schedule.id)
       return HttpResponse.json(schedule, { status: 201 })
     }),
   ),
@@ -669,11 +678,25 @@ export const handlers = [
       if (!url.searchParams.get('baseline')) return validationProblem({ Baseline: ['Baseline run is required.'] })
       const hosts = db.hosts.slice(0, 12)
       const svc = (i: number) => db.services.find((s) => s.hostId === hosts[i].id)
+      const endpoint = (address: string, port: number, name?: string, before?: string, after?: string) => ({
+        kind: 'endpoint',
+        key: `endpoint|${address}|${port}|tcp`,
+        address,
+        port,
+        transport: 'tcp',
+        name,
+        before,
+        after,
+      })
       return HttpResponse.json({
-        added: [0, 1, 2].map((i) => ({ address: hosts[i].address, port: svc(i)?.port, transport: 'Tcp', serviceName: svc(i)?.serviceName, summary: 'New open port' })),
-        removed: [3, 4].map((i) => ({ address: hosts[i].address, port: 21, transport: 'Tcp', serviceName: 'ftp', summary: 'Port no longer open' })),
-        changed: [5].map((i) => ({ address: hosts[i].address, port: 443, serviceName: 'https', summary: 'Web server version changed', before: 'nginx 1.22.1', after: 'nginx 1.24.0' })),
         scanRunId: p(params, 'id'),
+        baselineRunId: url.searchParams.get('baseline'),
+        added: [0, 1, 2].map((i) => endpoint(hosts[i].address, svc(i)?.port ?? 80, svc(i)?.serviceName, undefined, svc(i)?.serviceName)),
+        removed: [3, 4].map((i) => endpoint(hosts[i].address, 21, 'ftp', 'ftp vsftpd 3.0.5')),
+        changed: [
+          endpoint(hosts[5].address, 443, 'https', 'https nginx 1.22.1', 'https nginx 1.24.0'),
+          { kind: 'technology', key: `technology|${hosts[6].address}|443|nginx`, address: hosts[6].address, port: 443, transport: 'tcp', name: 'nginx', before: '1.22.1', after: '1.24.0' },
+        ],
       })
     }),
   ),
@@ -789,7 +812,7 @@ export const handlers = [
       const host = db.hosts.find((h) => h.id === p(params, 'id'))
       if (!host) return notFound('Host')
       host.annotation = await body<NonNullable<typeof host.annotation>>(request)
-      audit(user, 'asset.annotated', 'Host', host.id)
+      audit(user, 'asset.annotated', 'host', host.id)
       return noContent()
     }),
   ),
@@ -913,7 +936,7 @@ export const handlers = [
     '*/api/signatures',
     route('manage', async ({ request, user }) => {
       const input = await body<{ id: string; name: string; kind: SignatureKind; content: string }>(request)
-      if (db.signatures.some((s) => s.id === input.id)) return validationProblem({ Id: [`Signature "${input.id}" already exists.`] })
+      if (db.signatures.some((s) => s.id === input.id)) return problem(409, `Signature '${input.id}' already exists.`)
       const result = validateSignatureContent(input.kind, input.content)
       if (!result.valid) return validationProblem({ Content: result.errors.map(String) })
       const now = new Date().toISOString()
@@ -927,9 +950,18 @@ export const handlers = [
         severity,
         tags: (/^\s*tags:\s*(.+)$/m.exec(input.content)?.[1] ?? '').split(',').map((x) => x.trim()).filter(Boolean),
         updatedAt: now,
-        versions: [{ version: 1, content: input.content, sha256: mockId(12).replace(/-/g, '').padEnd(64, '0'), createdAt: now, createdBy: user.userName }],
+        versions: [
+          {
+            version: 1,
+            content: input.content,
+            sha256: mockId(12).replace(/-/g, '').padEnd(64, '0'),
+            requiresApprovalNote: requiresApprovalNote(input.content),
+            createdAt: now,
+            createdBy: user.userName,
+          },
+        ],
       })
-      audit(user, 'signature.created', 'Signature', input.id)
+      audit(user, 'signature.created', 'signature', input.id)
       return HttpResponse.json(db.signatures[0], { status: 201 })
     }),
   ),
@@ -944,22 +976,33 @@ export const handlers = [
       s.latestVersion += 1
       s.updatedAt = new Date().toISOString()
       if (s.status !== 'Approved') s.status = 'Draft'
-      s.versions.push({ version: s.latestVersion, content, sha256: mockId(12).replace(/-/g, '').padEnd(64, '0'), createdAt: s.updatedAt, createdBy: user.userName })
+      s.versions.push({
+        version: s.latestVersion,
+        content,
+        sha256: mockId(12).replace(/-/g, '').padEnd(64, '0'),
+        requiresApprovalNote: requiresApprovalNote(content),
+        createdAt: s.updatedAt,
+        createdBy: user.userName,
+      })
       return HttpResponse.json({ version: s.latestVersion }, { status: 201 })
     }),
   ),
   http.post(
     '*/api/signatures/:id/versions/:version/approve',
-    route('admin', ({ params, user }) => {
+    route('admin', async ({ request, params, user }) => {
       const s = db.signatures.find((x) => x.id === p(params, 'id'))
       const v = s?.versions.find((x) => x.version === Number(p(params, 'version')))
       if (!s || !v) return notFound('Signature version')
+      const note = (await body<{ note?: string }>(request).catch(() => ({ note: undefined }))).note?.trim()
+      if (v.requiresApprovalNote && !note)
+        return problem(422, 'One or more validation errors occurred.', { errors: { note: [`Severity '${s.severity}' is above medium: an approval note is required.`] } })
       v.approvedAt = new Date().toISOString()
       v.approvedBy = user.userName
+      v.approvalNote = note || undefined
       s.approvedVersion = v.version
       s.status = 'Approved'
-      audit(user, 'signature.approved', 'Signature', `${s.id}@${v.version}`)
-      return noContent()
+      audit(user, 'signature.approved', 'signature', s.id)
+      return HttpResponse.json(v)
     }),
   ),
   http.post(
@@ -968,7 +1011,7 @@ export const handlers = [
       const s = db.signatures.find((x) => x.id === p(params, 'id'))
       if (!s) return notFound('Signature')
       s.status = 'Retired'
-      audit(user, 'signature.retired', 'Signature', s.id)
+      audit(user, 'signature.retired', 'signature', s.id)
       return noContent()
     }),
   ),
@@ -987,14 +1030,14 @@ export const handlers = [
       const { apiKey, hasApiKey: _ignored, ...config } = await body<MockDb['defectDojo']>(request)
       if (config.enabled && !/^https?:\/\//.test(config.baseUrl ?? '')) return validationProblem({ BaseUrl: ['A valid http(s) URL is required when enabled.'] })
       db.defectDojo = { ...db.defectDojo, ...config, apiKeyValue: apiKey || db.defectDojo.apiKeyValue }
-      audit(user, 'integration.defectdojo.updated', 'Integration', 'defectdojo')
+      audit(user, 'integration.defectdojo.updated', 'integration', 'defectdojo')
       return noContent()
     }),
   ),
   http.post(
     '*/api/integrations/defectdojo/test',
     route('admin', () =>
-      HttpResponse.json(db.defectDojo.apiKeyValue ? { success: true, message: 'Connected to DefectDojo (mock).' } : { success: false, message: 'No API key configured.' }),
+      HttpResponse.json(db.defectDojo.apiKeyValue ? { ok: true, message: 'Connected to DefectDojo (mock).' } : { ok: false, message: 'Integration is not configured.' }),
     ),
   ),
   http.post(

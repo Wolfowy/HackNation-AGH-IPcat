@@ -38,8 +38,8 @@ export const useCreateSignatureVersion = () =>
 
 export const useApproveSignatureVersion = () =>
   useApiMutation(
-    ({ id, version }: { id: string; version: number }) =>
-      api(`/api/signatures/${enc(id)}/versions/${version}/approve`, { method: 'POST' }),
+    ({ id, version, note }: { id: string; version: number; note?: string }) =>
+      api(`/api/signatures/${enc(id)}/versions/${version}/approve`, { method: 'POST', body: { note } }),
     [['signatures']],
   )
 

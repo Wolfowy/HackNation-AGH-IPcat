@@ -168,9 +168,9 @@ export function HostDetailPage() {
                         <TableCell>{x.category ?? '—'}</TableCell>
                         <TableCell>{x.port ?? '—'}</TableCell>
                         <TableCell>
-                          <ConfidenceBar score={x.confidence} method={x.method} />
+                          <ConfidenceBar score={x.confidence} method={x.confidenceMethod} />
                         </TableCell>
-                        <TableCell className="text-muted-foreground text-xs">{x.method ?? '—'}</TableCell>
+                        <TableCell className="text-muted-foreground text-xs">{x.confidenceMethod ?? '—'}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>

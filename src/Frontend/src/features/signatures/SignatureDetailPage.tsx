@@ -5,18 +5,73 @@ import { useApproveSignatureVersion, useRetireSignature, useSignature } from '@/
 import { Can } from '@/auth/AuthProvider'
 import { ConfirmButton } from '@/components/actions'
 import { Loadable } from '@/components/feedback'
+import { FormField } from '@/components/form'
 import { Chips, PageHeader, StatusBadge } from '@/components/page'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+import { Textarea } from '@/components/ui/input'
 import { t } from '@/i18n/strings'
 import { formatDateTime } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
+function ApproveButton({ id, version, requiresNote }: { id: string; version: number; requiresNote: boolean }) {
+  const approve = useApproveSignatureVersion()
+  const [open, setOpen] = useState(false)
+  const [note, setNote] = useState('')
+  const label = `${t.signatures.approve} v${version}`
+  const submit = (n?: string) =>
+    approve.mutate(
+      { id, version, note: n },
+      {
+        onSuccess: () => {
+          toast.success(`Approved v${version}`)
+          setOpen(false)
+        },
+      },
+    )
+
+  if (!requiresNote)
+    return (
+      <Button size="sm" onClick={() => submit()} disabled={approve.isPending}>
+        {label}
+      </Button>
+    )
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button size="sm">{label}</Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{label}</DialogTitle>
+          <DialogDescription>High and critical severity signatures need an approval note.</DialogDescription>
+        </DialogHeader>
+        <form
+          className="grid gap-4"
+          onSubmit={(e) => {
+            e.preventDefault()
+            if (note.trim()) submit(note.trim())
+          }}
+        >
+          <FormField label="Approval note">
+            <Textarea required value={note} onChange={(e) => setNote(e.target.value)} />
+          </FormField>
+          <DialogFooter>
+            <Button type="submit" disabled={approve.isPending || !note.trim()}>
+              {t.signatures.approve}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 export function SignatureDetailPage() {
   const { id = '' } = useParams()
   const signature = useSignature(id)
-  const approve = useApproveSignatureVersion()
   const retire = useRetireSignature()
   const [selected, setSelected] = useState<number | null>(null)
 
@@ -103,24 +158,13 @@ export function SignatureDetailPage() {
                         {current.sha256.slice(0, 16)}…
                       </span>
                       {current.approvedAt ? (
-                        <span className="text-muted-foreground text-xs">
+                        <span className="text-muted-foreground text-xs" title={current.approvalNote}>
                           approved {formatDateTime(current.approvedAt)} {current.approvedBy && `by ${current.approvedBy}`}
                         </span>
                       ) : (
                         s.status !== 'Retired' && (
                           <Can permission="admin">
-                            <Button
-                              size="sm"
-                              onClick={() =>
-                                approve.mutate(
-                                  { id: s.id, version: current.version },
-                                  { onSuccess: () => toast.success(`Approved v${current.version}`) },
-                                )
-                              }
-                              disabled={approve.isPending}
-                            >
-                              {t.signatures.approve} v{current.version}
-                            </Button>
+                            <ApproveButton key={current.version} id={s.id} version={current.version} requiresNote={current.requiresApprovalNote} />
                           </Can>
                         )
                       )}

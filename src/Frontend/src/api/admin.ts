@@ -58,7 +58,7 @@ export const useUpdateDefectDojo = () =>
   )
 
 export const useTestDefectDojo = () =>
-  useApiMutation(() => api<{ success?: boolean; message?: string }>('/api/integrations/defectdojo/test', { method: 'POST' }), [])
+  useApiMutation(() => api<{ ok: boolean; message?: string }>('/api/integrations/defectdojo/test', { method: 'POST' }), [])
 
 export const useExportToDefectDojo = () =>
   useApiMutation(
