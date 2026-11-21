@@ -11,12 +11,13 @@ namespace WebScan.Server.Modules.Discovery;
 
 internal sealed class ObservationReader(DiscoveryDbContext db) : IObservationReader
 {
-    public async IAsyncEnumerable<DiscoveryObservation> ReadRunObservationsAsync(Guid scanRunId, [EnumeratorCancellation] CancellationToken ct = default)
+    public async IAsyncEnumerable<RunObservation> ReadRunObservationsAsync(Guid scanRunId, [EnumeratorCancellation] CancellationToken ct = default)
     {
-        var payloads = db.Observations.AsNoTracking().Where(o => o.ScanRunId == scanRunId).OrderBy(o => o.Id).Select(o => o.Payload).AsAsyncEnumerable();
-        await foreach (var payload in payloads.WithCancellation(ct))
-            if (JsonSerializer.Deserialize<DiscoveryObservation>(payload, ContractJson.Options) is { } raw && Normalizer.Normalize(raw) is { } o)
-                yield return o;
+        var rows = db.Observations.AsNoTracking().Where(o => o.ScanRunId == scanRunId).OrderBy(o => o.Id).Select(o => new { o.Zone, o.Payload })
+            .AsAsyncEnumerable();
+        await foreach (var row in rows.WithCancellation(ct))
+            if (JsonSerializer.Deserialize<DiscoveryObservation>(row.Payload, ContractJson.Options) is { } raw && Normalizer.Normalize(raw) is { } o)
+                yield return new RunObservation(row.Zone, o);
     }
 }
 

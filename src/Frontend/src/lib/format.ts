@@ -6,6 +6,9 @@ export function formatDateTime(value?: string | null): string {
   return Number.isNaN(d.getTime()) ? value : dateTime.format(d)
 }
 
+/** Display name of a zone; '' is the default zone. */
+export const zoneLabel = (zone?: string | null) => zone || 'default'
+
 export function formatRelative(value?: string | null, now = Date.now()): string {
   if (!value) return '—'
   const seconds = Math.round((now - Date.parse(value)) / 1000)

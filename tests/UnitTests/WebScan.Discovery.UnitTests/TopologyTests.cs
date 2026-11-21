@@ -55,8 +55,8 @@ public class TopologyTests(TestApp app) : IAsyncLifetime
         var topology = await GetAsync();
         Assert.Equal([("10.5.1.0/24", 2), ("10.5.2.0/24", 1), ("2001:db8:0:1::/64", 1), ("2001:db8::/64", 2)],
             topology.Subnets.Select(s => (s.Cidr, s.HostCount)));
-        Assert.All(topology.Subnets, s => Assert.Equal(("lab", s.Cidr), (s.Zone, s.Id)));
-        Assert.Equal("2001:db8::/64", topology.Hosts.Single(h => h.Address == "2001:db8::2:1").Subnet);
+        Assert.All(topology.Subnets, s => Assert.Equal(("lab", $"lab|{s.Cidr}"), (s.Zone, s.Id)));
+        Assert.Equal("lab|2001:db8::/64", topology.Hosts.Single(h => h.Address == "2001:db8::2:1").Subnet);
         Assert.False(topology.Truncated);
     }
 
@@ -65,7 +65,7 @@ public class TopologyTests(TestApp app) : IAsyncLifetime
     {
         var coverage = Scenario.Coverage(["10.6.0.0/24"]);
         await _s.RunAsync(coverage, 3, _s.HostUp("10.6.0.1"), _s.Port("10.6.0.1", 22));
-        _s.NextRun().Perspective = ("agent-2", "ens18", "office");
+        _s.NextRun().Perspective = ("agent-2", "ens18", "lab");
         await _s.RunAsync(coverage, 3, _s.HostUp("10.6.0.1"), _s.HostUp("10.6.0.2"));
         _s.NextRun(); // same perspective again: repeated raw observations must not duplicate entries
         await _s.RunAsync(coverage, 3, _s.HostUp("10.6.0.2"));
@@ -74,8 +74,29 @@ public class TopologyTests(TestApp app) : IAsyncLifetime
         var observedBy = topology.Hosts.ToDictionary(h => h.Address, h => h.ObservedBy.Select(o => (o.AgentId, o.InterfaceName)).ToList());
         Assert.Equal([("agent-1", "eth0"), ("agent-2", "ens18")], observedBy["10.6.0.1"]);
         Assert.Equal([("agent-2", "ens18")], observedBy["10.6.0.2"]);
-        Assert.Equal([("agent-1", "eth0", "lab"), ("agent-2", "ens18", "office")],
+        Assert.Equal([("agent-1", "eth0", "lab"), ("agent-2", "ens18", "lab")],
             topology.Perspectives.Select(p => (p.AgentId, p.InterfaceName, p.Zone)));
+    }
+
+    [Fact]
+    public async Task Same_ip_in_two_zones_is_two_hosts_in_per_zone_subnets_with_zone_scoped_perspectives()
+    {
+        _s.Perspective = ("agent-waw", "eth0", "dc-warsaw");
+        await _s.RunAsync(Scenario.ZoneCoverage("dc-warsaw", "10.0.0.0/24"), 3, _s.HostUpWithMac("10.0.0.5", "02:42:ac:1e:00:0a", "Docker"));
+        _s.NextRun().Perspective = ("agent-lab", "wg0", "lab");
+        await _s.RunAsync(Scenario.ZoneCoverage("lab", "10.0.0.0/24"), 3, _s.HostUp("10.0.0.5"), _s.HostUp("10.0.0.6"));
+
+        var topology = await GetAsync();
+        Assert.Equal([("dc-warsaw|10.0.0.0/24", "10.0.0.0/24", "dc-warsaw", 1), ("lab|10.0.0.0/24", "10.0.0.0/24", "lab", 2)],
+            topology.Subnets.Select(s => (s.Id, s.Cidr, s.Zone, s.HostCount)));
+        var same = topology.Hosts.Where(h => h.Address == "10.0.0.5").ToList();
+        Assert.Equal(2, same.Select(h => h.Id).Distinct().Count());
+        // Each machine is observed only by the perspective of its own zone, so perspective edges never cross zones.
+        Assert.Equal([("dc-warsaw|10.0.0.0/24", "agent-waw"), ("lab|10.0.0.0/24", "agent-lab")],
+            same.Select(h => (h.Subnet, Assert.Single(h.ObservedBy).AgentId)));
+        Assert.Equal(("02:42:AC:1E:00:0A", "Docker"), (same[0].MacAddress, same[0].MacVendor));
+        Assert.Null(same[1].MacAddress);
+        Assert.Equal([("10.0.0.5", "dc-warsaw")], (await GetAsync("?zone=dc-warsaw")).Hosts.Select(h => (h.Address, h.Zone)));
     }
 
     [Fact]
@@ -127,6 +148,9 @@ public class TopologyTests(TestApp app) : IAsyncLifetime
         await _s.RunAsync(Scenario.Coverage(["10.8.0.0/16"]), 3, _s.HostUp("10.8.1.1", "web.example.com"));
         var network = Guid.NewGuid();
         app.NetworkScope.Networks[network] = ["10.8.1.0/24"];
+        app.NetworkScope.Zones[network] = "dmz";
+        var labNetwork = Guid.NewGuid(); // same range in another zone: other machines
+        app.NetworkScope.Networks[labNetwork] = ["10.8.1.0/24"];
 
         string[] Addresses(TopologyDto t) => [.. t.Hosts.Select(h => h.Address)];
         Assert.Equal(["10.8.1.1"], Addresses(await GetAsync("?zone=dmz")));
@@ -134,6 +158,7 @@ public class TopologyTests(TestApp app) : IAsyncLifetime
         Assert.Equal(["10.8.1.1"], Addresses(await GetAsync("?search=WEB.example")));
         Assert.Equal(["10.8.1.1"], Addresses(await GetAsync($"?networkId={network}")));
         Assert.Empty((await GetAsync($"?networkId={Guid.NewGuid()}")).Hosts);
+        Assert.Empty((await GetAsync($"?networkId={labNetwork}")).Hosts);
         Assert.Equal([("agent-dmz", "eth1")], (await GetAsync("?zone=dmz")).Perspectives.Select(p => (p.AgentId, p.InterfaceName)));
     }
 }

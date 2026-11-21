@@ -38,10 +38,11 @@ internal static class DiscoveryEndpoints
 
         api.MapPut("/assets/hosts/{id:guid}/annotation", PutAnnotation).RequireAuthorization(Policies.CanEdit);
 
-        api.MapGet("/assets/services", (AssetQueries q, int? port, string? serviceName, string? search, int? page, int? pageSize, CancellationToken ct) =>
+        api.MapGet("/assets/services", (AssetQueries q, int? port, string? serviceName, string? search, string? zone, int? page, int? pageSize,
+            CancellationToken ct) =>
         {
             var (p, size) = AssetQueries.Paging(page, pageSize);
-            return q.ServicesAsync(new ServiceQuery(port, serviceName, search), p, size, ct);
+            return q.ServicesAsync(new ServiceQuery(port, serviceName, search, zone), p, size, ct);
         }).RequireAuthorization(Policies.CanRead);
 
         api.MapGet("/topology", async (AssetQueries q, [FromServices] INetworkScopeService scope, string? zone, Guid? networkId, string? search,
@@ -59,17 +60,17 @@ internal static class DiscoveryEndpoints
             return await q.ObservationsAsync(hostId, scanRunId, kind, p, size, ct) is { } result ? Results.Ok(result) : Results.NotFound();
         }).RequireAuthorization(Policies.CanRead);
 
-        api.MapGet("/changes", (AssetQueries q, DateTimeOffset? since, AssetChangeType? type, Guid? hostId, Guid? scanRunId, int? page, int? pageSize,
-            CancellationToken ct) =>
+        api.MapGet("/changes", (AssetQueries q, DateTimeOffset? since, AssetChangeType? type, Guid? hostId, Guid? scanRunId, string? zone, int? page,
+            int? pageSize, CancellationToken ct) =>
         {
             var (p, size) = AssetQueries.Paging(page, pageSize);
-            return q.ChangesAsync(new ChangeQuery(since, type, hostId, scanRunId), p, size, ct);
+            return q.ChangesAsync(new ChangeQuery(since, type, hostId, scanRunId, zone), p, size, ct);
         }).RequireAuthorization(Policies.CanRead);
 
-        api.MapGet("/findings", (AssetQueries q, string? severity, FindingStatus? status, int? page, int? pageSize, CancellationToken ct) =>
+        api.MapGet("/findings", (AssetQueries q, string? severity, FindingStatus? status, string? zone, int? page, int? pageSize, CancellationToken ct) =>
         {
             var (p, size) = AssetQueries.Paging(page, pageSize);
-            return q.FindingsAsync(new FindingQuery(severity, status), p, size, ct);
+            return q.FindingsAsync(new FindingQuery(severity, status, zone), p, size, ct);
         }).RequireAuthorization(Policies.CanRead);
 
         api.MapGet("/export/{dataset}", Export).RequireAuthorization(Policies.CanRead);
@@ -81,15 +82,15 @@ internal static class DiscoveryEndpoints
     {
         var errors = AnnotationService.Validate(request);
         if (errors.Count > 0) return Results.ValidationProblem(new Dictionary<string, string[]> { ["annotation"] = [.. errors] }, statusCode: StatusCodes.Status422UnprocessableEntity);
-        var address = await db.Hosts.Where(h => h.Id == id).Select(h => h.Address).FirstOrDefaultAsync(ct);
-        if (address is null) return Results.NotFound();
+        var host = await db.Hosts.Where(h => h.Id == id).Select(h => new { h.Zone, h.Address }).FirstOrDefaultAsync(ct);
+        if (host is null) return Results.NotFound();
 
-        var (created, changed, annotation) = await annotations.UpsertAsync(address, request, "api", ct);
+        var (created, changed, annotation) = await annotations.UpsertAsync(host.Zone, host.Address, request, "api", ct);
         if (changed)
         {
             await db.SaveChangesAsync(ct);
             await audit.WriteAsync(new AuditEntry(created ? "asset.annotation_created" : "asset.annotation_updated", "host", id.ToString(),
-                new { address, annotation.Classification, annotation.BusinessState, annotation.Owner, annotation.Tags }), ct);
+                new { host.Zone, host.Address, annotation.Classification, annotation.BusinessState, annotation.Owner, annotation.Tags }), ct);
         }
         return Results.Ok(annotation.ToDto());
     }
@@ -136,6 +137,9 @@ internal static class DiscoveryEndpoints
 
         var errors = new List<string>();
         var rows = format == "json" ? ParseJson(body, errors) : ParseCsv(body, errors);
+        var addresses = rows.Select(r => Normalizer.CanonicalAddress(r.Row.Address)).OfType<string>().Distinct().ToList();
+        var zonesByAddress = (await db.Hosts.Where(h => addresses.Contains(h.Address)).Select(h => new { h.Address, h.Zone }).ToListAsync(ct))
+            .ToLookup(h => h.Address, h => h.Zone);
         int imported = 0, updated = 0;
         for (var i = 0; i < rows.Count; i++)
         {
@@ -146,6 +150,23 @@ internal static class DiscoveryEndpoints
                 errors.Add($"Row {line}: invalid address '{row.Address}'.");
                 continue;
             }
+            var zone = Normalizer.CanonicalZone(row.Zone);
+            if (zone.Length > 64)
+            {
+                errors.Add($"Row {line}: zone: max 64 characters.");
+                continue;
+            }
+            if (string.IsNullOrWhiteSpace(row.Zone))
+            {
+                // No zone given: only an unambiguous address may be matched (never guess between machines of different zones).
+                var known = zonesByAddress[address].Distinct().Order(StringComparer.Ordinal).ToList();
+                if (known.Count > 1)
+                {
+                    errors.Add($"Row {line}: address '{address}' is ambiguous: it exists in zones {string.Join(", ", known.Select(ZoneLabel))}; add a zone.");
+                    continue;
+                }
+                zone = known.SingleOrDefault() ?? "";
+            }
             var annotation = new AnnotationRequest(row.Description, row.Classification, row.BusinessState, row.Owner, row.Tags);
             var rowErrors = AnnotationService.Validate(annotation);
             if (rowErrors.Count > 0)
@@ -153,7 +174,7 @@ internal static class DiscoveryEndpoints
                 errors.AddRange(rowErrors.Select(err => $"Row {line}: {err}"));
                 continue;
             }
-            var (created, changed, _) = await annotations.UpsertAsync(address, annotation, "import", ct);
+            var (created, changed, _) = await annotations.UpsertAsync(zone, address, annotation, "import", ct);
             if (created) imported++;
             else if (changed) updated++;
         }
@@ -177,7 +198,9 @@ internal static class DiscoveryEndpoints
         }
     }
 
-    /// <summary>Header row required: address, description, classification, businessState, owner, tags (';'-separated); column order free.</summary>
+    private static string ZoneLabel(string zone) => zone.Length == 0 ? "default" : zone;
+
+    /// <summary>Header row required: address (optional: zone, description, classification, businessState, owner, tags (';'-separated)); column order free.</summary>
     private static List<(int Line, AssetImportRow Row)> ParseCsv(string body, List<string> errors)
     {
         var table = Csv.Parse(body);
@@ -192,7 +215,7 @@ internal static class DiscoveryEndpoints
         string? Cell(List<string> row, string name) => col(name) is var i and >= 0 && i < row.Count && row[i].Length > 0 ? row[i] : null;
         return table.Skip(1).Select((row, i) => (i + 2, new AssetImportRow(Cell(row, "address"), Cell(row, "description"),
             Cell(row, "classification"), Cell(row, "businessState"), Cell(row, "owner"),
-            Cell(row, "tags")?.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)))).ToList();
+            Cell(row, "tags")?.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries), Cell(row, "zone")))).ToList();
     }
 
     private static string? D(DateTimeOffset? d) => d?.ToString("O", CultureInfo.InvariantCulture);
@@ -200,40 +223,41 @@ internal static class DiscoveryEndpoints
     private static string? I(int? i) => i?.ToString(CultureInfo.InvariantCulture);
 
     private static (IReadOnlyList<string>, Func<IEnumerable<IReadOnlyList<string?>>>, object) HostsExport(IReadOnlyList<HostListItemDto> items) =>
-    (["id", "address", "hostnames", "status", "unstable", "zone", "firstSeenAt", "lastSeenAt", "lastScannedAt", "openPortCount", "technologies",
-            "classifications", "description", "classification", "businessState", "owner", "tags"],
+    (["id", "zone", "address", "macAddress", "macVendor", "hostnames", "status", "unstable", "firstSeenAt", "lastSeenAt", "lastScannedAt", "openPortCount",
+            "technologies", "classifications", "description", "classification", "businessState", "owner", "tags"],
         () => items.Select(h => (IReadOnlyList<string?>)
         [
-            h.Id.ToString(), h.Address, string.Join(';', h.Hostnames), h.Status.ToString(), h.Unstable ? "true" : "false", h.Zone, D(h.FirstSeenAt),
+            h.Id.ToString(), h.Zone, h.Address, h.MacAddress, h.MacVendor, string.Join(';', h.Hostnames), h.Status.ToString(), h.Unstable ? "true" : "false",
+            D(h.FirstSeenAt),
             D(h.LastSeenAt), D(h.LastScannedAt), I(h.OpenPortCount), string.Join(';', h.Technologies), string.Join(';', h.Classifications),
             h.Annotation?.Description, h.Annotation?.Classification, h.Annotation?.BusinessState, h.Annotation?.Owner,
             string.Join(';', h.Annotation?.Tags ?? []),
         ]), items);
 
     private static (IReadOnlyList<string>, Func<IEnumerable<IReadOnlyList<string?>>>, object) ServicesExport(IReadOnlyList<ServiceDto> items) =>
-    (["id", "hostId", "address", "port", "transport", "state", "serviceName", "product", "version", "httpUrl", "httpStatusCode", "httpTitle",
+    (["id", "hostId", "zone", "address", "port", "transport", "state", "serviceName", "product", "version", "httpUrl", "httpStatusCode", "httpTitle",
             "webServer", "tlsSubjectCommonName", "tlsIssuer", "tlsNotAfter", "tlsFingerprintSha256", "technologies", "confidence", "firstSeenAt", "lastSeenAt"],
         () => items.Select(s => (IReadOnlyList<string?>)
         [
-            s.Id.ToString(), s.HostId.ToString(), s.Address, I(s.Port), s.Transport.ToString(), s.State.ToString(), s.ServiceName, s.Product,
+            s.Id.ToString(), s.HostId.ToString(), s.Zone, s.Address, I(s.Port), s.Transport.ToString(), s.State.ToString(), s.ServiceName, s.Product,
             s.Version, s.Http?.Url, I(s.Http?.StatusCode), s.Http?.Title, s.Http?.WebServer, s.Tls?.SubjectCommonName, s.Tls?.Issuer,
             D(s.Tls?.NotAfter), s.Tls?.FingerprintSha256, string.Join(';', s.Technologies), N(s.Confidence), D(s.FirstSeenAt), D(s.LastSeenAt),
         ]), items);
 
     private static (IReadOnlyList<string>, Func<IEnumerable<IReadOnlyList<string?>>>, object) ChangesExport(IReadOnlyList<ChangeDto> items) =>
-    (["id", "detectedAt", "scanRunId", "type", "hostId", "address", "port", "severity", "summary", "before", "after"],
+    (["id", "detectedAt", "scanRunId", "type", "hostId", "zone", "address", "port", "severity", "summary", "before", "after"],
         () => items.Select(c => (IReadOnlyList<string?>)
         [
-            c.Id.ToString(), D(c.DetectedAt), c.ScanRunId.ToString(), c.Type.ToString(), c.HostId?.ToString(), c.Address, I(c.Port), c.Severity,
+            c.Id.ToString(), D(c.DetectedAt), c.ScanRunId.ToString(), c.Type.ToString(), c.HostId?.ToString(), c.Zone, c.Address, I(c.Port), c.Severity,
             c.Summary, c.Before, c.After,
         ]), items);
 
     private static (IReadOnlyList<string>, Func<IEnumerable<IReadOnlyList<string?>>>, object) FindingsExport(IReadOnlyList<FindingDto> items) =>
-    (["id", "signatureId", "signatureVersion", "name", "severity", "status", "hostId", "address", "port", "matchedAt", "firstSeenAt", "lastSeenAt",
+    (["id", "signatureId", "signatureVersion", "name", "severity", "status", "hostId", "zone", "address", "port", "matchedAt", "firstSeenAt", "lastSeenAt",
             "source", "confidence", "confidenceMethod", "matchedUrl", "evidence", "externalRefs"],
         () => items.Select(f => (IReadOnlyList<string?>)
         [
-            f.Id.ToString(), f.SignatureId, I(f.SignatureVersion), f.Name, f.Severity, f.Status.ToString(), f.HostId.ToString(), f.Address, I(f.Port),
+            f.Id.ToString(), f.SignatureId, I(f.SignatureVersion), f.Name, f.Severity, f.Status.ToString(), f.HostId.ToString(), f.Zone, f.Address, I(f.Port),
             D(f.MatchedAt), D(f.FirstSeenAt), D(f.LastSeenAt), f.Source, N(f.Confidence), f.ConfidenceMethod, f.MatchedUrl, f.Evidence,
             string.Join(';', f.ExternalRefs.Select(r => $"{r.System}:{r.ExternalId}")),
         ]), items);

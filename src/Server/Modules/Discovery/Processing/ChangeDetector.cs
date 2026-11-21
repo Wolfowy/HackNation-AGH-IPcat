@@ -19,23 +19,24 @@ internal sealed record DetectedChange(ChangeEvent Event, IReadOnlyDictionary<str
 internal sealed class ChangeDetector(DiscoveryDbContext db, Guid runId, CoverageSet coverage, int missingThreshold, DiscoveryOptions options, DateTimeOffset now)
 {
     private readonly List<DetectedChange> _changes = [];
-    private HashSet<string> _seenHosts = [];
-    private HashSet<(string, int, TransportProtocol)> _seenEndpoints = [];
+    // Keys start with the zone: hosts are identified by (zone, address).
+    private HashSet<(string, string)> _seenHosts = [];
+    private HashSet<(string, string, int, TransportProtocol)> _seenEndpoints = [];
     private HashSet<Guid> _newHosts = [];
     private HashSet<Guid> _newServices = [];
 
     public async Task<List<DetectedChange>> DetectAsync(CancellationToken ct)
     {
         var seen = await db.Observations.Where(o => o.ScanRunId == runId)
-            .Select(o => new { o.Address, o.Port, o.Transport, o.Kind }).Distinct().ToListAsync(ct);
-        _seenHosts = seen.Where(s => AssetStateUpdater.UpKinds.Contains(s.Kind)).Select(s => s.Address).ToHashSet();
+            .Select(o => new { o.Zone, o.Address, o.Port, o.Transport, o.Kind }).Distinct().ToListAsync(ct);
+        _seenHosts = seen.Where(s => AssetStateUpdater.UpKinds.Contains(s.Kind)).Select(s => (s.Zone, s.Address)).ToHashSet();
         _seenEndpoints = seen.Where(s => s.Port is not null && AssetStateUpdater.EndpointKinds.Contains(s.Kind))
-            .Select(s => (s.Address, s.Port!.Value, s.Transport ?? TransportProtocol.Tcp)).ToHashSet();
+            .Select(s => (s.Zone, s.Address, s.Port!.Value, s.Transport ?? TransportProtocol.Tcp)).ToHashSet();
         var tlsEndpoints = seen.Where(s => s.Port is not null && s.Kind == ObservationKind.TlsCertificate)
-            .Select(s => (s.Address, s.Port!.Value, s.Transport ?? TransportProtocol.Tcp)).ToHashSet();
+            .Select(s => (s.Zone, s.Address, s.Port!.Value, s.Transport ?? TransportProtocol.Tcp)).ToHashSet();
 
         // shortcut: coverage containment is tested in memory over all hosts; fine up to ~10^5 hosts, move it to SQL (inet <<=) beyond.
-        var hosts = (await db.Hosts.ToListAsync(ct)).Where(h => _seenHosts.Contains(h.Address) || coverage.CoversHost(h.Address)).ToList();
+        var hosts = (await db.Hosts.ToListAsync(ct)).Where(h => _seenHosts.Contains((h.Zone, h.Address)) || coverage.CoversHost(h.Zone, h.Address)).ToList();
         var hostsById = hosts.ToDictionary(h => h.Id);
         var hostIds = hostsById.Keys.ToList();
         var services = await db.Services.Where(s => hostIds.Contains(s.HostId)).ToListAsync(ct);
@@ -43,7 +44,7 @@ internal sealed class ChangeDetector(DiscoveryDbContext db, Guid runId, Coverage
         var openFindings = await db.SignatureMatches.Where(m => hostIds.Contains(m.HostId) && m.Status == FindingStatus.Open).ToListAsync(ct);
         var httpServiceIds = await db.HttpSnapshots.Where(s => s.LastScanRunId == runId).Select(s => s.ServiceId).Distinct().ToListAsync(ct);
         var snapshots = await db.HttpSnapshots.Where(s => httpServiceIds.Contains(s.ServiceId)).ToListAsync(ct);
-        var tlsServiceIds = services.Where(s => tlsEndpoints.Contains((s.Address, s.Port, s.Transport))).Select(s => s.Id).ToList();
+        var tlsServiceIds = services.Where(s => tlsEndpoints.Contains((s.Zone, s.Address, s.Port, s.Transport))).Select(s => s.Id).ToList();
         var certificates = await db.Certificates.Where(c => tlsServiceIds.Contains(c.ServiceId)).ToListAsync(ct);
 
         _newHosts = hosts.Where(h => h.ComparedAt is null).Select(h => h.Id).ToHashSet();
@@ -62,8 +63,9 @@ internal sealed class ChangeDetector(DiscoveryDbContext db, Guid runId, Coverage
         var gone = new HashSet<Guid>();
         foreach (var host in hosts)
         {
-            var seen = _seenHosts.Contains(host.Address);
-            var missed = !seen && (coverage.CanCountMiss(host.Address, ScanOperation.DiscoverHosts) || coverage.CanCountMiss(host.Address, ScanOperation.ScanPorts));
+            var seen = _seenHosts.Contains((host.Zone, host.Address));
+            var missed = !seen && (coverage.CanCountMiss(host.Zone, host.Address, ScanOperation.DiscoverHosts)
+                || coverage.CanCountMiss(host.Zone, host.Address, ScanOperation.ScanPorts));
             if (!seen && !missed) continue;
 
             RecordOutcome(host, seen ? 'U' : 'D');
@@ -100,14 +102,14 @@ internal sealed class ChangeDetector(DiscoveryDbContext db, Guid runId, Coverage
         host.Unstable = transitions >= options.FlapTransitions;
     }
 
-    private HashSet<Guid> DetectServices(List<Service> services, Dictionary<Guid, Host> hosts, HashSet<(string, int, TransportProtocol)> tlsEndpoints,
+    private HashSet<Guid> DetectServices(List<Service> services, Dictionary<Guid, Host> hosts, HashSet<(string, string, int, TransportProtocol)> tlsEndpoints,
         List<Certificate> certificates, HashSet<Guid> goneHosts)
     {
         var gone = new HashSet<Guid>();
         foreach (var s in services)
         {
             var host = hosts[s.HostId];
-            var key = (s.Address, s.Port, s.Transport);
+            var key = (s.Zone, s.Address, s.Port, s.Transport);
             var endpoint = $"{s.Address}:{s.Port}/{s.Transport.ToString().ToLowerInvariant()}";
             var summary = Summary(s);
             if (_seenEndpoints.Contains(key))
@@ -138,7 +140,7 @@ internal sealed class ChangeDetector(DiscoveryDbContext db, Guid runId, Coverage
                 s.State = ServiceState.Gone; // reported once, as HostGone
                 gone.Add(s.Id);
             }
-            else if (s.State == ServiceState.Open && coverage.CanCountMiss(s.Address, ScanOperation.ScanPorts))
+            else if (s.State == ServiceState.Open && coverage.CanCountMiss(s.Zone, s.Address, ScanOperation.ScanPorts))
             {
                 s.ConsecutiveMisses++;
                 if (s.ConsecutiveMisses < missingThreshold) continue;
@@ -224,7 +226,7 @@ internal sealed class ChangeDetector(DiscoveryDbContext db, Guid runId, Coverage
             var assetGone = goneHosts.Contains(m.HostId) || (m.ServiceId is { } sid && goneServices.Contains(sid));
             var missed = !assetGone && m.Source != SignatureMatch.ClassificationSource && coverage.Complete
                 && coverage.Executed(ScanOperation.ExecuteSignatures)
-                && (m.Port is { } port ? coverage.CoversEndpoint(m.Address, port) : coverage.CoversHost(m.Address));
+                && (m.Port is { } port ? coverage.CoversEndpoint(m.Zone, m.Address, port) : coverage.CoversHost(m.Zone, m.Address));
             if (missed) m.ConsecutiveMisses++;
             if (assetGone || (missed && m.ConsecutiveMisses >= missingThreshold))
             {
@@ -238,7 +240,7 @@ internal sealed class ChangeDetector(DiscoveryDbContext db, Guid runId, Coverage
     {
         var change = new ChangeEvent
         {
-            Id = Guid.CreateVersion7(), DetectedAt = now, ScanRunId = runId, Type = type, HostId = host.Id, Address = host.Address,
+            Id = Guid.CreateVersion7(), DetectedAt = now, ScanRunId = runId, Type = type, HostId = host.Id, Zone = host.Zone, Address = host.Address,
             Port = service?.Port, Summary = summary, Before = before, After = after, Severity = DefaultSeverity(type),
         };
         var fields = new Dictionary<string, string?>(StringComparer.Ordinal)

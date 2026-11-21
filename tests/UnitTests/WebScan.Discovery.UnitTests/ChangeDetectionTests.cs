@@ -114,6 +114,52 @@ public class ChangeDetectionTests(TestApp app) : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Same_ip_in_two_zones_is_two_hosts_with_independent_change_histories()
+    {
+        const string ip = "10.0.0.5";
+        _s.Perspective = ("agent-waw", "eth0", "dc-warsaw");
+        var warsaw = await _s.RunAsync(Scenario.ZoneCoverage("dc-warsaw", "10.0.0.0/24"), 1, _s.HostUp(ip), _s.Port(ip, 22));
+        Assert.Equal([NewHost, NewPort], Types(warsaw));
+
+        _s.NextRun().Perspective = ("agent-lab", "eth0", "lab");
+        var lab = await _s.RunAsync(Scenario.ZoneCoverage("lab", "10.0.0.0/24"), 1, _s.HostUp(ip), _s.Port(ip, 80));
+        Assert.Equal([NewHost, NewPort], Types(lab)); // a new machine, not "port 80 opened, port 22 gone" on the Warsaw one
+        Assert.Equal(80, lab.Single(c => c.Type == NewPort).Port);
+        Assert.All(lab, c => Assert.Equal("lab", c.Zone));
+
+        var hosts = await _s.QueryAsync(db => db.Hosts.OrderBy(h => h.Zone).ToListAsync());
+        Assert.Equal([("dc-warsaw", ip), ("lab", ip)], hosts.Select(h => (h.Zone, h.Address)));
+        var services = await _s.QueryAsync(db => db.Services.OrderBy(s => s.Zone).ToListAsync());
+        Assert.Equal([(hosts[0].Id, "dc-warsaw", 22, ServiceState.Open, 0), (hosts[1].Id, "lab", 80, ServiceState.Open, 0)],
+            services.Select(s => (s.HostId, s.Zone, s.Port, s.State, s.ConsecutiveMisses)));
+        var changes = await _s.QueryAsync(db => db.Changes.Select(c => new { c.HostId, c.Zone }).ToListAsync());
+        Assert.Equal(2, changes.Count(c => c.HostId == hosts[0].Id && c.Zone == "dc-warsaw"));
+        Assert.Equal(2, changes.Count(c => c.HostId == hosts[1].Id && c.Zone == "lab"));
+    }
+
+    [Fact]
+    public async Task Run_covering_one_zone_never_counts_misses_for_the_same_ip_in_another_zone()
+    {
+        const string ip = "10.0.0.7";
+        _s.Perspective = ("agent-a", "eth0", "zone-a");
+        await _s.RunAsync(Scenario.ZoneCoverage("zone-a", "10.0.0.0/24"), 1, _s.HostUp(ip), _s.Port(ip, 443));
+        _s.NextRun().Perspective = ("agent-b", "eth0", "zone-b");
+        await _s.RunAsync(Scenario.ZoneCoverage("zone-b", "10.0.0.0/24"), 1, _s.HostUp(ip));
+
+        _s.NextRun();
+        Assert.Equal([HostGone], Types(await _s.RunAsync(Scenario.ZoneCoverage("zone-b", "10.0.0.0/24"), 1))); // nothing answered in zone B
+        var a = await _s.QueryAsync(db => db.Hosts.SingleAsync(h => h.Zone == "zone-a"));
+        Assert.Equal((HostStatus.Active, 0, "U"), (a.Status, a.ConsecutiveMisses, a.StateHistory));
+        var port = await _s.QueryAsync(db => db.Services.SingleAsync());
+        Assert.Equal((ServiceState.Open, 0), (port.State, port.ConsecutiveMisses));
+
+        _s.NextRun().Perspective = ("agent-a", "eth0", "zone-a");
+        Assert.Empty(await _s.RunAsync(Scenario.ZoneCoverage("zone-a", "10.0.0.0/24"), 1, _s.HostUp(ip), _s.Port(ip, 443)));
+        var b = await _s.QueryAsync(db => db.Hosts.SingleAsync(h => h.Zone == "zone-b"));
+        Assert.Equal((HostStatus.Gone, 1, "UD"), (b.Status, b.ConsecutiveMisses, b.StateHistory)); // neither reset nor counted by zone A
+    }
+
+    [Fact]
     public async Task Compare_is_idempotent_for_a_retried_step()
     {
         await _s.RunAsync(Full("10.2.4.0/24"), 1, _s.HostUp("10.2.4.1"));

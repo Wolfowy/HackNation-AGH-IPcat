@@ -31,6 +31,13 @@ public sealed class Scenario(TestApp app)
         CoveredHosts = hosts, CoveredEndpoints = endpoints ?? [], Complete = complete, OperationsExecuted = operations ?? FullScan,
     };
 
+    /// <summary>Zone-qualified coverage (as Scanning reports it): the entries cover hosts of <paramref name="zone"/> only.</summary>
+    public static RunCoverage ZoneCoverage(string zone, params string[] hosts) => Coverage(hosts) with
+    {
+        CoveredHostsByZone = new Dictionary<string, IReadOnlyList<string>> { [zone] = hosts },
+        CoveredEndpointsByZone = new Dictionary<string, IReadOnlyList<string>> { [zone] = [] },
+    };
+
     public async Task IngestAsync(params DiscoveryObservation[] observations) => await IngestBatchAsync(Guid.NewGuid(), observations);
 
     public Task IngestBatchAsync(Guid batchId, params DiscoveryObservation[] observations) =>
@@ -75,6 +82,9 @@ public sealed class Scenario(TestApp app)
 
     public DiscoveryObservation HostUp(string address, params string[] hostnames) =>
         Base(ObservationKind.HostUp, address, null) with { Host = new HostDetails { Status = "up", Reason = "echo-reply", Hostnames = hostnames } };
+
+    public DiscoveryObservation HostUpWithMac(string address, string mac, string? vendor = null) =>
+        Base(ObservationKind.HostUp, address, null) with { Host = new HostDetails { Status = "up", Reason = "arp-response", MacAddress = mac, MacVendor = vendor } };
 
     public DiscoveryObservation HostDown(string address) =>
         Base(ObservationKind.HostDown, address, null) with { Host = new HostDetails { Status = "down", Reason = "no-response" } };

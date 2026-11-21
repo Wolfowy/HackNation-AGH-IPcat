@@ -88,41 +88,60 @@ public sealed class ScanRunStore(IDbContextOutbox<ScanningDbContext> outbox, ISc
         return result;
     }
 
-    /// <summary>Coverage from job coverage reports: targets of jobs minus what the agents reported as not covered.</summary>
+    private sealed class ZoneCoverage
+    {
+        public IpRangeSet Hosts { get; set; } = new();
+        public SortedSet<string> Hostnames { get; } = new(StringComparer.Ordinal);
+        public SortedSet<string> Endpoints { get; } = new(StringComparer.Ordinal);
+        public List<string> HostEntries => [.. Hosts.ToCidrs(), .. Hostnames];
+    }
+
+    /// <summary>
+    /// Coverage from job coverage reports: targets of jobs minus what the agents reported as not covered, per zone of the job's
+    /// network (identical IPs in different zones are different machines) plus the flat union.
+    /// </summary>
     public async Task<RunCoverage> CoverageAsync(Guid runId, bool complete, CancellationToken ct = default)
     {
         var jobs = await Db.Jobs.AsNoTracking()
             .Where(j => j.ScanRunId == runId && j.Operation != ScanOperation.ExecuteSignatures && (j.Status == JobStatus.Completed || j.CoverageJson != null))
-            .Select(j => new { j.Operation, j.Status, j.PayloadJson, j.CoverageJson }).ToListAsync(ct);
+            .Select(j => new { j.Operation, j.Status, j.Zone, j.PayloadJson, j.CoverageJson }).ToListAsync(ct);
 
-        var hosts = new IpRangeSet();
-        var hostnames = new SortedSet<string>(StringComparer.Ordinal);
-        var endpoints = new SortedSet<string>(StringComparer.Ordinal);
+        var zones = new Dictionary<string, ZoneCoverage>(StringComparer.Ordinal);
+        var all = new ZoneCoverage();
         foreach (var j in jobs)
         {
             var coverage = j.CoverageJson is null ? null : JsonSerializer.Deserialize<JobCoverage>(j.CoverageJson, ContractJson.Options);
             if (coverage is null && j.Status != JobStatus.Completed) continue;
             var uncovered = coverage is { Complete: false } ? coverage.UncoveredTargets.ToHashSet(StringComparer.OrdinalIgnoreCase) : [];
             var targets = JsonSerializer.Deserialize<ScanJob>(j.PayloadJson, ContractJson.Options)!.Targets;
+            var zone = zones.TryGetValue(j.Zone, out var z) ? z : zones[j.Zone] = new ZoneCoverage();
 
             var ranges = new List<IpRange>();
             foreach (var h in targets.Hosts)
             {
                 if (IpRangeSet.TryParseRange(h, out var r)) ranges.Add(r);
-                else if (!uncovered.Contains(h)) hostnames.Add(TargetPlanner.NormalizeHostname(h));
+                else if (!uncovered.Contains(h)) zone.Hostnames.Add(TargetPlanner.NormalizeHostname(h));
             }
             var uncoveredRanges = uncovered.Select(u => IpRangeSet.TryParseRange(u, out var r) ? r : (IpRange?)null).OfType<IpRange>();
-            hosts = hosts.Union(IpRangeSet.FromRanges(ranges).Subtract(IpRangeSet.FromRanges(uncoveredRanges)));
+            zone.Hosts = zone.Hosts.Union(IpRangeSet.FromRanges(ranges).Subtract(IpRangeSet.FromRanges(uncoveredRanges)));
             foreach (var key in targets.Endpoints.Select(e => $"{e.Address}:{e.Port}").Where(k => !uncovered.Contains(k)))
-                endpoints.Add(key);
+                zone.Endpoints.Add(key);
+        }
+        foreach (var zone in zones.Values)
+        {
+            all.Hosts = all.Hosts.Union(zone.Hosts);
+            all.Hostnames.UnionWith(zone.Hostnames);
+            all.Endpoints.UnionWith(zone.Endpoints);
         }
 
         var executed = await Db.Jobs.AsNoTracking().Where(j => j.ScanRunId == runId && j.Status == JobStatus.Completed)
             .Select(j => j.Operation).Distinct().ToListAsync(ct);
         return new RunCoverage
         {
-            CoveredHosts = [.. hosts.ToCidrs(), .. hostnames], CoveredEndpoints = [.. endpoints], Complete = complete,
+            CoveredHosts = all.HostEntries, CoveredEndpoints = [.. all.Endpoints], Complete = complete,
             OperationsExecuted = executed.OrderBy(o => o).ToList(),
+            CoveredHostsByZone = zones.ToDictionary(z => z.Key, z => (IReadOnlyList<string>)z.Value.HostEntries, StringComparer.Ordinal),
+            CoveredEndpointsByZone = zones.ToDictionary(z => z.Key, z => (IReadOnlyList<string>)[.. z.Value.Endpoints], StringComparer.Ordinal),
         };
     }
 

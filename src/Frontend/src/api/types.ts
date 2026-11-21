@@ -549,7 +549,11 @@ export interface Host {
   openPortCount: number
   /** Technology names (the server may also send objects with a `name`). */
   technologies: (string | HostTechnology)[]
-  zone?: string
+  /** Zone of the scanned network ('' = default zone). Hosts are identified by (zone, address): the same IP in two zones is two hosts. */
+  zone: string
+  /** Latest MAC (AA:BB:CC:DD:EE:FF) — only visible on the scanner's L2 segment; never an identity. */
+  macAddress?: string
+  macVendor?: string
   annotation?: AssetAnnotation
 }
 
@@ -584,6 +588,7 @@ export interface HostDetail extends Host {
 export interface Service {
   id: Guid
   hostId: Guid
+  zone: string
   address: string
   port: number
   transport: 'Tcp' | 'Udp'
@@ -631,6 +636,7 @@ export interface Change {
   scanRunId: Guid
   type: ChangeType
   hostId?: Guid
+  zone: string
   address: string
   port?: number
   summary: string
@@ -642,7 +648,9 @@ export interface Change {
 /** Analytics/RunDiff.cs DiffItem. */
 export interface DiffEntry {
   kind: 'endpoint' | 'technology'
+  /** "{kind}|{zone}|{address}|{port}|…" */
   key: string
+  zone: string
   address: string
   port?: number
   transport?: string
@@ -669,6 +677,7 @@ export interface Finding {
   name: string
   severity: Severity
   hostId: Guid
+  zone: string
   address: string
   port?: number
   matchedAt: Instant
@@ -773,11 +782,11 @@ export interface TopologyPerspective {
   zone?: string
 }
 
-/** IPv4 /24 or IPv6 /64 (`id` = `cidr`; "other" groups hosts known only by name). */
+/** IPv4 /24 or IPv6 /64 per zone (id = "{zone}|{cidr}"; cidr "other" groups hosts known only by name). */
 export interface TopologySubnet {
   id: string
   cidr: string
-  zone?: string
+  zone: string
   hostCount: number
 }
 
@@ -798,9 +807,11 @@ export interface TopologyHost {
   hostnames: string[]
   status: HostStatus
   unstable: boolean
+  /** Id of the host's subnet ("{zone}|{cidr}"). */
   subnet: string
-  zone?: string
+  zone: string
   lastSeenAt: Instant
+  macAddress?: string
   macVendor?: string
   openPortCount: number
   services: TopologyService[]

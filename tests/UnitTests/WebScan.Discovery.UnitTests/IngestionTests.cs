@@ -1,8 +1,11 @@
+using System.Net.Http.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using WebScan.Contracts;
 using WebScan.Discovery.UnitTests.Infrastructure;
 using WebScan.Server.Kernel.Messaging;
+using WebScan.Server.Kernel.Security;
+using WebScan.Server.Modules.Discovery.Api;
 using WebScan.Server.Modules.Discovery.Domain;
 using Wolverine;
 
@@ -60,6 +63,31 @@ public class IngestionTests(TestApp app) : IAsyncLifetime
         Assert.Equal(app.Clock.GetUtcNow(), hosts[1].LastSeenAt);
         Assert.Equal("lab", hosts[1].Zone);
         Assert.All(await _s.QueryAsync(db => db.Services.ToListAsync()), s => Assert.Equal(ServiceState.Open, s.State));
+    }
+
+    [Fact]
+    public async Task HostUp_stores_the_latest_normalized_mac_and_vendor_and_keeps_history_in_observations()
+    {
+        await _s.IngestAsync(_s.HostUpWithMac("10.1.6.1", "aa-bb-cc-dd-ee-0f", " Dell Inc. "));
+        var host = await _s.QueryAsync(db => db.Hosts.SingleAsync());
+        Assert.Equal(("AA:BB:CC:DD:EE:0F", "Dell Inc."), (host.MacAddress, host.MacVendor));
+
+        // The same MAC on another IP (e.g. a router answering for hosts behind it) never merges hosts; no MAC keeps the last value.
+        _s.NextRun();
+        await _s.IngestAsync(_s.HostUpWithMac("10.1.6.2", "aabb.ccdd.ee0f"), _s.HostUp("10.1.6.1"), _s.HostUpWithMac("10.1.6.3", "not-a-mac"));
+        var hosts = await _s.QueryAsync(db => db.Hosts.OrderBy(h => h.Address).ToListAsync());
+        Assert.Equal([("10.1.6.1", "AA:BB:CC:DD:EE:0F", "Dell Inc."), ("10.1.6.2", "AA:BB:CC:DD:EE:0F", null), ("10.1.6.3", null, null)],
+            hosts.Select(h => (h.Address, h.MacAddress, h.MacVendor)));
+
+        // A new MAC (randomized/private address, replaced NIC) replaces the value and drops the stale vendor.
+        _s.NextRun();
+        await _s.IngestAsync(_s.HostUpWithMac("10.1.6.1", "02:00:5e:10:00:01"));
+        host = await _s.QueryAsync(db => db.Hosts.SingleAsync(h => h.Address == "10.1.6.1"));
+        Assert.Equal(("02:00:5E:10:00:01", (string?)null), (host.MacAddress, host.MacVendor));
+
+        var history = await app.Client(Roles.Viewer).GetFromJsonAsync<PagedResult<ObservationDto>>(
+            $"/api/observations?hostId={host.Id}&kind=HostUp", ContractJson.Options);
+        Assert.Equal(["02:00:5e:10:00:01", null, "aa-bb-cc-dd-ee-0f"], history!.Items.Select(o => o.Observation.Host!.MacAddress));
     }
 
     [Fact]

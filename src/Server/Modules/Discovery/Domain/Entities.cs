@@ -35,7 +35,10 @@ public sealed class ObservationRecord
     public required string ObservationId { get; set; }
     public required string AgentId { get; set; }
     public string? InterfaceName { get; set; }
-    public string? Zone { get; set; }
+
+    /// <summary>Zone of the scanned network ("" = default zone); with <see cref="Address"/> it identifies the host.</summary>
+    public string Zone { get; set; } = "";
+
     public string? WorkflowStepId { get; set; }
     public ScanOperation Operation { get; set; }
     public ObservationKind Kind { get; set; }
@@ -71,6 +74,10 @@ public sealed class RunProcessing
     public bool CoverageComplete { get; set; }
     public List<string> CoveredHosts { get; set; } = [];
     public List<string> CoveredEndpoints { get; set; } = [];
+
+    /// <summary>JSON {zone: {hosts: [...], endpoints: [...]}}; null = the flat lists cover all zones.</summary>
+    public string? CoverageByZone { get; set; }
+
     public List<string> OperationsExecuted { get; set; } = [];
     public DateTimeOffset? PersistedAt { get; set; }
     public DateTimeOffset? ComparedAt { get; set; }
@@ -80,6 +87,7 @@ public sealed class RunProcessing
     public string? ChangesByType { get; set; }
 }
 
+/// <summary>Current state of a machine, identified by (<see cref="Zone"/>, <see cref="Address"/>): the same IP in two zones is two hosts.</summary>
 public sealed class Host
 {
     public Guid Id { get; set; }
@@ -87,8 +95,13 @@ public sealed class Host
     public List<string> Hostnames { get; set; } = [];
     public HostStatus Status { get; set; }
     public bool Unstable { get; set; }
-    public string? Zone { get; set; }
+
+    /// <summary>Zone of the scanned network; "" = default zone.</summary>
+    public string Zone { get; set; } = "";
+
+    /// <summary>Latest MAC (AA:BB:CC:DD:EE:FF) — attribute only, never identity (randomized MACs, only visible on the same L2 segment).</summary>
     public string? MacAddress { get; set; }
+
     public string? MacVendor { get; set; }
     public string? OsGuess { get; set; }
     public DateTimeOffset FirstSeenAt { get; set; }
@@ -114,6 +127,10 @@ public sealed class Service
 {
     public Guid Id { get; set; }
     public Guid HostId { get; set; }
+
+    /// <summary>Zone of the host (denormalized like <see cref="Address"/>).</summary>
+    public string Zone { get; set; } = "";
+
     public required string Address { get; set; }
     public int Port { get; set; }
     public TransportProtocol Transport { get; set; }
@@ -260,6 +277,10 @@ public sealed class SignatureMatch
     public Guid Id { get; set; }
     public Guid HostId { get; set; }
     public Guid? ServiceId { get; set; }
+
+    /// <summary>Zone of the host (denormalized like <see cref="Address"/>).</summary>
+    public string Zone { get; set; } = "";
+
     public required string Address { get; set; }
     public string? Hostname { get; set; }
     public int? Port { get; set; }
@@ -300,6 +321,7 @@ public sealed class ChangeEvent
     public Guid ScanRunId { get; set; }
     public AssetChangeType Type { get; set; }
     public Guid? HostId { get; set; }
+    public string Zone { get; set; } = "";
     public required string Address { get; set; }
     public int? Port { get; set; }
     public required string Summary { get; set; }
@@ -311,9 +333,10 @@ public sealed class ChangeEvent
     public List<string> RaisedBy { get; set; } = [];
 }
 
-/// <summary>User-maintained context per address. Never touched by scans; joined to hosts by address.</summary>
+/// <summary>User-maintained context per (zone, address). Never touched by scans; joined to hosts by (zone, address).</summary>
 public sealed class AssetAnnotation
 {
+    public string Zone { get; set; } = "";
     public required string Address { get; set; }
     public string? Description { get; set; }
     public string? Classification { get; set; }
@@ -328,6 +351,7 @@ public sealed class AssetAnnotation
 public sealed class AssetAnnotationRevision
 {
     public long Id { get; set; }
+    public string Zone { get; set; } = "";
     public required string Address { get; set; }
     public string? Description { get; set; }
     public string? Classification { get; set; }

@@ -294,6 +294,14 @@ Deviations and clarifications agreed during integration (code is the source of t
   never switching perspective. Different networks of a run may still use different interfaces of one agent in parallel.
 * Admin panel: workflows are edited as a React Flow graph (palette, inspector, condition builder) with a synced JSON tab;
   topology map (agent interface → subnet → host) and inventory graph (subnet → host → port cards); every `address:port` opens in a new tab.
+* **Asset identity is (zone, address)**: the same IP in two zones is two hosts (zone = the scanned network's zone, `""` = default).
+  Services, findings, change events, annotations (import/export carry `zone`; a zone-less import row matches only an address
+  that exists in exactly one zone, else it is reported as ambiguous) and run diff keys (`endpoint|{zone}|{addr}|…`) are zone-scoped;
+  `RunCoverage.CoveredHostsByZone/CoveredEndpointsByZone` (built per job zone) make miss/gone counting zone-aware (flat lists = all
+  zones); `/api/topology` subnet ids are `{zone}|{cidr}`. Hosts keep the latest **MAC + vendor** (`AA:BB:CC:DD:EE:FF`; history in raw
+  observations) as an attribute only, never identity (randomized MACs; behind a router you see the router's MAC). The agent image
+  sets `NMAP_PRIVILEGED=1` so non-root nmap uses its raw-socket capability: same-subnet discovery then uses ARP and reports MACs
+  (natively on macOS without root nmap cannot see MACs).
 * Agent tool manifest format and extensibility: [docs/TOOLS.md](docs/TOOLS.md). Additional placeholder `{ports}` (nmap groups hosts by
   identical port sets so it never scans endpoints outside the job).
 

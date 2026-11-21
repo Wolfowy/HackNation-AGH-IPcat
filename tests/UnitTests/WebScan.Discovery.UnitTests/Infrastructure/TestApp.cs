@@ -178,16 +178,17 @@ public sealed class RecordingScanEventPublisher : IScanEventPublisher
     }
 }
 
-/// <summary>Networks module stand-in: <see cref="Networks"/> maps network ids to include entries.</summary>
+/// <summary>Networks module stand-in: <see cref="Networks"/> maps network ids to include entries, <see cref="Zones"/> to zones (default "lab").</summary>
 public sealed class FakeNetworkScope : INetworkScopeService
 {
     public Dictionary<Guid, string[]> Networks { get; } = [];
+    public Dictionary<Guid, string> Zones { get; } = [];
 
     public Task<ResolvedScope> ResolveAsync(IReadOnlyCollection<Guid> networkIds, CancellationToken ct = default) =>
         Task.FromResult(new ResolvedScope
         {
             Segments = networkIds.Where(Networks.ContainsKey)
-                .Select(id => new ScopeSegment { NetworkId = id, NetworkName = id.ToString(), Zone = "lab", Include = Networks[id] }).ToList(),
+                .Select(id => new ScopeSegment { NetworkId = id, NetworkName = id.ToString(), Zone = Zones.GetValueOrDefault(id, "lab"), Include = Networks[id] }).ToList(),
         });
 
     public Task<bool> IsAuthorizedAsync(string target, CancellationToken ct = default) => Task.FromResult(true);

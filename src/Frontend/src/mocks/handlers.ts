@@ -727,7 +727,8 @@ export const handlers = [
       const svc = (i: number) => db.services.find((s) => s.hostId === hosts[i].id)
       const endpoint = (address: string, port: number, name?: string, before?: string, after?: string) => ({
         kind: 'endpoint',
-        key: `endpoint|${address}|${port}|tcp`,
+        key: `endpoint|${hosts.find((h) => h.address === address)?.zone ?? ''}|${address}|${port}|tcp`,
+        zone: hosts.find((h) => h.address === address)?.zone ?? '',
         address,
         port,
         transport: 'tcp',
@@ -742,7 +743,7 @@ export const handlers = [
         removed: [3, 4].map((i) => endpoint(hosts[i].address, 21, 'ftp', 'ftp vsftpd 3.0.5')),
         changed: [
           endpoint(hosts[5].address, 443, 'https', 'https nginx 1.22.1', 'https nginx 1.24.0'),
-          { kind: 'technology', key: `technology|${hosts[6].address}|443|nginx`, address: hosts[6].address, port: 443, transport: 'tcp', name: 'nginx', before: '1.22.1', after: '1.24.0' },
+          { kind: 'technology', key: `technology|${hosts[6].zone}|${hosts[6].address}|443|nginx`, zone: hosts[6].zone, address: hosts[6].address, port: 443, transport: 'tcp', name: 'nginx', before: '1.22.1', after: '1.24.0' },
         ],
       })
     }),
@@ -837,12 +838,14 @@ export const handlers = [
       const search = url.searchParams.get('search')?.toLowerCase()
       const status = url.searchParams.get('status')
       const zone = url.searchParams.get('zone')
-      const items = db.hosts.filter(
-        (h) =>
-          (!status || h.status === status) &&
-          (!zone || h.zone === zone) &&
-          (!search || [h.address, ...h.hostnames, ...h.technologies.map(String)].some((v) => v.toLowerCase().includes(search))),
-      )
+      const items = db.hosts
+        .filter(
+          (h) =>
+            (!status || h.status === status) &&
+            (!zone || h.zone === zone) &&
+            (!search || [h.address, ...h.hostnames, ...h.technologies.map(String)].some((v) => v.toLowerCase().includes(search))),
+        )
+        .sort((a, b) => a.zone.localeCompare(b.zone) || a.address.localeCompare(b.address)) // server order: zone, then address
       return HttpResponse.json(paged(items, url))
     }),
   ),
@@ -878,9 +881,11 @@ export const handlers = [
       const search = url.searchParams.get('search')?.toLowerCase()
       const port = url.searchParams.get('port')
       const serviceName = url.searchParams.get('serviceName')?.toLowerCase()
+      const zone = url.searchParams.get('zone')
       const items = db.services.filter(
         (s) =>
           (!port || String(s.port) === port) &&
+          (!zone || s.zone === zone) &&
           (!serviceName || (s.serviceName ?? '').toLowerCase().includes(serviceName)) &&
           (!search || [s.address, s.product ?? '', s.http?.title ?? ''].some((v) => v.toLowerCase().includes(search))),
       )
@@ -929,9 +934,12 @@ export const handlers = [
             hostnames: h.hostnames,
             status: h.status,
             unstable: h.unstable,
-            subnet: h.address.replace(/\.\d+$/, '.0/24'),
+            // Subnets are per zone: the same range in two zones is two networks.
+            subnet: `${h.zone}|${h.address.replace(/\.\d+$/, '.0/24')}`,
             zone: h.zone,
             lastSeenAt: h.lastSeenAt,
+            macAddress: h.macAddress,
+            macVendor: h.macVendor,
             openPortCount: services.length,
             services: services.map((s) => ({
               port: s.port,
@@ -947,9 +955,9 @@ export const handlers = [
             observedBy: seenBy ? [{ agentId: seenBy.agentId, interfaceName: seenBy.interfaceName }] : [],
           }
         })
-      const subnets = [...new Set(hosts.map((h) => h.subnet))].sort().map((cidr) => {
-        const members = hosts.filter((h) => h.subnet === cidr)
-        return { id: cidr, cidr, zone: members[0].zone, hostCount: members.length }
+      const subnets = [...new Set(hosts.map((h) => h.subnet))].sort().map((id) => {
+        const members = hosts.filter((h) => h.subnet === id)
+        return { id, cidr: id.slice(id.indexOf('|') + 1), zone: members[0].zone, hostCount: members.length }
       })
       const perspectives = Object.entries(MOCK_PERSPECTIVES)
         .filter(([zone]) => hosts.some((h) => h.zone === zone))
@@ -968,6 +976,7 @@ export const handlers = [
           (!q('type') || c.type === q('type')) &&
           (!q('hostId') || c.hostId === q('hostId')) &&
           (!q('scanRunId') || c.scanRunId === q('scanRunId')) &&
+          (!q('zone') || c.zone === q('zone')) &&
           (!q('since') || c.detectedAt >= q('since')!),
       )
       return HttpResponse.json(paged(items, url))
@@ -978,7 +987,10 @@ export const handlers = [
     route('read', ({ url }) => {
       const severity = url.searchParams.get('severity')
       const status = url.searchParams.get('status')
-      return HttpResponse.json(paged(db.findings.filter((f) => (!severity || f.severity === severity) && (!status || f.status === status)), url))
+      const zone = url.searchParams.get('zone')
+      return HttpResponse.json(
+        paged(db.findings.filter((f) => (!severity || f.severity === severity) && (!status || f.status === status) && (!zone || f.zone === zone)), url),
+      )
     }),
   ),
   http.get(
@@ -1004,7 +1016,10 @@ export const handlers = [
         let updated = 0
         const errors: string[] = []
         rows.forEach((r, i) => {
-          const host = db.hosts.find((h) => h.address === r.address)
+          // Server rule: without a zone an address matches only when it exists in exactly one zone.
+          const matches = db.hosts.filter((h) => h.address === r.address && (!r.zone || h.zone === r.zone))
+          if (matches.length > 1) return errors.push(`Row ${i + 1}: address '${String(r.address)}' is ambiguous: it exists in zones ${matches.map((h) => h.zone || 'default').join(', ')}; add a zone.`)
+          const host = matches[0]
           if (!host) return errors.push(`Row ${i + 1}: unknown host ${String(r.address)}`)
           host.annotation = { description: String(r.description ?? ''), classification: String(r.classification ?? ''), businessState: String(r.businessState ?? ''), owner: String(r.owner ?? ''), tags: String(r.tags ?? '').split(';').filter(Boolean) }
           updated++

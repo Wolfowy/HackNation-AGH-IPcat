@@ -57,15 +57,17 @@ internal sealed class DiscoveryRunProcessor(
         run.CoverageComplete = coverage.Complete;
         run.CoveredHosts = [.. coverage.CoveredHosts];
         run.CoveredEndpoints = [.. coverage.CoveredEndpoints];
+        run.CoverageByZone = CoverageSet.SerializeZones(coverage);
         run.OperationsExecuted = coverage.OperationsExecuted.Select(o => o.ToString()).ToList();
         run.PersistedAt = now;
 
         if (classificationRules.Count > 0) await ApplyClassificationRulesAsync(scanRunId, classificationRules, now, ct);
 
         var coverageSet = CoverageSet.From(run);
-        var seenAddresses = (await db.Observations.Where(o => o.ScanRunId == scanRunId).Select(o => o.Address).Distinct().ToListAsync(ct)).ToHashSet();
+        var seen = (await db.Observations.Where(o => o.ScanRunId == scanRunId).Select(o => new { o.Zone, o.Address }).Distinct().ToListAsync(ct))
+            .Select(o => (o.Zone, o.Address)).ToHashSet();
         // shortcut: coverage containment tested in memory over all hosts (see ChangeDetector).
-        var scanned = (await db.Hosts.ToListAsync(ct)).Where(h => seenAddresses.Contains(h.Address) || coverageSet.CoversHost(h.Address)).ToList();
+        var scanned = (await db.Hosts.ToListAsync(ct)).Where(h => seen.Contains((h.Zone, h.Address)) || coverageSet.CoversHost(h.Zone, h.Address)).ToList();
         foreach (var host in scanned) host.LastScannedAt = now;
 
         var services = await db.Services.CountAsync(s => s.LastSeenRunId == scanRunId, ct);
@@ -155,18 +157,21 @@ internal sealed class DiscoveryRunProcessor(
     private async Task ApplyClassificationRulesAsync(Guid scanRunId, IReadOnlyList<ClassificationRule> classificationRules, DateTimeOffset now,
         CancellationToken ct)
     {
-        var matches = new Dictionary<(string, int?, string), (ClassificationRule Rule, DiscoveryObservation Observation)>();
-        var payloads = db.Observations.AsNoTracking().Where(o => o.ScanRunId == scanRunId).OrderBy(o => o.Id).Select(o => o.Payload).AsAsyncEnumerable();
-        await foreach (var payload in payloads.WithCancellation(ct))
+        var matches = new Dictionary<(string Zone, string Address, int?, string), (ClassificationRule Rule, DiscoveryObservation Observation)>();
+        var rows = db.Observations.AsNoTracking().Where(o => o.ScanRunId == scanRunId).OrderBy(o => o.Id).Select(o => new { o.Zone, o.Payload })
+            .AsAsyncEnumerable();
+        await foreach (var row in rows.WithCancellation(ct))
         {
-            if (JsonSerializer.Deserialize<DiscoveryObservation>(payload, ContractJson.Options) is not { } raw || Normalizer.Normalize(raw) is not { } o) continue;
+            if (JsonSerializer.Deserialize<DiscoveryObservation>(row.Payload, ContractJson.Options) is not { } raw || Normalizer.Normalize(raw) is not { } o) continue;
             foreach (var rule in classificationRules.Where(r => ConditionEvaluator.Evaluate(r.When, o)))
-                matches[(o.Address, o.Port, rule.SignatureId)] = (rule, o);
+                matches[(row.Zone, o.Address, o.Port, rule.SignatureId)] = (rule, o);
         }
-        if (matches.Count == 0) return;
 
-        var updater = await AssetStateUpdater.LoadAsync(db, scanRunId, null, matches.Keys.Select(k => k.Item1), now, ct);
-        foreach (var (rule, o) in matches.Values) updater.ApplyClassification(rule, o, Evidence(rule, o));
+        foreach (var zone in matches.GroupBy(m => m.Key.Zone))
+        {
+            var updater = await AssetStateUpdater.LoadAsync(db, scanRunId, zone.Key, zone.Select(m => m.Key.Address), now, ct);
+            foreach (var (rule, o) in zone.Select(m => m.Value)) updater.ApplyClassification(rule, o, Evidence(rule, o));
+        }
     }
 
     /// <summary>"field=value" pairs of the fields the rule tested, e.g. "http.title=Admin Login".</summary>

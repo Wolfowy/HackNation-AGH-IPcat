@@ -36,6 +36,15 @@ public sealed record RunCoverage
     /// <summary>Endpoints ("addr:port") whose jobs completed with full coverage.</summary>
     public IReadOnlyList<string> CoveredEndpoints { get; init; } = [];
 
+    /// <summary>
+    /// Zone-qualified <see cref="CoveredHosts"/> (zone of the scanned network → entries). When set, a host counts as covered only
+    /// by entries of its own zone (identical IPs in different zones are different machines); null = flat lists apply to all zones.
+    /// </summary>
+    public IReadOnlyDictionary<string, IReadOnlyList<string>>? CoveredHostsByZone { get; init; }
+
+    /// <summary>Zone-qualified <see cref="CoveredEndpoints"/> (see <see cref="CoveredHostsByZone"/>).</summary>
+    public IReadOnlyDictionary<string, IReadOnlyList<string>>? CoveredEndpointsByZone { get; init; }
+
     /// <summary>True when the run finished without window expiry, cancellation or failed jobs.</summary>
     public required bool Complete { get; init; }
 

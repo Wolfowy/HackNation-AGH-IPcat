@@ -98,6 +98,18 @@ public static partial class Normalizer
         return (n, v, c, n.ToLowerInvariant());
     }
 
+    /// <summary>Zone part of the asset identity: trimmed; null/blank → "" (the default zone).</summary>
+    public static string CanonicalZone(string? zone) => string.IsNullOrWhiteSpace(zone) ? "" : zone.Trim();
+
+    /// <summary>"aa-bb-cc-dd-ee-ff", "aabb.ccdd.eeff", "aabbccddeeff" … → "AA:BB:CC:DD:EE:FF"; null when not a 48-bit MAC.</summary>
+    public static string? CanonicalMac(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+        var hex = string.Concat(raw.Where(c => c is not (':' or '-' or '.' or ' ')));
+        if (hex.Length != 12 || !hex.All(char.IsAsciiHexDigit)) return null;
+        return string.Join(':', Enumerable.Range(0, 6).Select(i => hex.Substring(i * 2, 2))).ToUpperInvariant();
+    }
+
     public static string CanonicalSeverity(string? severity)
     {
         var s = (severity ?? "").Trim().ToLowerInvariant();
@@ -132,6 +144,8 @@ public static partial class Normalizer
             Host = o.Host is null ? null : o.Host with
             {
                 Status = o.Host.Status.Trim().ToLowerInvariant(),
+                MacAddress = CanonicalMac(o.Host.MacAddress),
+                MacVendor = Clean(o.Host.MacVendor),
                 Hostnames = o.Host.Hostnames.Select(CanonicalHostname).OfType<string>().Distinct().ToList(),
             },
             PortState = o.PortState is null ? null : o.PortState with { State = o.PortState.State.Trim().ToLowerInvariant() },

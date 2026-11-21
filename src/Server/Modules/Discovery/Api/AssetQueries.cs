@@ -10,9 +10,9 @@ using WebScan.Server.Modules.Discovery.Persistence;
 namespace WebScan.Server.Modules.Discovery.Api;
 
 public sealed record HostQuery(string? Search, HostStatus? Status, string? Zone);
-public sealed record ServiceQuery(int? Port, string? ServiceName, string? Search);
-public sealed record ChangeQuery(DateTimeOffset? Since, AssetChangeType? Type, Guid? HostId, Guid? ScanRunId);
-public sealed record FindingQuery(string? Severity, FindingStatus? Status);
+public sealed record ServiceQuery(int? Port, string? ServiceName, string? Search, string? Zone = null);
+public sealed record ChangeQuery(DateTimeOffset? Since, AssetChangeType? Type, Guid? HostId, Guid? ScanRunId, string? Zone = null);
+public sealed record FindingQuery(string? Severity, FindingStatus? Status, string? Zone = null);
 public sealed record TopologyQuery(string? Zone, string? Search);
 
 /// <summary>Read models of the current-state tables, shared by the list and export endpoints.</summary>
@@ -37,7 +37,7 @@ internal sealed class AssetQueries(DiscoveryDbContext db)
         if (!string.IsNullOrWhiteSpace(query.Zone)) q = q.Where(h => h.Zone == query.Zone);
 
         var total = await q.CountAsync(ct);
-        var hosts = await q.OrderBy(h => h.Address).Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(ct);
+        var hosts = await q.OrderBy(h => h.Zone).ThenBy(h => h.Address).Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(ct);
         return new PagedResult<HostListItemDto>(await ToHostItemsAsync(hosts, ct), total, page, pageSize);
     }
 
@@ -72,9 +72,10 @@ internal sealed class AssetQueries(DiscoveryDbContext db)
             q = q.Where(s => EF.Functions.ILike(s.Address, like) || EF.Functions.ILike(s.Product ?? "", like)
                 || EF.Functions.ILike(s.Banner ?? "", like) || EF.Functions.ILike(s.HttpTitle ?? "", like));
         }
+        if (!string.IsNullOrWhiteSpace(query.Zone)) q = q.Where(s => s.Zone == query.Zone);
 
         var total = await q.CountAsync(ct);
-        var services = await q.OrderBy(s => s.Address).ThenBy(s => s.Port).Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(ct);
+        var services = await q.OrderBy(s => s.Zone).ThenBy(s => s.Address).ThenBy(s => s.Port).Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(ct);
         return new PagedResult<ServiceDto>(await ToServiceDtosAsync(services, ct), total, page, pageSize);
     }
 
@@ -88,10 +89,17 @@ internal sealed class AssetQueries(DiscoveryDbContext db)
             q = q.Where(h => EF.Functions.ILike(h.Address, like) || h.Hostnames.Any(n => EF.Functions.ILike(n, like)));
         }
         if (!string.IsNullOrWhiteSpace(query.Zone)) q = q.Where(h => h.Zone == query.Zone);
-        q = q.OrderBy(h => h.Address);
+        if (network is not null)
+        {
+            // A network's ranges contain only machines of its own zone (the same IP elsewhere is another machine).
+            var zones = network.Segments.Select(s => Normalizer.CanonicalZone(s.Zone)).Distinct().ToList();
+            q = q.Where(h => zones.Contains(h.Zone));
+        }
+        q = q.OrderBy(h => h.Zone).ThenBy(h => h.Address);
         // Network membership needs IP math, so a network filter loads the (projected) zone/search matches and filters in memory.
         if (network is null) q = q.Take(Topology.MaxHosts + 1);
-        var rows = await q.Select(h => new { h.Id, h.Address, h.Hostnames, h.Status, h.Unstable, h.Zone, h.LastSeenAt, h.MacVendor }).ToListAsync(ct);
+        var rows = await q.Select(h => new { h.Id, h.Address, h.Hostnames, h.Status, h.Unstable, h.Zone, h.LastSeenAt, h.MacAddress, h.MacVendor })
+            .ToListAsync(ct);
         if (network is not null)
         {
             var inNetwork = Topology.NetworkMatcher(network);
@@ -112,21 +120,23 @@ internal sealed class AssetQueries(DiscoveryDbContext db)
         // shortcut: DISTINCT over all raw observations of the hosts; add an (address, agent, interface) index or a perspective table if this gets slow.
         var seen = await db.Observations.AsNoTracking().Where(o => addresses.Contains(o.Address))
             .Select(o => new { o.Address, o.AgentId, o.InterfaceName, o.Zone }).Distinct().ToListAsync(ct);
-        var observedBy = seen.ToLookup(o => o.Address);
+        // Only observations of the host's own zone: the same IP in another zone is another machine (and another perspective edge).
+        var observedBy = seen.ToLookup(o => (o.Zone, o.Address));
 
-        var hosts = rows.Select(h => new TopologyHostDto(h.Id, h.Address, h.Hostnames, h.Status, h.Unstable, Topology.SubnetOf(h.Address), h.Zone,
-            h.LastSeenAt, h.MacVendor, services[h.Id].Count(),
+        var hosts = rows.Select(h => new TopologyHostDto(h.Id, h.Address, h.Hostnames, h.Status, h.Unstable,
+            Topology.SubnetId(h.Zone, Topology.SubnetOf(h.Address)), h.Zone, h.LastSeenAt, h.MacAddress, h.MacVendor, services[h.Id].Count(),
             services[h.Id].Select(s => new TopologyServiceDto(s.Port, s.Transport, s.ServiceName, s.Product, s.Version,
                 Topology.ServiceUrl(h.Address, s.Port, s.ServiceName, s.Tunnel, s.HttpUrl, s.Cert),
                 s.HttpUrl is not null || Topology.IsWebName(s.ServiceName), Topology.IsTls(s.ServiceName, s.Tunnel, s.Cert))).ToList(),
             technologies[h.Id].Order(StringComparer.OrdinalIgnoreCase).ToList(),
-            observedBy[h.Address].Select(o => new ObservedByDto(o.AgentId, o.InterfaceName)).Distinct()
+            observedBy[(h.Zone, h.Address)].Select(o => new ObservedByDto(o.AgentId, o.InterfaceName)).Distinct()
                 .OrderBy(o => o.AgentId, StringComparer.Ordinal).ThenBy(o => o.InterfaceName, StringComparer.Ordinal).ToList())).ToList();
-        var subnets = hosts.GroupBy(h => h.Subnet).OrderBy(g => g.Key, StringComparer.Ordinal)
-            .Select(g => new TopologySubnetDto(g.Key, g.Key, g.Select(h => h.Zone).FirstOrDefault(z => z is not null), g.Count())).ToList();
+        var subnets = hosts.GroupBy(h => (h.Zone, Cidr: Topology.SubnetOf(h.Address)))
+            .OrderBy(g => g.Key.Zone, StringComparer.Ordinal).ThenBy(g => g.Key.Cidr, StringComparer.Ordinal)
+            .Select(g => new TopologySubnetDto(Topology.SubnetId(g.Key.Zone, g.Key.Cidr), g.Key.Cidr, g.Key.Zone, g.Count())).ToList();
         var perspectives = seen.GroupBy(o => (o.AgentId, o.InterfaceName))
             .OrderBy(g => g.Key.AgentId, StringComparer.Ordinal).ThenBy(g => g.Key.InterfaceName, StringComparer.Ordinal)
-            .Select(g => new TopologyPerspectiveDto(g.Key.AgentId, g.Key.InterfaceName, g.Select(o => o.Zone).FirstOrDefault(z => z is not null))).ToList();
+            .Select(g => new TopologyPerspectiveDto(g.Key.AgentId, g.Key.InterfaceName, g.Select(o => o.Zone).FirstOrDefault(z => z.Length > 0))).ToList();
         return new TopologyDto(perspectives, subnets, hosts, truncated);
     }
 
@@ -151,6 +161,7 @@ internal sealed class AssetQueries(DiscoveryDbContext db)
         if (query.Type is not null) q = q.Where(c => c.Type == query.Type);
         if (query.HostId is not null) q = q.Where(c => c.HostId == query.HostId);
         if (query.ScanRunId is not null) q = q.Where(c => c.ScanRunId == query.ScanRunId);
+        if (!string.IsNullOrWhiteSpace(query.Zone)) q = q.Where(c => c.Zone == query.Zone);
         var total = await q.CountAsync(ct);
         var items = await q.OrderByDescending(c => c.DetectedAt).ThenBy(c => c.Id).Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(ct);
         return new PagedResult<ChangeDto>(items.Select(c => c.ToDto()).ToList(), total, page, pageSize);
@@ -165,6 +176,7 @@ internal sealed class AssetQueries(DiscoveryDbContext db)
             q = q.Where(m => m.Severity == severity);
         }
         if (query.Status is not null) q = q.Where(m => m.Status == query.Status);
+        if (!string.IsNullOrWhiteSpace(query.Zone)) q = q.Where(m => m.Zone == query.Zone);
         var total = await q.CountAsync(ct);
         var items = await q.OrderByDescending(m => m.MatchedAt).ThenBy(m => m.Id).Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(ct);
         return new PagedResult<FindingDto>(items.Select(m => m.ToDto()).ToList(), total, page, pageSize);
@@ -176,9 +188,9 @@ internal sealed class AssetQueries(DiscoveryDbContext db)
         var q = db.Observations.AsNoTracking();
         if (hostId is not null)
         {
-            var address = await db.Hosts.Where(h => h.Id == hostId).Select(h => h.Address).FirstOrDefaultAsync(ct);
-            if (address is null) return null;
-            q = q.Where(o => o.Address == address);
+            var host = await db.Hosts.Where(h => h.Id == hostId).Select(h => new { h.Zone, h.Address }).FirstOrDefaultAsync(ct);
+            if (host is null) return null;
+            q = q.Where(o => o.Zone == host.Zone && o.Address == host.Address);
         }
         if (scanRunId is not null) q = q.Where(o => o.ScanRunId == scanRunId);
         if (kind is not null) q = q.Where(o => o.Kind == kind);
@@ -213,11 +225,12 @@ internal sealed class AssetQueries(DiscoveryDbContext db)
                 .Where(m => ids.Contains(m.HostId) && m.Status == FindingStatus.Open && m.ClassificationTag != null)
                 .Select(m => new { m.HostId, m.ClassificationTag }).ToListAsync(ct))
             .ToLookup(m => m.HostId, m => m.ClassificationTag!);
-        var annotations = await db.Annotations.AsNoTracking().Where(a => addresses.Contains(a.Address)).ToDictionaryAsync(a => a.Address, ct);
+        var annotations = await db.Annotations.AsNoTracking().Where(a => addresses.Contains(a.Address)).ToDictionaryAsync(a => (a.Zone, a.Address), ct);
 
         return hosts.Select(h => new HostListItemDto(h.Id, h.Address, h.Hostnames, h.Status, h.Unstable, h.FirstSeenAt, h.LastSeenAt,
             h.LastScannedAt, openPorts.GetValueOrDefault(h.Id), technologies[h.Id].Distinct().Order().ToList(), h.Zone,
-            annotations.GetValueOrDefault(h.Address).ToDto(), classifications[h.Id].Distinct().Order().ToList())).ToList();
+            annotations.GetValueOrDefault((h.Zone, h.Address)).ToDto(), classifications[h.Id].Distinct().Order().ToList(), h.MacAddress, h.MacVendor))
+            .ToList();
     }
 
     private async Task<List<ServiceDto>> ToServiceDtosAsync(List<Service> services, CancellationToken ct)
@@ -236,7 +249,7 @@ internal sealed class AssetQueries(DiscoveryDbContext db)
                 s.HttpUrl is null ? null : new HttpInfoDto(s.HttpUrl, s.HttpStatusCode, s.HttpTitle, s.HttpWebServer),
                 cert is null ? null : new TlsInfoDto(cert.SubjectCommonName, cert.Issuer, cert.NotAfter, cert.FingerprintSha256),
                 technologies[s.Id].Distinct().Order().ToList(), s.Confidence, s.ConfidenceMethod, s.TimeOfDayVariance, s.FirstSeenAt, s.LastSeenAt,
-                Topology.ServiceUrl(s.Address, s.Port, s.ServiceName, s.Tunnel, s.HttpUrl, s.CurrentCertFingerprint is not null));
+                Topology.ServiceUrl(s.Address, s.Port, s.ServiceName, s.Tunnel, s.HttpUrl, s.CurrentCertFingerprint is not null), s.Zone);
         }).ToList();
     }
 

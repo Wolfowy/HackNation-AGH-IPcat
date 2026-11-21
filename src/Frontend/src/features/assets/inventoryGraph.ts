@@ -12,7 +12,7 @@ export type InventoryNode = NetworkNode | HostNode | PortNode
 export const COLLAPSE_THRESHOLD = 50
 
 export const NODE_SIZES = {
-  network: { width: 210, height: 64 },
+  network: { width: 250, height: 64 },
   host: { width: 240, height: 88 },
   port: { width: 240, height: 64 },
 } as const

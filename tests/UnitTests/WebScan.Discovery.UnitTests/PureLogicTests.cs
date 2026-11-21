@@ -1,4 +1,5 @@
 using WebScan.Contracts;
+using WebScan.Server.Kernel.Discovery;
 using WebScan.Server.Modules.Analytics;
 using WebScan.Server.Modules.Discovery.Api;
 using WebScan.Server.Modules.Discovery.Processing;
@@ -114,12 +115,25 @@ public class RunDiffTests
             Obs(ObservationKind.PortOpen, "10.0.0.3", 3389),
         ];
 
-        var diff = await RunDiff.ComputeAsync(Guid.NewGuid(), Guid.NewGuid(), current.ToAsyncEnumerable(), baseline.ToAsyncEnumerable(), default);
+        var diff = await RunDiff.ComputeAsync(Guid.NewGuid(), Guid.NewGuid(), Zoned("lab", current), Zoned("lab", baseline), default);
 
-        Assert.Equal(["endpoint|10.0.0.3|3389|tcp"], diff.Added.Select(i => i.Key));
-        Assert.Equal(["endpoint|10.0.0.2|443|tcp"], diff.Removed.Select(i => i.Key));
-        Assert.Equal(["endpoint|10.0.0.1|80|tcp", "technology|10.0.0.1|80|php"], diff.Changed.Select(i => i.Key));
+        Assert.Equal(["endpoint|lab|10.0.0.3|3389|tcp"], diff.Added.Select(i => i.Key));
+        Assert.Equal(["endpoint|lab|10.0.0.2|443|tcp"], diff.Removed.Select(i => i.Key));
+        Assert.Equal(["endpoint|lab|10.0.0.1|80|tcp", "technology|lab|10.0.0.1|80|php"], diff.Changed.Select(i => i.Key));
         Assert.Equal(("http nginx 1.18.0", "http nginx 1.20.1"), (diff.Changed[0].Before, diff.Changed[0].After));
         Assert.Equal(("7.4", "8.2"), (diff.Changed[1].Before, diff.Changed[1].After));
     }
+
+    [Fact]
+    public async Task Same_endpoint_in_another_zone_is_a_different_asset()
+    {
+        DiscoveryObservation[] port = [Obs(ObservationKind.PortOpen, "10.0.0.5", 22)];
+        var diff = await RunDiff.ComputeAsync(Guid.NewGuid(), Guid.NewGuid(), Zoned("lab", port), Zoned("dc-warsaw", port), default);
+
+        Assert.Equal(("endpoint|lab|10.0.0.5|22|tcp", "lab"), (Assert.Single(diff.Added).Key, diff.Added[0].Zone));
+        Assert.Equal("endpoint|dc-warsaw|10.0.0.5|22|tcp", Assert.Single(diff.Removed).Key);
+    }
+
+    private static IAsyncEnumerable<RunObservation> Zoned(string zone, DiscoveryObservation[] observations) =>
+        observations.Select(o => new RunObservation(zone, o)).ToAsyncEnumerable();
 }

@@ -10,8 +10,9 @@ describe('inventory graph', () => {
     const service = db.services.find((s) => s.hostId === host.id && s.url)!
 
     expect(await screen.findByRole('heading', { name: 'Inventory graph' })).toBeInTheDocument()
-    expect(await screen.findAllByTestId('graph-network')).toHaveLength(3)
-    // 42 seeded hosts (<= 50): ports start expanded.
+    // One network per zone + cidr: the lab reuses the DMZ range, so 4 networks for 3 zones.
+    expect(await screen.findAllByTestId('graph-network')).toHaveLength(4)
+    // 43 seeded hosts (<= 50): ports start expanded.
     expect(screen.getAllByTestId('graph-host')).toHaveLength(db.hosts.length)
     expect(screen.getAllByTestId('graph-port')).toHaveLength(db.services.filter((s) => s.state === 'Open').length)
 

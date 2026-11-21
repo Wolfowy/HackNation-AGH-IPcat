@@ -52,12 +52,14 @@ public sealed class DiscoveryDbContext(DbContextOptions<DiscoveryDbContext> opti
             e.ToTable("run_processing");
             e.HasKey(x => x.ScanRunId);
             e.Property(x => x.ChangesByType).HasColumnType("jsonb");
+            e.Property(x => x.CoverageByZone).HasColumnType("jsonb");
         });
 
         b.Entity<Host>(e =>
         {
             e.ToTable("hosts");
-            e.HasIndex(x => x.Address).IsUnique();
+            e.HasIndex(x => new { x.Zone, x.Address }).IsUnique();
+            e.HasIndex(x => x.Address);
             e.HasIndex(x => x.Status);
             e.Property(x => x.StateHistory).HasMaxLength(Host.StateHistoryLength);
         });
@@ -111,13 +113,13 @@ public sealed class DiscoveryDbContext(DbContextOptions<DiscoveryDbContext> opti
         b.Entity<AssetAnnotation>(e =>
         {
             e.ToTable("asset_annotations");
-            e.HasKey(x => x.Address);
+            e.HasKey(x => new { x.Zone, x.Address });
         });
 
         b.Entity<AssetAnnotationRevision>(e =>
         {
             e.ToTable("asset_annotation_revisions");
-            e.HasIndex(x => new { x.Address, x.ChangedAt });
+            e.HasIndex(x => new { x.Zone, x.Address, x.ChangedAt });
         });
     }
 }

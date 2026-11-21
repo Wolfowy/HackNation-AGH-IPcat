@@ -13,7 +13,7 @@ test.describe('topology map', () => {
     }
 
     await expect(page.getByTestId('topology-perspective')).toHaveCount(3)
-    await expect(page.getByTestId('topology-subnet')).toHaveCount(3)
+    await expect(page.getByTestId('topology-subnet')).toHaveCount(4) // per zone: the lab reuses the DMZ range
 
     // A host with open ports (its label reads "N ports", N > 0).
     const host = page.getByTestId('topology-host').filter({ has: page.locator('div', { hasText: /^[1-9]\d* ports?/ }) }).first()

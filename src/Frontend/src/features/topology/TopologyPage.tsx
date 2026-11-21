@@ -11,7 +11,7 @@ import { Chips, KeyValues, PageHeader, StatusBadge } from '@/components/page'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { t } from '@/i18n/strings'
-import { formatRelative } from '@/lib/format'
+import { formatRelative, zoneLabel } from '@/lib/format'
 import { useDebounced } from '@/lib/useDebounced'
 import { cn } from '@/lib/utils'
 import { buildTopologyGraph, hostSize, SUBNET_COLLAPSE_THRESHOLD, type HostGridNode, type HostNode, type PerspectiveNode, type SubnetNode, type TopologyNode } from './graph'
@@ -52,18 +52,17 @@ function PerspectiveCard({ data: { perspective: p } }: NodeProps<PerspectiveNode
 function SubnetCard({ data: { subnet, collapsed } }: NodeProps<SubnetNode>) {
   return (
     <div
-      className={cn('h-14 w-[190px] cursor-pointer rounded-lg border-2 px-3 py-1.5', SUBNET_STYLE)}
+      className={cn('h-14 w-[240px] cursor-pointer rounded-lg border-2 px-3 py-1.5', SUBNET_STYLE)}
       title={collapsed ? 'Click to show hosts' : 'Click to hide hosts'}
       data-testid="topology-subnet"
     >
       <Handle type="target" position={Position.Left} isConnectable={false} />
-      <div className="flex items-center gap-1.5 font-mono text-sm font-semibold">
-        <Network className="size-4 shrink-0 text-sky-600" /> {subnet.cidr}
+      <div className="flex items-center gap-1.5 truncate font-mono text-sm font-semibold">
+        <Network className="size-4 shrink-0 text-sky-600" /> {zoneLabel(subnet.zone)} · {subnet.cidr}
       </div>
       <div className="text-muted-foreground flex items-center gap-1 text-xs">
         {collapsed ? <ChevronRight className="size-3" /> : <ChevronDown className="size-3" />}
         {subnet.hostCount} {subnet.hostCount === 1 ? 'host' : 'hosts'}
-        {subnet.zone && ` · ${subnet.zone}`}
       </div>
       <Handle type="source" position={Position.Right} isConnectable={false} />
     </div>
@@ -97,7 +96,7 @@ function HostGridFrame({ data: { subnet, count } }: NodeProps<HostGridNode>) {
     <div className="h-full w-full rounded-xl border border-dashed border-sky-400/60 bg-sky-50/40 dark:bg-sky-950/20" data-testid="topology-host-grid">
       <Handle type="target" position={Position.Left} isConnectable={false} />
       <div className="text-muted-foreground px-3 pt-1.5 font-mono text-[11px]">
-        {subnet.cidr} · {plural(count, 'host')}
+        {zoneLabel(subnet.zone)} · {subnet.cidr} · {plural(count, 'host')}
       </div>
     </div>
   )
@@ -127,8 +126,9 @@ function HostPanel({ host: h, onClose }: { host: TopologyHost; onClose: () => vo
         <KeyValues
           items={[
             ['Hostnames', h.hostnames.join(', ') || '—'],
+            ['MAC', <span className="font-mono">{h.macAddress ?? '—'}</span>],
             ['Vendor', h.macVendor ?? '—'],
-            ['Zone', h.zone ?? '—'],
+            ['Zone', zoneLabel(h.zone)],
             ['Last seen', formatRelative(h.lastSeenAt)],
             ['Seen by', h.observedBy.map((o) => `${o.agentId}${o.interfaceName ? `/${o.interfaceName}` : ''}`).join(', ') || '—'],
           ]}
