@@ -6,10 +6,13 @@
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <ProjectReference Include="..\..\Kernel\WebScan.Server.Kernel.csproj" />
     <ProjectReference Include="..\..\Infrastructure\WebScan.Server.Infrastructure.csproj" />
+    <!-- Workflows drives the Scanning module's planner and job queue directly (same stream, documented exception). -->
+    <ProjectReference Include="..\Scanning\WebScan.Server.Modules.Scanning.csproj" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" PrivateAssets="all" />
     <PackageReference Include="WolverineFx" />
+    <PackageReference Include="WolverineFx.EntityFrameworkCore" />
   </ItemGroup>
 </Project>
