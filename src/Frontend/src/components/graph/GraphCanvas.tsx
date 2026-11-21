@@ -1,6 +1,6 @@
 import '@xyflow/react/dist/style.css'
-import type { ReactNode } from 'react'
-import { Background, Controls, MiniMap, ReactFlow, type Edge, type Node, type NodeMouseHandler, type NodeTypes } from '@xyflow/react'
+import { useEffect, type ReactNode } from 'react'
+import { Background, Controls, MiniMap, ReactFlow, useNodesInitialized, useReactFlow, type Edge, type Node, type NodeMouseHandler, type NodeTypes } from '@xyflow/react'
 import { useNetworks, useZones } from '@/api/networks'
 import { FormField } from '@/components/form'
 import { Filters } from '@/components/page'
@@ -8,7 +8,31 @@ import { Input, NativeSelect } from '@/components/ui/input'
 import { t } from '@/i18n/strings'
 import { cn } from '@/lib/utils'
 
-/** Read-only React Flow canvas (auto-laid-out nodes): fit view, zoom controls, minimap. Change `fitKey` to re-fit. */
+/** Below this zoom, labels are unreadable: show the top-left part at READABLE_ZOOM and let the user scroll instead. */
+const READABLE_ZOOM = 0.6
+
+/** Fits the whole graph when it is readable that way; otherwise anchors the top-left corner at a readable zoom. */
+function InitialView() {
+  const flow = useReactFlow()
+  const initialized = useNodesInitialized()
+  useEffect(() => {
+    if (!initialized) return
+    void flow.fitView({ maxZoom: 1.2 }).then(() => {
+      if (flow.getZoom() >= READABLE_ZOOM) return
+      const nodes = flow.getNodes().filter((n) => !n.parentId)
+      if (nodes.length === 0) return
+      const minX = Math.min(...nodes.map((n) => n.position.x))
+      const minY = Math.min(...nodes.map((n) => n.position.y))
+      void flow.setViewport({ x: 24 - minX * READABLE_ZOOM, y: 24 - minY * READABLE_ZOOM, zoom: READABLE_ZOOM })
+    })
+  }, [initialized, flow])
+  return null
+}
+
+/**
+ * Read-only React Flow canvas (auto-laid-out nodes): zoom controls, minimap. Opens fitted, or — for graphs too large to read
+ * when fitted — at a readable zoom from the top-left; the mouse wheel scrolls (pinch or Ctrl+wheel zooms). Change `fitKey` to re-fit.
+ */
 export function GraphCanvas<N extends Node>({
   nodes,
   edges,
@@ -36,15 +60,17 @@ export function GraphCanvas<N extends Node>({
         edges={edges}
         nodeTypes={nodeTypes}
         onNodeClick={onNodeClick}
-        fitView
-        fitViewOptions={{ maxZoom: 1.2 }}
         minZoom={0.05}
+        panOnScroll
+        zoomOnScroll={false}
+        zoomOnPinch
         nodesDraggable={false}
         nodesConnectable={false}
         edgesFocusable={false}
         // Large graphs: skip off-screen nodes (small ones render fully, which also keeps them testable in jsdom).
         onlyRenderVisibleElements={nodes.length > 400}
       >
+        <InitialView />
         <Background />
         <Controls showInteractive={false} />
         <MiniMap pannable zoomable nodeColor={nodeColor} />

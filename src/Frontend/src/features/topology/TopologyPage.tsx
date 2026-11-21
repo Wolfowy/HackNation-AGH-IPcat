@@ -14,7 +14,7 @@ import { t } from '@/i18n/strings'
 import { formatRelative } from '@/lib/format'
 import { useDebounced } from '@/lib/useDebounced'
 import { cn } from '@/lib/utils'
-import { buildTopologyGraph, hostSize, SUBNET_COLLAPSE_THRESHOLD, type HostNode, type PerspectiveNode, type SubnetNode, type TopologyNode } from './graph'
+import { buildTopologyGraph, hostSize, SUBNET_COLLAPSE_THRESHOLD, type HostGridNode, type HostNode, type PerspectiveNode, type SubnetNode, type TopologyNode } from './graph'
 
 const STATUS_STYLES: Record<TopologyHost['status'], string> = {
   Active: 'border-emerald-500 bg-emerald-50 dark:bg-emerald-950/40',
@@ -83,7 +83,6 @@ function HostBubble({ data: { host: h }, selected }: NodeProps<HostNode>) {
       title={`${h.address} · ${h.status}${h.unstable ? ' · unstable' : ''} · ${h.openPortCount} open ports`}
       data-testid="topology-host"
     >
-      <Handle type="target" position={Position.Left} isConnectable={false} />
       <div className="truncate font-mono text-xs font-semibold">{h.address}</div>
       <div className="text-muted-foreground truncate text-[11px]">
         {h.openPortCount} {h.openPortCount === 1 ? 'port' : 'ports'}
@@ -93,11 +92,22 @@ function HostBubble({ data: { host: h }, selected }: NodeProps<HostNode>) {
   )
 }
 
-const nodeTypes = { perspective: PerspectiveCard, subnet: SubnetCard, host: HostBubble }
+function HostGridFrame({ data: { subnet, count } }: NodeProps<HostGridNode>) {
+  return (
+    <div className="h-full w-full rounded-xl border border-dashed border-sky-400/60 bg-sky-50/40 dark:bg-sky-950/20" data-testid="topology-host-grid">
+      <Handle type="target" position={Position.Left} isConnectable={false} />
+      <div className="text-muted-foreground px-3 pt-1.5 font-mono text-[11px]">
+        {subnet.cidr} · {plural(count, 'host')}
+      </div>
+    </div>
+  )
+}
+
+const nodeTypes = { perspective: PerspectiveCard, subnet: SubnetCard, host: HostBubble, hostGrid: HostGridFrame }
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
 
-const nodeColor = (n: TopologyNode) => (n.type === 'host' ? MINIMAP[n.data.host.status] : MINIMAP[n.type])
+const nodeColor = (n: TopologyNode) => (n.type === 'host' ? MINIMAP[n.data.host.status] : n.type === 'hostGrid' ? 'transparent' : MINIMAP[n.type])
 
 function HostPanel({ host: h, onClose }: { host: TopologyHost; onClose: () => void }) {
   return (

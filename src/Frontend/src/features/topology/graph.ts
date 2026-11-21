@@ -7,7 +7,9 @@ import { layoutGraph } from '@/components/graph/layout'
 export type PerspectiveNode = Node<{ perspective: TopologyPerspective }, 'perspective'>
 export type SubnetNode = Node<{ subnet: TopologySubnet; collapsed: boolean }, 'subnet'>
 export type HostNode = Node<{ host: TopologyHost }, 'host'>
-export type TopologyNode = PerspectiveNode | SubnetNode | HostNode
+/** Frame holding a subnet's hosts as a grid (hosts are its children), so large subnets stay compact and readable. */
+export type HostGridNode = Node<{ subnet: TopologySubnet; count: number }, 'hostGrid'>
+export type TopologyNode = PerspectiveNode | SubnetNode | HostNode | HostGridNode
 
 /** Above this many hosts the subnets start collapsed (only subnet nodes are drawn until expanded). */
 export const SUBNET_COLLAPSE_THRESHOLD = 300
@@ -21,6 +23,13 @@ const SIZES = { perspective: { width: 200, height: 56 }, subnet: { width: 190, h
 
 export interface TopologyGraphOptions {
   isCollapsed?: (subnetId: string) => boolean
+}
+
+const GRID = { padding: 12, header: 26, gap: 12, maxColumns: 6, hostWidth: 150 }
+
+/** Grid geometry for n hosts: roughly square, at most `maxColumns` wide. */
+export function gridColumns(n: number) {
+  return Math.min(GRID.maxColumns, Math.max(1, Math.ceil(Math.sqrt(n))))
 }
 
 export function buildTopologyGraph(topology: Topology, { isCollapsed = () => false }: TopologyGraphOptions = {}) {
@@ -44,15 +53,48 @@ export function buildTopologyGraph(topology: Topology, { isCollapsed = () => fal
   for (const subnet of topology.subnets) {
     nodes.push({ id: `s:${subnet.id}`, type: 'subnet', position, data: { subnet, collapsed: isCollapsed(subnet.id) } })
   }
-  const collapsed = new Set(topology.subnets.filter((s) => isCollapsed(s.id)).map((s) => s.id))
+
+  const hostsBySubnet = new Map<string, TopologyHost[]>()
   for (const host of topology.hosts) {
-    const subnetId = `s:${host.subnet}`
-    for (const seen of host.observedBy) if (perspectives.has(perspectiveKey(seen))) addEdge(perspectiveKey(seen), subnetId, true)
-    if (collapsed.has(host.subnet)) continue
-    const id = `h:${host.id}`
-    nodes.push({ id, type: 'host', position, data: { host } })
-    addEdge(subnetId, id)
+    for (const seen of host.observedBy) if (perspectives.has(perspectiveKey(seen))) addEdge(perspectiveKey(seen), `s:${host.subnet}`, true)
+    if (isCollapsed(host.subnet)) continue
+    hostsBySubnet.set(host.subnet, [...(hostsBySubnet.get(host.subnet) ?? []), host])
   }
-  const sizeOf = (n: TopologyNode) => (n.type === 'host' ? hostSize(n.data.host) : SIZES[n.type])
-  return { nodes: layoutGraph(nodes, edges, sizeOf), edges }
+
+  // One grid frame per expanded subnet; dagre lays out perspectives → subnets → frames, hosts sit inside their frame.
+  const frameSizes = new Map<string, { width: number; height: number }>()
+  const children: HostNode[] = []
+  for (const subnet of topology.subnets) {
+    const hosts = hostsBySubnet.get(subnet.id)
+    if (!hosts?.length) continue
+    const frameId = `g:${subnet.id}`
+    const columns = gridColumns(hosts.length)
+    const rows = Math.ceil(hosts.length / columns)
+    const cellHeight = Math.max(...hosts.map((h) => hostSize(h).height))
+    frameSizes.set(frameId, {
+      width: GRID.padding * 2 + columns * GRID.hostWidth + (columns - 1) * GRID.gap,
+      height: GRID.header + GRID.padding + rows * cellHeight + (rows - 1) * GRID.gap,
+    })
+    nodes.push({ id: frameId, type: 'hostGrid', position, data: { subnet, count: hosts.length }, selectable: false })
+    addEdge(`s:${subnet.id}`, frameId)
+    hosts.forEach((host, i) => {
+      const column = i % columns
+      const row = Math.floor(i / columns)
+      children.push({
+        id: `h:${host.id}`,
+        type: 'host',
+        parentId: frameId,
+        extent: 'parent',
+        draggable: false,
+        position: { x: GRID.padding + column * (GRID.hostWidth + GRID.gap), y: GRID.header + row * (cellHeight + GRID.gap) },
+        data: { host },
+      })
+    })
+  }
+
+  const sizeOf = (n: TopologyNode) =>
+    n.type === 'hostGrid' ? frameSizes.get(n.id)! : n.type === 'host' ? hostSize(n.data.host) : SIZES[n.type]
+  const laidOut = layoutGraph(nodes, edges, sizeOf).map((n) => (n.type === 'hostGrid' ? { ...n, style: frameSizes.get(n.id) } : n))
+  // React Flow needs parents before their children.
+  return { nodes: [...laidOut, ...children] as TopologyNode[], edges }
 }

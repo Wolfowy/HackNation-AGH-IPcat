@@ -225,6 +225,10 @@ Role shorthand: R=CanRead, E=CanEdit, M=CanManage, A=AdminOnly.
 * `GET /api/observations?hostId&scanRunId&kind&page` (R) → paged raw observations
 * `GET /api/changes?since&type&hostId&scanRunId&page` (R) → paged [{id, detectedAt, scanRunId, type, hostId?, address, port?, summary, before?, after?, severity}]
 * `GET /api/scans/{runId}/diff?baseline={runId}` (R) → {added[], removed[], changed[]}
+* `GET /api/topology?zone&networkId&search` (R) → {perspectives:[{agentId, interfaceName?, zone?}], subnets:[{id, cidr, zone?, hostCount}],
+  hosts:[{id, address, hostnames[], status, unstable, subnet, zone?, lastSeenAt, macVendor?, openPortCount, services:[{port, transport, serviceName?,
+  product?, version?, url?, isWeb, tls}], technologies[], observedBy:[{agentId, interfaceName?}]}], truncated} (subnets: IPv4 /24, IPv6 /64; max 5000 hosts).
+  Service DTOs carry `url` (best clickable URL: HTTP probe URL, else https/http by TLS/service name).
 * `GET /api/findings?severity&status&page` (R) → paged [{id, signatureId, signatureVersion, name, severity, hostId, address, port?, matchedAt, evidence?, status: Open|Resolved, firstSeenAt, lastSeenAt, externalRefs:[{system, externalId}]}]
 * `GET /api/export/{hosts|services|changes|findings}?format=json|csv` (R); `POST /api/import/assets?format=json|csv` (M) → {imported, updated, errors[]}
 * `GET /api/signatures?kind&status` (R) → [{id, name, kind: NucleiTemplate|ClassificationRule|ChangeRule, latestVersion, approvedVersion?, status: Draft|Approved|Retired, severity?, tags[], updatedAt}]
@@ -286,10 +290,14 @@ Deviations and clarifications agreed during integration (code is the source of t
   changed findings; external id + content hash stored per finding.
 * Quartz keeps a process-wide static log provider; hosts created repeatedly in one process (tests) must reset it
   (`LogContext.SetCurrentLogProvider`).
+* Planner keeps **one interface per (agent, scan run, network)** across all workflow steps; a busy pinned interface means waiting,
+  never switching perspective. Different networks of a run may still use different interfaces of one agent in parallel.
+* Admin panel: workflows are edited as a React Flow graph (palette, inspector, condition builder) with a synced JSON tab;
+  topology map (agent interface → subnet → host) and inventory graph (subnet → host → port cards); every `address:port` opens in a new tab.
 * Agent tool manifest format and extensibility: [docs/TOOLS.md](docs/TOOLS.md). Additional placeholder `{ports}` (nmap groups hosts by
   identical port sets so it never scans endpoints outside the job).
 
 Known limitations (MVP): JWTs stay valid until expiry after user deactivation; forwarded headers not configured (audit IP = proxy);
 job rate fixed at lease time; PortGone does not know the exact port list of the previous ScanPorts step; HTTP change detection ignores
 body hashes; UDP endpoints not mapped to nmap `-sU`; Quartz uses an in-memory store (single active scheduler node — DB uniqueness on
-`(scheduleId, fireTime)` prevents duplicate runs); visual workflow editor and topology map are prepared as extension points only.
+`(scheduleId, fireTime)` prevents duplicate runs); physical (L2/L3) topology is not modelled yet (the topology map shows scan perspectives and /24 subnets).
