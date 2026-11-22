@@ -13,6 +13,10 @@
     <PackageReference Include="WolverineFx" />
   </ItemGroup>
   <ItemGroup>
+    <!-- Rapid7 recog fingerprints (BSD-2-Clause, see Fingerprinting/Recog/LICENSE). -->
+    <EmbeddedResource Include="Fingerprinting\Recog\*.xml" />
+  </ItemGroup>
+  <ItemGroup>
     <InternalsVisibleTo Include="WebScan.Discovery.UnitTests" />
   </ItemGroup>
 </Project>

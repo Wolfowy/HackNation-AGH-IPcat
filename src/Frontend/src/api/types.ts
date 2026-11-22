@@ -710,6 +710,11 @@ export interface Service {
   url?: string
   /** User context kept across scans per (zone, address, port, transport). */
   annotation?: ServiceAnnotation
+  /** Interesting HTTP artifacts of the latest fingerprinting run (see ServiceDetail.artifacts). */
+  artifactCount?: number
+  artifactTags?: string[]
+  /** recog device classification, e.g. 'IP Camera', 'Printer', 'Router', 'NAS'. */
+  deviceType?: string
 }
 
 export const CRITICALITIES = ['low', 'medium', 'high', 'critical'] as const
@@ -722,6 +727,68 @@ export interface ServiceAnnotation {
   owner?: string
   updatedAt?: Instant
   updatedBy?: string
+}
+
+/** One Set-Cookie header: name and flags only; values never leave the agent. */
+export interface HttpCookie {
+  name: string
+  secure: boolean
+  httpOnly: boolean
+  sameSite?: string
+  domain?: string
+  path?: string
+  /** Non-secret value decoded on the agent, e.g. the internal pool member of an F5 BIG-IP cookie. */
+  decodedValue?: string
+}
+
+/** Latest HTTP response of a service as reported by the probe (headers masked). */
+export interface HttpDetails {
+  url: string
+  scheme: string
+  statusCode?: number
+  title?: string
+  webServer?: string
+  contentType?: string
+  contentLength?: number
+  headers: Record<string, string>
+  cookies: HttpCookie[]
+  redirectChain: string[]
+  redirectStatusCodes: number[]
+  finalUrl?: string
+  faviconHash?: string
+  faviconMd5?: string
+  /** httpx page classification, e.g. 'login', 'error', 'parked'. */
+  pageType?: string
+  cdn?: string
+  cdnType?: string
+}
+
+export type ArtifactKind = 'header' | 'cookie' | 'page' | 'favicon' | 'cert'
+
+export interface ServiceArtifact {
+  kind: ArtifactKind
+  name: string
+  value?: string
+  reason: string
+  /** e.g. tech-hint, version-leak, internal-ip-leak, debug, insecure-cookie, login-page, admin-page, missing-hsts, permissive-cors. */
+  tags: string[]
+  severity: 'info' | 'low'
+}
+
+export interface DeviceClassification {
+  type: string
+  vendor?: string
+  product?: string
+}
+
+export interface ServiceDetail {
+  service: Service
+  http?: HttpDetails
+  artifacts: ServiceArtifact[]
+  device?: DeviceClassification
+  technologies: HostTechnology[]
+  certificate?: Certificate
+  findings: Finding[]
 }
 
 export interface TechnologySummary {

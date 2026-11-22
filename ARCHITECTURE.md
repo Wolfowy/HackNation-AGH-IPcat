@@ -219,7 +219,18 @@ Tools are **data, not code paths**. Nothing on the server switches on tool names
   TlsCertificateChanged, HttpResponseChanged, TimeOfDayVariance.
 * "Gone" only after `missingThreshold` consecutive runs whose coverage **included** the target and the relevant operation;
   uncovered targets never count as misses. Flapping hosts tracked (state-change rate) and reported as unstable.
-* Technology confidence combines sources (tool-reported, banner, signature, port heuristic) into a score + method.
+* Technology confidence combines sources (tool-reported, banner, signature, recog, port heuristic) into a score + method.
+* **HTTP intel / device identification** (no extra traffic, `Discovery/Fingerprinting`): the latest `HttpDetails` per service
+  (masked headers, cookies with flags but never values, redirect chain, favicon mmh3/md5, httpx page type, CDN/WAF) is kept on the
+  service. Vendored Rapid7 recog fingerprints (BSD-2-Clause, pinned tag in docs/TOOLS.md) match the Server header, title, cookie
+  names, WWW-Authenticate, favicon MD5, SSH/FTP banners and certificate DNs → technologies (method `recog`, the fingerprint's
+  certainty or 0.8) and a device classification (`hw.device`, e.g. IP Camera, Printer, Router, NAS) on the service; device types
+  also appear in the host's `classifications[]`. A built-in artifact catalog flags interesting headers (X-Powered-By, versioned
+  Server, X-AspNet(Mvc)-Version, X-Generator, X-Drupal-*, X-Debug-Token(-Link), X-Backend-Server, X-Upstream*, Via, `*` CORS,
+  private IPs, missing HSTS), cookies (BIG-IP pool member decoded, PHP/Java/ASP.NET/Laravel/CodeIgniter/WordPress/Django/Rails/
+  Express/Drupal session cookies, session cookies without Secure/HttpOnly) and pages (login, admin, HTTP auth). Artifacts and the
+  device describe the latest run that fingerprinted the service; `debug`, `internal-ip-leak` and `login-page` artifacts are also
+  info/low findings (source `artifact`, signature id `artifact-{tag}`), resolved after runs that probed HTTP no longer see them.
 * Signatures: Nuclei YAML (active detection; validated: no `code`/`headless`/`javascript`/`file` protocols, no interactsh,
   no intrusive/dos/fuzz tags, default severities info/low), JSON classification rules (interpretation of observations),
   change rules (historical). Versioned; only **approved** versions are executable/applied.
@@ -309,8 +320,12 @@ Role shorthand: R=CanRead, E=CanEdit, M=CanManage, A=AdminOnly.
 * `PUT /api/assets/hosts/{id}/annotation` (E) {description, classification, businessState, owner, tags[]}
 * `GET /api/assets/services?port&serviceName&search&page` (R) → paged [{id, hostId, address, port, transport, state: Open|Gone, serviceName, product, version,
   http?:{url, statusCode, title, webServer}, tls?:{subjectCommonName, issuer, notAfter, fingerprintSha256}, technologies[], confidence?, firstSeenAt, lastSeenAt,
-  annotation?:{notes, tags[], criticality, owner, updatedAt, updatedBy}}]
+  annotation?:{notes, tags[], criticality, owner, updatedAt, updatedBy}, artifactCount, artifactTags[], deviceType?}]
 * `PUT /api/assets/services/{id}/annotation` (E) {notes?, tags[], criticality?: low|medium|high|critical, owner?} — kept per (zone, address, port, transport)
+* `GET /api/assets/services/{id}` (R) → {service (as in the list), http?: HttpDetails {url, scheme, statusCode, title, webServer, contentType,
+  headers{}, cookies:[{name, secure, httpOnly, sameSite?, domain?, path?, decodedValue?}], redirectChain[], redirectStatusCodes[], finalUrl?,
+  faviconHash?, faviconMd5?, pageType?, cdn?, cdnType?}, artifacts:[{kind: header|cookie|page|favicon|cert, name, value?, reason, tags[],
+  severity: info|low}], device?:{type, vendor?, product?}, technologies[], certificate?, findings[]}
 * `GET /api/assets/technologies` (R) → [{name, version?, category?, hostCount, serviceCount, confidence}]
 * `GET /api/observations?hostId&scanRunId&kind&page` (R) → paged raw observations
 * `GET /api/changes?since&type&hostId&scanRunId&page` (R) → paged [{id, detectedAt, scanRunId, type, hostId?, address, port?, summary, before?, after?, severity}]
@@ -359,6 +374,8 @@ PostgreSQL 5432; RabbitMQ 5672 / 15672; Grafana 3000. Compose files in `deploy/d
 * Quartz RAM store + DB as source of truth for schedules; `(scheduleId, fireTime)` uniqueness for idempotent triggering.
 * Deterministic weighted planner (no ML). Tool selection by capability, tool definitions by manifest.
 * Own JSON DAG engine behind `IWorkflowRuntime`; Elsa 3 can be plugged in later by hosting `IStepExecutor`s as activities.
+* Device/product identification from vendored, data-only Rapid7 recog XML matched on the server (not an agent tool): no extra
+  probes, updates are a file copy, every fingerprint's own `<example>`s are a unit test.
 
 ## 16. Implementation notes (after integration)
 

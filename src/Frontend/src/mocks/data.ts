@@ -7,10 +7,12 @@ import type {
   Change,
   ChangeType,
   DefectDojoConfig,
+  DeviceClassification,
   EnrollmentToken,
   Finding,
   Host,
   HostTechnology,
+  HttpDetails,
   Network,
   Role,
   ScanExecutionEvent,
@@ -22,6 +24,8 @@ import type {
   Schedule,
   ScopePolicy,
   Service,
+  ServiceArtifact,
+  ServiceDetail,
   Severity,
   SignatureDetail,
   ToolCatalogEntry,
@@ -64,6 +68,8 @@ export interface MockDb {
   services: Service[]
   hostTechnologies: Record<string, HostTechnology[]>
   certificates: Record<string, Certificate[]>
+  /** HTTP fingerprint per service id (the handler adds service, technologies, certificate and findings). */
+  serviceDetails: Record<string, Pick<ServiceDetail, 'http' | 'artifacts' | 'device'>>
   changes: Change[]
   findings: Finding[]
   signatures: SignatureDetail[]
@@ -891,6 +897,101 @@ ${extra}    matchers:
     nic('office', '192.168.10.252', aliased.macAddress!, aliased.macVendor), // second IP of an office host: shared MAC only
   )
 
+  // HTTP fingerprints (headers, cookie flags, recog device, artifacts) of three seeded web services. Without rand(), like the twin.
+  const serviceDetails: MockDb['serviceDetails'] = {}
+  const artifact = (kind: ServiceArtifact['kind'], name: string, reason: string, tags: string[], severity: 'info' | 'low' = 'info', value?: string): ServiceArtifact => ({
+    kind,
+    name,
+    value,
+    reason,
+    tags,
+    severity,
+  })
+  const fingerprint = (s: Service | undefined, http: Partial<HttpDetails>, artifacts: ServiceArtifact[], device?: DeviceClassification) => {
+    if (!s) return
+    const url = s.http?.url ?? `http://${s.address}:${s.port}/`
+    serviceDetails[s.id] = {
+      http: {
+        url,
+        scheme: url.split(':')[0],
+        statusCode: s.http?.statusCode,
+        title: s.http?.title,
+        webServer: s.http?.webServer,
+        contentType: 'text/html; charset=utf-8',
+        headers: {},
+        cookies: [],
+        redirectChain: [],
+        redirectStatusCodes: [],
+        ...http,
+      },
+      artifacts,
+      device,
+    }
+    s.artifactCount = artifacts.length
+    s.artifactTags = [...new Set(artifacts.flatMap((a) => a.tags))]
+    s.deviceType = device?.type
+  }
+  const openWeb = (port: number, zone?: string) => services.find((s) => s.port === port && s.state === 'Open' && s.http && (!zone || s.zone === zone))
+  fingerprint(
+    openWeb(443),
+    {
+      headers: { server: 'nginx/1.24.0', 'x-powered-by': 'PHP/8.1.27', 'set-cookie': 'PHPSESSID=***; path=/', 'content-type': 'text/html; charset=utf-8' },
+      cookies: [{ name: 'PHPSESSID', secure: false, httpOnly: false, path: '/' }],
+      pageType: 'login',
+      cdn: 'cloudflare',
+      cdnType: 'waf',
+      faviconHash: '-1010568750',
+      faviconMd5: 'f6a1a6e1d5d7b5f2a3c4e9b0d8a7c6b5',
+    },
+    [
+      artifact('header', 'server', 'Discloses the web server version', ['version-leak'], 'info', 'nginx/1.24.0'),
+      artifact('header', 'x-powered-by', 'Discloses the application framework', ['tech-hint', 'version-leak'], 'info', 'PHP/8.1.27'),
+      artifact('header', 'strict-transport-security', 'HSTS header missing on HTTPS', ['missing-hsts']),
+      artifact('cookie', 'PHPSESSID', 'Cookie reveals PHP; Session cookie without Secure and HttpOnly flag', ['tech-hint', 'insecure-cookie'], 'low'),
+      artifact('page', 'login', 'Login page (page classification)', ['login-page'], 'info', 'Customer portal'),
+    ],
+  )
+  fingerprint(
+    openWeb(8080),
+    {
+      headers: { server: 'Apache-Coyote/1.1', 'set-cookie': 'JSESSIONID=***; Path=/, BIGipServerpool_app=***; path=/; Httponly', 'x-backend-server': 'app-02 (10.20.30.41)' },
+      cookies: [
+        { name: 'JSESSIONID', secure: false, httpOnly: false, path: '/' },
+        { name: 'BIGipServerpool_app', secure: false, httpOnly: true, path: '/', decodedValue: '10.20.30.41:8080' },
+      ],
+    },
+    [
+      artifact('header', 'x-backend-server', 'Discloses the backend server behind the proxy; Discloses internal address 10.20.30.41', ['tech-hint', 'internal-ip-leak'], 'low', 'app-02 (10.20.30.41)'),
+      artifact('cookie', 'JSESSIONID', 'Cookie reveals Java servlet container; Session cookie without HttpOnly flag', ['tech-hint', 'insecure-cookie'], 'low'),
+      artifact('cookie', 'BIGipServerpool_app', 'Cookie reveals F5 BIG-IP load balancer; Load balancer cookie discloses internal pool member 10.20.30.41:8080', ['tech-hint', 'internal-ip-leak'], 'low', '10.20.30.41:8080'),
+    ],
+  )
+  const camera = openWeb(80, 'lab')
+  if (camera) {
+    camera.http = { url: `http://${camera.address}:80/`, statusCode: 200, title: 'Login', webServer: 'App-webs/' }
+    fingerprint(
+      camera,
+      {
+        headers: { server: 'App-webs/', 'x-frame-options': 'SAMEORIGIN' },
+        redirectChain: [`http://${camera.address}:80/`, `http://${camera.address}/doc/page/login.asp`],
+        redirectStatusCodes: [302, 200],
+        finalUrl: `http://${camera.address}/doc/page/login.asp`,
+        pageType: 'login',
+        faviconHash: '999357577',
+        faviconMd5: '89b932fcc47cf4ca3faadb0cfdef89cf',
+      },
+      [
+        artifact('favicon', 'favicon', 'Favicon of Hikvision IP Camera', ['tech-hint'], 'info', '89b932fcc47cf4ca3faadb0cfdef89cf'),
+        artifact('page', 'login', 'Login page (page classification)', ['login-page'], 'info', 'Login'),
+      ],
+      { type: 'IP Camera', vendor: 'Hikvision', product: 'DS-2CD2143G0-I' },
+    )
+    hostTechnologies[camera.hostId] = [
+      ...(hostTechnologies[camera.hostId] ?? []),
+      { name: 'Hikvision DS-2CD2143G0-I', category: 'device', port: 80, confidence: 0.5, confidenceMethod: 'recog' },
+    ]
+  }
+
   return {
     users,
     zones,
@@ -909,6 +1010,7 @@ ${extra}    matchers:
     services,
     hostTechnologies,
     certificates,
+    serviceDetails,
     changes,
     findings,
     signatures,

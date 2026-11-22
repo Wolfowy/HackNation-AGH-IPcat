@@ -216,7 +216,7 @@ internal sealed class ChangeDetector(DiscoveryDbContext db, Guid runId, Coverage
 
     /// <summary>
     /// Detections resolve after <c>missingThreshold</c> complete runs that executed signatures on the covered endpoint without
-    /// reproducing them; any finding resolves when its host or port is gone. Classification results are interpretations of
+    /// reproducing them (artifact findings: runs that probed HTTP); any finding resolves when its host or port is gone. Classification results are interpretations of
     /// whatever evidence a run produced, so they resolve only with their asset.
     /// </summary>
     private void ResolveFindings(List<SignatureMatch> openFindings, HashSet<Guid> goneHosts, HashSet<Guid> goneServices)
@@ -225,7 +225,7 @@ internal sealed class ChangeDetector(DiscoveryDbContext db, Guid runId, Coverage
         {
             var assetGone = goneHosts.Contains(m.HostId) || (m.ServiceId is { } sid && goneServices.Contains(sid));
             var missed = !assetGone && m.Source != SignatureMatch.ClassificationSource && coverage.Complete
-                && coverage.Executed(ScanOperation.ExecuteSignatures)
+                && coverage.Executed(m.Source == SignatureMatch.ArtifactSource ? ScanOperation.HttpProbe : ScanOperation.ExecuteSignatures)
                 && (m.Port is { } port ? coverage.CoversEndpoint(m.Zone, m.Address, port) : coverage.CoversHost(m.Zone, m.Address));
             if (missed) m.ConsecutiveMisses++;
             if (assetGone || (missed && m.ConsecutiveMisses >= missingThreshold))

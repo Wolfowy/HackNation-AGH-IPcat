@@ -155,7 +155,13 @@ public static partial class Normalizer
                 Product = Clean(o.Service.Product),
                 Version = Clean(o.Service.Version),
             },
-            Http = o.Http is null ? null : o.Http with { Scheme = o.Http.Scheme.Trim().ToLowerInvariant(), Title = Clean(o.Http.Title), WebServer = Clean(o.Http.WebServer) },
+            Http = o.Http is null ? null : o.Http with
+            {
+                Scheme = o.Http.Scheme.Trim().ToLowerInvariant(), Title = Clean(o.Http.Title), WebServer = Clean(o.Http.WebServer),
+                // Agents before cookie parsing (and generic tools) only send the masked header; its attributes are still there.
+                Cookies = o.Http.Cookies is { Count: > 0 } cookies ? cookies
+                    : HttpCookies.Parse(o.Http.Headers?.FirstOrDefault(h => h.Key.Equals("set-cookie", StringComparison.OrdinalIgnoreCase)).Value),
+            },
             Technology = o.Technology is null ? null : CanonicalTechnologyDetails(o.Technology),
             Signature = o.Signature is null ? null : o.Signature with { Severity = CanonicalSeverity(o.Signature.Severity) },
             Tls = o.Tls is null ? null : o.Tls with { FingerprintSha256 = o.Tls.FingerprintSha256?.Replace(":", "").Trim().ToLowerInvariant() },
@@ -194,7 +200,7 @@ public static partial class Normalizer
         Add("Microsoft IIS", "web-server", "iis", "microsoft-iis", "microsoft iis httpd");
         Add("lighttpd", "web-server");
         Add("Caddy", "web-server");
-        Add("OpenSSH", "remote-access");
+        Add("OpenSSH", "remote-access", "openbsd openssh");
         Add("WordPress", "cms");
         Add("Drupal", "cms");
         Add("Joomla", "cms");

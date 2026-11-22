@@ -120,12 +120,17 @@ public class ParserTests
 
         var admin = responses["http://172.30.0.13:80/"];
         Assert.Equal(("WebScan TestLab Admin Panel", "894267619"), (admin.Http!.Title, admin.Http.FaviconHash));
+        Assert.Equal("4f5778ef80f10c13694a518b204a625b", admin.Http.FaviconMd5);
 
         var redirected = responses.Values.Single(o => o.Http!.Url == "http://172.30.0.12:8080/old" || o.Http.FinalUrl == "http://172.30.0.12:8080/");
         Assert.Equal("http://172.30.0.12:8080/", redirected.Http!.FinalUrl);
+        Assert.Equal(["http://172.30.0.12:8080/old", "http://172.30.0.12:8080/"], redirected.Http.RedirectChain);
+        Assert.Equal([302, 200], redirected.Http.RedirectStatusCodes);
+        Assert.Empty(nginx.Http.RedirectChain);
 
         var withCookie = responses.Values.First(o => o.Http!.CookieNames.Count > 0);
         Assert.Contains("testlab_session", withCookie.Http!.CookieNames);
+        Assert.Equal(new HttpCookie { Name = "testlab_session", HttpOnly = true, Path = "/" }, Assert.Single(withCookie.Http.Cookies));
         Assert.StartsWith("testlab_session=***", withCookie.Http.Headers["set-cookie"]);
         Assert.DoesNotContain("testlab_session=3E2D", JsonSerializer.Serialize(observations, ContractJson.Options));
 
@@ -133,6 +138,39 @@ public class ParserTests
         var tls = observations.Where(o => o.Kind == ObservationKind.TlsCertificate).ToList();
         Assert.NotEmpty(tls);
         Assert.All(tls, t => Assert.Equal((LabCertFingerprint, "tls13", 8443), (t.Tls!.FingerprintSha256, t.Tls.TlsVersion, t.Port!.Value)));
+    }
+
+    [Fact]
+    public async Task Httpx_jsonl_maps_cookie_flags_page_type_cdn_favicon_md5_and_redirects_without_cookie_values()
+    {
+        var observations = await Parsing.ParseFixtureAsync(new HttpxJsonlParser(), "httpx-extras.jsonl");
+        var responses = observations.Where(o => o.Kind == ObservationKind.HttpResponse).ToDictionary(o => o.Http!.Url, o => o.Http!);
+
+        var camera = responses["https://172.30.0.20:443/"];
+        Assert.Equal(("login", "cloudflare", "waf"), (camera.PageType, camera.Cdn, camera.CdnType));
+        Assert.Equal(("999357577", "842c79ab11f38323fc554afbea5c990a"), (camera.FaviconHash, camera.FaviconMd5));
+        Assert.Equal(["https://172.30.0.20:443/", "https://172.30.0.20/doc/page/login.asp"], camera.RedirectChain);
+        Assert.Equal([302, 200], camera.RedirectStatusCodes);
+        Assert.Equal("a1b2c3", camera.Headers["x-debug-token"]);
+
+        Assert.Equal(["BIGipServerpool_cam", "language", "WebSession_0a1b2c"], camera.CookieNames);
+        Assert.Equal(
+        [
+            new HttpCookie { Name = "BIGipServerpool_cam", HttpOnly = true, Path = "/", DecodedValue = "10.1.1.100:8080" },
+            new HttpCookie { Name = "language", Path = "/" },
+            new HttpCookie { Name = "WebSession_0a1b2c", HttpOnly = true, SameSite = "Strict", Path = "/" },
+        ], camera.Cookies);
+        var json = JsonSerializer.Serialize(observations, ContractJson.Options);
+        Assert.DoesNotContain("7f3e9d8c2b1a4d5e", json);
+        Assert.DoesNotContain("1677787402", json);
+
+        var plain = responses["http://172.30.0.20:80/"];
+        Assert.Equal((301, "other"), (plain.StatusCode, plain.PageType));
+        Assert.Equal(["http://172.30.0.20:80/", "https://172.30.0.20/"], plain.RedirectChain);
+        Assert.Empty(plain.Cookies);
+
+        var tls = Assert.Single(observations, o => o.Kind == ObservationKind.TlsCertificate);
+        Assert.Equal("CN=172.30.0.20, OU=Camera, O=Example Cameras", tls.Tls!.SubjectDn);
     }
 
     [Fact]

@@ -134,8 +134,8 @@ public class SignatureWorkflowTests(TestApp app) : IAsyncLifetime
 
         var nginx = await s.QueryAsync(db => db.Technologies.SingleAsync(t => t.NameKey == "nginx"));
         Assert.Equal(("1.25.3", "web-server"), (nginx.Version, nginx.Category));
-        Assert.Equal("signature-match+version-probe", nginx.ConfidenceMethod);
-        Assert.Equal(0.98, nginx.Confidence); // 1 - 0.2 * 0.1
+        Assert.Equal("recog+signature-match+version-probe", nginx.ConfidenceMethod); // recog: the Server header
+        Assert.Equal(0.996, nginx.Confidence); // 1 - 0.2 * 0.1 * 0.2
         Assert.Contains("nginx-web-server@v1", nginx.Sources);
 
         var matches = await s.QueryAsync(db => db.SignatureMatches.OrderBy(m => m.SignatureId).ToListAsync());
@@ -153,7 +153,7 @@ public class SignatureWorkflowTests(TestApp app) : IAsyncLifetime
 
         var technologies = await app.Client(Roles.Viewer).GetFromJsonAsync<JsonElement>("/api/assets/technologies", Json);
         var summary = technologies.EnumerateArray().Single(t => t.GetProperty("name").GetString() == "nginx");
-        Assert.Equal((1, 1, 0.98), (summary.GetProperty("hostCount").GetInt32(), summary.GetProperty("serviceCount").GetInt32(), summary.GetProperty("confidence").GetDouble()));
+        Assert.Equal((1, 1, 0.996), (summary.GetProperty("hostCount").GetInt32(), summary.GetProperty("serviceCount").GetInt32(), summary.GetProperty("confidence").GetDouble()));
     }
 
     [Fact]

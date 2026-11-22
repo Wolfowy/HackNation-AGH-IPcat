@@ -6,7 +6,8 @@ namespace WebScan.Server.Modules.Discovery.Normalization;
 /// Deterministic confidence model.
 /// <list type="bullet">
 /// <item>Each piece of evidence has a method and a score: the tool's own <see cref="Confidence"/> when reported, otherwise the
-/// base score of the method: signature-match 0.9, version-probe 0.8, banner-match 0.7, tool-reported 0.6, port-heuristic 0.3.</item>
+/// base score of the method: signature-match 0.9, version-probe 0.8, recog 0.8 (unless the fingerprint states its own certainty),
+/// banner-match 0.7, tool-reported 0.6, port-heuristic 0.3.</item>
 /// <item>Per method only the best score counts (repeating the same kind of evidence adds nothing).</item>
 /// <item>Methods are treated as independent: <c>score = 1 − Π(1 − best_m)</c> (noisy-OR), rounded to 3 decimals.</item>
 /// <item><c>method</c> = the contributing methods, ordinal-sorted, joined with "+" (e.g. "signature-match+version-probe").</item>
@@ -20,9 +21,12 @@ public static class ConfidenceModel
     public const string SignatureMatch = "signature-match";
     public const string PortHeuristic = "port-heuristic";
 
+    /// <summary>Rapid7 recog fingerprint matched on the server (banner, header, title, favicon, certificate).</summary>
+    public const string Recog = "recog";
+
     private static readonly Dictionary<string, double> BaseScores = new(StringComparer.Ordinal)
     {
-        [SignatureMatch] = 0.9, [VersionProbe] = 0.8, [BannerMatch] = 0.7, [ToolReported] = 0.6, [PortHeuristic] = 0.3,
+        [SignatureMatch] = 0.9, [VersionProbe] = 0.8, [Recog] = 0.8, [BannerMatch] = 0.7, [ToolReported] = 0.6, [PortHeuristic] = 0.3,
     };
 
     public static double BaseScore(string method) => BaseScores.GetValueOrDefault(method, 0.5);

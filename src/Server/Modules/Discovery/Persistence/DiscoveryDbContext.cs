@@ -71,6 +71,9 @@ public sealed class DiscoveryDbContext(DbContextOptions<DiscoveryDbContext> opti
             e.HasIndex(x => new { x.HostId, x.Port, x.Transport }).IsUnique();
             e.HasIndex(x => new { x.Port, x.State });
             e.Property(x => x.Banner).HasEncryptedConversion();
+            // Full response headers (cookie values already masked): encrypted like the raw observations they come from.
+            e.Property(x => x.HttpDetailsJson).HasEncryptedConversion();
+            e.OwnsMany(x => x.Artifacts, o => o.ToJson());
         });
 
         b.Entity<Technology>(e =>

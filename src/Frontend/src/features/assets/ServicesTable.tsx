@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { formatRelative, zoneLabel } from '@/lib/format'
 import { ServiceAnnotationDialog } from './ServiceAnnotationDialog'
+import { ArtifactTags } from './ServiceDetailPage'
 
 export function ServicesTable({ services, showHost = true }: { services: Service[]; showHost?: boolean }) {
   const canEdit = useCan('edit')
@@ -30,6 +31,7 @@ export function ServicesTable({ services, showHost = true }: { services: Service
             <TableHead>HTTP</TableHead>
             <TableHead>TLS</TableHead>
             <TableHead>Technologies</TableHead>
+            <TableHead>Artifacts</TableHead>
             <TableHead>Annotation</TableHead>
             <TableHead>Last seen</TableHead>
             {canEdit && <TableHead className="w-10" />}
@@ -54,7 +56,14 @@ export function ServicesTable({ services, showHost = true }: { services: Service
                 <Badge variant={s.state === 'Open' ? 'success' : 'outline'}>{s.state}</Badge>
               </TableCell>
               <TableCell>
-                <div className="font-medium">{s.serviceName ?? 'unknown'}</div>
+                <Link to={`/assets/services/${s.id}`} className="font-medium hover:underline" title="Service details">
+                  {s.serviceName ?? 'unknown'}
+                </Link>
+                {s.deviceType && (
+                  <Badge variant="secondary" className="ml-1">
+                    {s.deviceType}
+                  </Badge>
+                )}
                 <div className="text-muted-foreground text-xs">
                   {[s.product, s.version].filter(Boolean).join(' ')}
                   {s.confidence !== undefined && ` · ${Math.round(s.confidence * 100)}%`}
@@ -82,6 +91,9 @@ export function ServicesTable({ services, showHost = true }: { services: Service
               </TableCell>
               <TableCell>
                 <Chips values={s.technologies} />
+              </TableCell>
+              <TableCell data-testid="artifact-cell">
+                <ArtifactTags tags={s.artifactTags} />
               </TableCell>
               <TableCell className="max-w-56 text-xs" data-testid="service-annotation">
                 {s.annotation ? (
