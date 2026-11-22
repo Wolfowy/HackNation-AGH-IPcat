@@ -12,6 +12,7 @@ import { AgentDetailPage } from '@/features/agents/AgentDetailPage'
 import { AgentsPage } from '@/features/agents/AgentsPage'
 import { HostDetailPage } from '@/features/assets/HostDetailPage'
 import { HostsPage } from '@/features/assets/HostsPage'
+import { ServiceDetailPage } from '@/features/assets/ServiceDetailPage'
 import { ServicesPage } from '@/features/assets/ServicesPage'
 import { TechnologiesPage } from '@/features/assets/TechnologiesPage'
 import { LoginPage } from '@/features/auth/LoginPage'
@@ -61,6 +62,7 @@ export const routes: RouteObject[] = [
       { path: 'assets/hosts', element: <HostsPage /> },
       { path: 'assets/hosts/:id', element: <HostDetailPage /> },
       { path: 'assets/services', element: <ServicesPage /> },
+      { path: 'assets/services/:id', element: <ServiceDetailPage /> },
       { path: 'assets/technologies', element: <TechnologiesPage /> },
       // Lazy: keeps React Flow and dagre out of the main bundle.
       { path: 'assets/graph', lazy: async () => ({ Component: (await import('@/features/assets/InventoryGraphPage')).InventoryGraphPage }) },

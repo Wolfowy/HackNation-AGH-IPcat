@@ -9,6 +9,7 @@ import type {
   ScanStartRequest,
   ScanWorkflowDefinition,
   ScheduleInput,
+  ServiceDetail,
   Severity,
   SignatureKind,
   Topology,
@@ -997,6 +998,21 @@ export const handlers = [
           (!search || [s.address, s.product ?? '', s.http?.title ?? ''].some((v) => v.toLowerCase().includes(search))),
       )
       return HttpResponse.json(paged(items, url))
+    }),
+  ),
+  http.get(
+    '*/api/assets/services/:id',
+    route('read', ({ params }) => {
+      const service = db.services.find((s) => s.id === p(params, 'id'))
+      if (!service) return notFound('Service')
+      const detail: ServiceDetail = {
+        service,
+        ...(db.serviceDetails[service.id] ?? { artifacts: [] }),
+        technologies: (db.hostTechnologies[service.hostId] ?? []).filter((x) => x.port === service.port),
+        certificate: db.certificates[service.hostId]?.find((c) => c.port === service.port),
+        findings: db.findings.filter((f) => f.hostId === service.hostId && f.port === service.port),
+      }
+      return HttpResponse.json(detail)
     }),
   ),
   http.get(

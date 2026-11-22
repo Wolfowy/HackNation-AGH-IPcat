@@ -13,6 +13,7 @@ import type {
   ImportResult,
   Paged,
   Service,
+  ServiceDetail,
   Severity,
   TechnologySummary,
 } from './types'
@@ -64,6 +65,9 @@ export const useServices = (params: ServiceListParams) =>
     queryFn: ({ signal }) => api<Paged<Service>>('/api/assets/services', { query: { ...params }, signal }),
     placeholderData: keepPreviousData,
   })
+
+export const useService = (id: string) =>
+  useQuery({ queryKey: ['services', 'detail', id], queryFn: ({ signal }) => api<ServiceDetail>(`/api/assets/services/${id}`, { signal }) })
 
 export const useTechnologies = () =>
   useQuery({

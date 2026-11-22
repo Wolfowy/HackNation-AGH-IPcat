@@ -75,6 +75,35 @@ tylko do agentów z `rawSockets` ≠ false (`Agent:RawSockets`, domyślnie wykry
 `parserOptions`: `kind` (rodzaj obserwacji), `fields` (pole obserwacji → ścieżka JSON z kropkami), `attributes`
 (dodatkowe pary klucz/ścieżka), `requireFields`, `discriminator` (część identyfikatora obserwacji). Pełny przykład: `tools.d/tlsx.json`.
 
+### `httpx` — fingerprinting HTTP
+
+Stałe argumenty `tools.d/httpx.json`: `-json -status-code -title -web-server -content-type -content-length -ip -hash sha256
+-include-response-header -tls-grab -kb -cdn=true` (+ `-follow-redirects`, `-max-redirects`, `-tech-detect`, `-favicon`, `-path`
+z parametrów `HttpProbe`). `-kb` (klasyfikacja strony) i `-cdn` (CDN/WAF z zakresów IP) działają lokalnie na tej samej odpowiedzi —
+bez dodatkowych żądań. `-include-chain` celowo pominięte (surowe odpowiedzi). Parser `httpx-jsonl` mapuje:
+
+| pole httpx (v1.12) | `HttpDetails` |
+|---|---|
+| `header` (snake_case → nazwy z myślnikami) | `Headers` (wartości ciasteczek i tokeny maskowane) |
+| `header.set_cookie` (powtórzenia złączone `", "`) | `Cookies[]`: nazwa, Secure, HttpOnly, SameSite, Domain, Path — **nigdy wartość**; F5 `BIGipServer*` → zdekodowany wewnętrzny `IP:port` (`DecodedValue`); `CookieNames` zostaje dla zgodności |
+| `location`, `final_url`, `chain_status_codes` | `RedirectChain` (URL → Location → final), `FinalUrl`, `RedirectStatusCodes` |
+| `favicon`, `favicon_md5` | `FaviconHash` (mmh3), `FaviconMd5` |
+| `knowledgebase.PageType` | `PageType` (np. `login`, `error`, `parked`) |
+| `cdn_name`, `cdn_type` | `Cdn`, `CdnType` (`cdn` / `waf` / `cloud`) |
+| `tls.subject_dn` | `TlsDetails.SubjectDn` |
+
+Starsze agenty (tylko zamaskowany nagłówek `Set-Cookie`): serwer odtwarza `Cookies` z nazw i atrybutów nagłówka.
+
+### Rapid7 recog — identyfikacja produktów i urządzeń (serwer)
+
+Moduł Discovery dopasowuje już zebrane dane do odcisków [Rapid7 recog](https://github.com/rapid7/recog)
+(BSD-2-Clause, © Rapid7; licencja: `src/Server/Modules/Discovery/Fingerprinting/Recog/LICENSE`), bez żadnego ruchu do celów:
+nagłówek `Server` → `http_servers.xml`, tytuł → `html_title.xml`, nazwy ciasteczek → `http_cookies.xml`, `WWW-Authenticate` →
+`http_wwwauth.xml`, MD5 favikony → `favicons.xml`, banery SSH/FTP → `ssh_banners.xml` / `ftp_banners.xml`, DN certyfikatu →
+`x509_subjects.xml` / `x509_issuers.xml`. Wersja przypięta: **recog v3.3.3**. Aktualizacja: pobrać te same pliki z
+`https://raw.githubusercontent.com/rapid7/recog/<tag>/xml/<plik>.xml` do katalogu `Fingerprinting/Recog/`, zmienić wersję tutaj
+i uruchomić `RecogTests` (każdy `<example>` musi pasować do swojego odcisku i dać zadeklarowane parametry).
+
 ## Pluginy (kod)
 
 Assembly zbudowane na `src/Agent/Tools.Abstractions` (`IToolAdapter`, `IToolOutputParser`, `IObservationWriter`,
