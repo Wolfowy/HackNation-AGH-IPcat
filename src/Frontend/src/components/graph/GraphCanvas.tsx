@@ -53,7 +53,7 @@ export function GraphCanvas<N extends Node>({
   testId?: string
 }) {
   return (
-    <div className={cn('bg-card h-[calc(100vh-16rem)] min-h-[420px] rounded-lg border', className)} data-testid={testId}>
+    <div className={cn('bg-canvas h-[calc(100vh-16rem)] min-h-[420px] overflow-hidden rounded-[10px]', className)} data-testid={testId}>
       <ReactFlow
         key={fitKey}
         nodes={nodes}
@@ -81,7 +81,7 @@ export function GraphCanvas<N extends Node>({
 
 export function GraphLegend({ items }: { items: { label: string; swatch: string }[] }) {
   return (
-    <div className="text-muted-foreground flex flex-wrap items-center gap-4 text-xs" data-testid="graph-legend">
+    <div className="text-muted-foreground flex flex-wrap items-center gap-x-3.5 gap-y-1.5 text-[12.5px]" data-testid="graph-legend">
       {items.map((i) => (
         <span key={i.label} className="inline-flex items-center gap-1.5">
           <span className={cn('size-3 rounded-sm border', i.swatch)} aria-hidden />

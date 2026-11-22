@@ -106,7 +106,7 @@ export function RunDiffPage() {
             <div className="grid gap-4">
               <DiffSection title="Added" entries={d.added} tone="text-success" />
               <DiffSection title="Removed" entries={d.removed} tone="text-destructive" />
-              <DiffSection title="Changed" entries={d.changed} tone="text-amber-600" />
+              <DiffSection title="Changed" entries={d.changed} tone="text-sev-medium-fg" />
             </div>
           )}
         </Loadable>

@@ -63,7 +63,7 @@ function DeviceCard({ data: { device: d } }: NodeProps<DeviceNode>) {
       data-testid="topology-device"
     >
       <div className="flex items-center gap-1.5 truncate font-mono text-sm font-semibold">
-        <Router className={cn('size-4 shrink-0', low ? 'text-amber-600' : 'text-violet-600')} /> {d.macAddress}
+        <Router className={cn('size-4 shrink-0', low ? 'text-sev-medium-fg' : 'text-violet-600')} /> {d.macAddress}
       </div>
       <div className="text-muted-foreground truncate text-xs">
         {d.macVendor ?? 'Unknown vendor'} · {plural(d.zones.length, 'zone')}

@@ -4,14 +4,14 @@ import { cn } from '@/lib/utils'
 
 /** Change types folded into four series (more hues would not stay distinguishable); fixed order = fixed colors. */
 const GROUPS: { label: string; types: ChangeType[]; color: string }[] = [
-  { label: 'Added', types: ['NewHost', 'NewPort', 'NewService', 'HostReappeared'], color: 'bg-[#2a78d6] dark:bg-[#3987e5]' },
+  { label: 'Added', types: ['NewHost', 'NewPort', 'NewService', 'HostReappeared'], color: 'bg-chart-1' },
   {
     label: 'Changed',
     types: ['ServiceChanged', 'TechnologyChanged', 'TlsCertificateChanged', 'HttpResponseChanged'],
-    color: 'bg-[#eb6834] dark:bg-[#d95926]',
+    color: 'bg-sev-high',
   },
-  { label: 'Gone', types: ['HostGone', 'PortGone'], color: 'bg-[#1baf7a] dark:bg-[#199e70]' },
-  { label: 'Time of day', types: ['TimeOfDayVariance'], color: 'bg-[#eda100] dark:bg-[#c98500]' },
+  { label: 'Gone', types: ['HostGone', 'PortGone'], color: 'bg-chart-5' },
+  { label: 'Time of day', types: ['TimeOfDayVariance'], color: 'bg-chart-3' },
 ]
 
 const count = (day: ChangeDay, types: ChangeType[]) => types.reduce((n, type) => n + (day.byType[type] ?? 0), 0)
@@ -23,7 +23,7 @@ export function ChangesChart({ days }: { days: ChangeDay[] }) {
   const totals = GROUPS.map((g) => days.reduce((n, d) => n + count(d, g.types), 0))
   return (
     <div data-testid="changes-chart">
-      <ul className="mb-3 flex flex-wrap gap-x-4 gap-y-1 text-xs">
+      <ul className="mb-3 flex flex-wrap gap-x-4 gap-y-1 text-[12.5px]">
         {GROUPS.map((g, i) => (
           <li key={g.label} className="flex items-center gap-1.5">
             <span className={cn('inline-block size-2.5 rounded-sm', g.color)} />
@@ -32,14 +32,14 @@ export function ChangesChart({ days }: { days: ChangeDay[] }) {
           </li>
         ))}
       </ul>
-      <div className="flex h-40 items-end gap-1 border-b" aria-hidden>
+      <div className="flex h-44 items-end gap-1 border-b" aria-hidden>
         {days.map((day) => (
           <div
             key={day.date}
             className="group flex h-full flex-1 flex-col justify-end"
             title={`${day.date}: ${day.total} change(s)\n${GROUPS.map((g) => `${g.label}: ${count(day, g.types)}`).join('\n')}`}
           >
-            <div className="flex flex-col-reverse gap-[2px] overflow-hidden rounded-t group-hover:opacity-80" style={{ height: `${(day.total / max) * 100}%` }}>
+            <div className="flex flex-col-reverse gap-[2px] overflow-hidden rounded-t-[3px] group-hover:opacity-80" style={{ height: `${(day.total / max) * 100}%` }}>
               {GROUPS.map((g) => {
                 const n = count(day, g.types)
                 return n > 0 && <div key={g.label} className={g.color} style={{ flexGrow: n, minHeight: 2 }} />
@@ -48,7 +48,7 @@ export function ChangesChart({ days }: { days: ChangeDay[] }) {
           </div>
         ))}
       </div>
-      <div className="text-muted-foreground mt-1 flex justify-between text-[10px] tabular-nums" aria-hidden>
+      <div className="text-muted-foreground mt-1.5 flex justify-between text-[11px] tabular-nums" aria-hidden>
         <span>{days[0]?.date.slice(5)}</span>
         <span>{days[Math.floor(days.length / 2)]?.date.slice(5)}</span>
         <span>{days.at(-1)?.date.slice(5)}</span>

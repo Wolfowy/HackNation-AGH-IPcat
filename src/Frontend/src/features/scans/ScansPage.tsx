@@ -84,7 +84,7 @@ export function ScansPage() {
                           {run.name}
                         </Link>
                         {!run.coverageComplete && run.finishedAt && (
-                          <div className="text-xs text-amber-600">Coverage incomplete</div>
+                          <div className="text-xs text-sev-medium-fg">Coverage incomplete</div>
                         )}
                         {run.tags.length > 0 && <Chips values={run.tags} />}
                       </TableCell>

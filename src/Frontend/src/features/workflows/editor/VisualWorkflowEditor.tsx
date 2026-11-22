@@ -68,17 +68,17 @@ function StepNodeView({ data, selected, isConnectable }: NodeProps<StepNode>) {
     <div
       data-testid={`step-node-${step.id}`}
       className={cn(
-        'bg-card w-60 rounded-lg border border-l-4 p-2.5 text-xs shadow-sm',
+        'bg-card w-60 rounded-[8px] border border-l-[3px] p-2.5 text-[12px]',
         planeAccent(plane),
-        selected && 'ring-ring ring-2',
-        stepErrors.length > 0 && 'border-destructive ring-destructive/50 ring-2',
+        selected && 'border-primary shadow-[inset_0_0_0_1px_var(--primary)]',
+        stepErrors.length > 0 && 'border-destructive shadow-[inset_0_0_0_1px_var(--destructive)]',
       )}
     >
       <Handle type="target" position={Position.Left} isConnectable={isConnectable} className="size-3!" />
       <div className="flex items-center gap-2">
         <OperationIcon operation={step.operation} plane={plane} />
         <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-semibold">{step.id}</div>
+          <div className="truncate text-[13px] font-medium">{step.id}</div>
           <div className="text-muted-foreground truncate">
             {step.operation} · {plane ?? '…'}
           </div>
@@ -128,10 +128,10 @@ const nodeTypes = { step: StepNodeView }
 
 function Palette({ operations, onAdd }: { operations: OperationDescriptor[]; onAdd: (op: ScanOperation) => void }) {
   return (
-    <aside aria-label="Operations palette" className="grid content-start gap-3 overflow-y-auto">
+    <aside aria-label="Operations palette" className="grid min-w-0 content-start gap-3 overflow-x-hidden overflow-y-auto">
       {(['Agent', 'Server'] as const).map((plane) => (
-        <div key={plane} className="grid gap-1">
-          <h3 className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">{plane === 'Agent' ? 'Agent (network)' : 'Server'}</h3>
+        <div key={plane} className="grid min-w-0 gap-1">
+          <h3 className="text-muted-foreground px-0.5 text-[12px]">{plane === 'Agent' ? 'Agent (network)' : 'Server'}</h3>
           {operations
             .filter((o) => o.plane === plane)
             .map((o) => (
@@ -146,7 +146,7 @@ function Palette({ operations, onAdd }: { operations: OperationDescriptor[]; onA
                   e.dataTransfer.effectAllowed = 'move'
                 }}
                 onClick={() => onAdd(o.operation)}
-                className={cn('bg-card hover:bg-accent flex cursor-grab items-center gap-2 rounded-md border border-l-4 px-2 py-1.5 text-left text-xs font-medium', planeAccent(o.plane))}
+                className={cn('bg-card hover:bg-muted flex w-full min-w-0 cursor-grab items-center gap-2 rounded-md border border-l-[3px] px-2 py-1.5 text-left text-[12.5px]', planeAccent(o.plane))}
               >
                 <OperationIcon operation={o.operation} plane={o.plane} className="size-6" />
                 <span className="truncate">{o.operation}</span>
@@ -269,7 +269,7 @@ function Editor({ initial, onChange, operations, errors, readOnly, keyEditable }
   const canvas = (
     <div className={cn('grid gap-3', readOnly ? 'lg:grid-cols-[minmax(0,1fr)_20rem]' : 'lg:grid-cols-[11rem_minmax(0,1fr)_20rem]')}>
       {!readOnly && <Palette operations={operations} onAdd={add} />}
-      <div className="bg-muted/20 h-[calc(100vh-15rem)] min-h-[26rem] rounded-lg border" data-testid="workflow-canvas" onDrop={onDrop} onDragOver={(e) => e.preventDefault()}>
+      <div className="bg-canvas h-[calc(100vh-15rem)] min-h-[26rem] overflow-hidden rounded-[10px]" data-testid="workflow-canvas" onDrop={onDrop} onDragOver={(e) => e.preventDefault()}>
         <Ctx.Provider value={ctx}>
           <ReactFlow<StepNode>
             nodes={graph.nodes}
@@ -292,7 +292,7 @@ function Editor({ initial, onChange, operations, errors, readOnly, keyEditable }
               zoomable
               className="hidden! md:block!"
               style={{ width: 150, height: 100 }}
-              nodeColor={(n) => (opsByName.get(n.data.step.operation)?.plane === 'Server' ? '#8b5cf6' : '#0ea5e9')}
+              nodeColor={(n) => (opsByName.get(n.data.step.operation)?.plane === 'Server' ? 'var(--flow-decision)' : 'var(--node-host)')}
             />
             <Panel position="top-right">
               <Button
@@ -314,7 +314,7 @@ function Editor({ initial, onChange, operations, errors, readOnly, keyEditable }
           </ReactFlow>
         </Ctx.Provider>
       </div>
-      <aside aria-label="Inspector" className="h-[calc(100vh-15rem)] min-h-[26rem] overflow-y-auto rounded-lg border p-3">
+      <aside aria-label="Inspector" className="bg-card h-[calc(100vh-15rem)] min-h-[26rem] overflow-y-auto rounded-lg border p-4">
         {selectedId && (
           <button type="button" className="text-primary mb-2 text-xs hover:underline" onClick={() => setGraph((g) => ({ ...g, nodes: g.nodes.map((n) => ({ ...n, selected: false })) }))}>
             ← Workflow settings

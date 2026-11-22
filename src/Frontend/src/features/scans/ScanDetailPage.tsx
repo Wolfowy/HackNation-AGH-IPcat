@@ -20,6 +20,7 @@ import { Progress } from '@/components/ui/progress'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { t } from '@/i18n/strings'
 import { formatDateTime, formatDuration, splitList } from '@/lib/format'
+import { cn } from '@/lib/utils'
 import { JobsTable } from './JobsTable'
 
 const stepIcons: Record<StepStatus, React.ReactNode> = {
@@ -31,38 +32,92 @@ const stepIcons: Record<StepStatus, React.ReactNode> = {
   Cancelled: <CircleSlash className="text-muted-foreground size-4" />,
 }
 
-function StepsTimeline({ steps }: { steps: ScanStep[] }) {
+const barColors: Record<StepStatus, string> = {
+  Pending: 'bg-muted-foreground/30',
+  Running: 'bg-primary/70',
+  Completed: 'bg-primary',
+  Skipped: 'bg-muted-foreground/30',
+  Failed: 'bg-destructive',
+  Cancelled: 'bg-muted-foreground/40',
+}
+
+/** ipcat-web run timeline: one row per step, a bar placed by its start/finish against the whole run. */
+function StepsTimeline({ steps, run }: { steps: ScanStep[]; run: ScanRun }) {
   if (steps.length === 0) return <EmptyState />
+  const now = Date.now()
+  const times = steps.flatMap((s) => [s.startedAt, s.finishedAt]).filter(Boolean).map((v) => Date.parse(v!))
+  const start = run.startedAt ? Date.parse(run.startedAt) : Math.min(now, ...times)
+  const end = Math.max(run.finishedAt ? Date.parse(run.finishedAt) : now, ...times, start + 1000)
+  const total = end - start
+  const pct = (ms: number) => `${Math.max(0, Math.min(100, (ms / total) * 100))}%`
   return (
-    <ol className="relative space-y-3 border-l pl-5" data-testid="steps-timeline">
-      {steps.map((s) => (
-        <li key={s.stepId} className="relative">
-          <span className="bg-background absolute top-0.5 -left-[1.6rem]">{stepIcons[s.status]}</span>
-          <div className="flex flex-wrap items-center gap-2 text-sm">
-            <span className="font-medium">{s.stepId}</span>
-            <span className="text-muted-foreground text-xs">{s.operation}</span>
-            <StatusBadge status={s.status} />
-            {s.jobsTotal > 0 && (
-              <span className="text-muted-foreground text-xs">
-                {s.jobsCompleted}/{s.jobsTotal} jobs
-              </span>
-            )}
-          </div>
-          <div className="text-muted-foreground text-xs">
-            {s.startedAt && `started ${formatDateTime(s.startedAt)}`}
-            {s.finishedAt && s.startedAt && ` · took ${formatDuration(Date.parse(s.finishedAt) - Date.parse(s.startedAt))}`}
-          </div>
-          {s.message && <div className="text-xs">{s.message}</div>}
-        </li>
-      ))}
-    </ol>
+    <div className="min-w-0" data-testid="steps-timeline">
+      <div className="grid grid-cols-[minmax(170px,240px)_minmax(0,1fr)] gap-x-4" aria-hidden>
+        <span />
+        <div className="text-muted-foreground relative flex h-6 justify-between border-b text-[11.5px] tabular-nums">
+          <span>0</span>
+          <span>{formatDuration(total / 2)}</span>
+          <span>{formatDuration(total)}</span>
+        </div>
+      </div>
+      <ol className="m-0 list-none p-0">
+        {steps.map((s) => {
+          const from = s.startedAt ? Date.parse(s.startedAt) - start : undefined
+          const to = s.startedAt ? (s.finishedAt ? Date.parse(s.finishedAt) : now) - start : undefined
+          return (
+            <li key={s.stepId} className="grid grid-cols-[minmax(170px,240px)_minmax(0,1fr)] gap-x-4 border-b py-3 last:border-b-0">
+              <div className="flex min-w-0 items-start gap-2 px-1.5">
+                <span className="mt-0.5">{stepIcons[s.status]}</span>
+                <span className="min-w-0">
+                  <span className="flex flex-wrap items-center gap-1.5">
+                    <span className="text-[13.5px] leading-snug font-medium">{s.stepId}</span>
+                    <StatusBadge status={s.status} />
+                  </span>
+                  <span className="text-muted-foreground block font-mono text-[11.5px]">{s.operation}</span>
+                </span>
+              </div>
+              <div className="relative min-w-0">
+                <div className="pointer-events-none absolute inset-0" aria-hidden>
+                  {[0, 25, 50, 75, 100].map((x) => (
+                    <span key={x} className="bg-border/70 absolute inset-y-0 w-px" style={{ left: `${x}%` }} />
+                  ))}
+                </div>
+                <div className="relative h-7">
+                  {from !== undefined && to !== undefined ? (
+                    <span
+                      className={cn('absolute inset-y-0 rounded-md', barColors[s.status], s.status === 'Running' && 'animate-pulse')}
+                      style={{ left: pct(from), width: `max(6px, ${pct(to - from)})` }}
+                    />
+                  ) : (
+                    <span className="text-muted-foreground absolute inset-y-0 flex items-center gap-2 text-[12.5px]">
+                      <span className="border-muted-foreground h-5 w-2 rounded-sm border-2 border-dashed" aria-hidden />
+                      not started
+                    </span>
+                  )}
+                </div>
+                <div className="text-muted-foreground relative mt-1.5 flex flex-wrap gap-x-3 text-[12px]">
+                  {s.jobsTotal > 0 && (
+                    <span className="tabular-nums">
+                      {s.jobsCompleted}/{s.jobsTotal} jobs
+                    </span>
+                  )}
+                  {s.startedAt && <span>started {formatDateTime(s.startedAt)}</span>}
+                  {s.finishedAt && s.startedAt && <span>took {formatDuration(Date.parse(s.finishedAt) - Date.parse(s.startedAt))}</span>}
+                  {s.message && <span className="text-foreground">{s.message}</span>}
+                </div>
+              </div>
+            </li>
+          )
+        })}
+      </ol>
+    </div>
   )
 }
 
 function EventsLog({ events }: { events: ScanExecutionEvent[] }) {
   if (events.length === 0) return <EmptyState>No events yet.</EmptyState>
   return (
-    <div className="max-h-[28rem] overflow-y-auto rounded-md border font-mono text-xs" data-testid="events-log">
+    <div className="max-h-[28rem] overflow-y-auto rounded-lg border font-mono text-[12px]" data-testid="events-log">
       {events.map((e) => (
         <div key={e.eventId} className="flex gap-3 border-b px-3 py-1.5 last:border-0">
           <span className="text-muted-foreground shrink-0">{formatDateTime(e.occurredAt)}</span>
@@ -201,41 +256,79 @@ export function ScanDetailPage() {
                 </>
               }
             />
-            <div className="grid gap-6 lg:grid-cols-3">
-              <Card className="lg:col-span-2">
-                <CardHeader>
-                  <CardTitle>Progress</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <div className="flex items-center gap-3">
-                    <Progress value={p.percent} aria-label="Scan progress" className="h-3" />
-                    <span className="w-12 text-right font-semibold tabular-nums" data-testid="scan-percent">
-                      {Math.round(p.percent)}%
-                    </span>
-                  </div>
-                  <div className="text-muted-foreground flex flex-wrap gap-4 text-sm" data-testid="scan-job-counts">
-                    <span>{p.jobsTotal} total</span>
-                    <span>{p.jobsQueued} queued</span>
-                    <span>{p.jobsRunning} running</span>
-                    <span>{p.jobsCompleted} completed</span>
-                    <span className={p.jobsFailed ? 'text-destructive' : undefined}>{p.jobsFailed} failed</span>
-                  </div>
-                  {active && run.startedAt && (
-                    <p className="text-muted-foreground text-sm" data-testid="scan-eta">
-                      Elapsed {formatDuration(Date.now() - Date.parse(run.startedAt))}
-                      {run.remainingSeconds !== undefined && run.remainingSeconds !== null
-                        ? ` · about ${formatDuration(run.remainingSeconds * 1000)} left (finishes ${formatDateTime(run.estimatedFinishAt)})`
-                        : ' · ETA after the first jobs finish'}
-                      {run.notAfter && run.estimatedFinishAt && Date.parse(run.estimatedFinishAt) > Date.parse(run.notAfter) && (
-                        <span className="text-amber-600"> · window ends first</span>
-                      )}
-                    </p>
-                  )}
-                  {!run.coverageComplete && !active && (
-                    <p className="text-sm text-amber-600">Coverage incomplete — missing targets are not counted as gone.</p>
-                  )}
-                </CardContent>
-              </Card>
+            <div className="grid items-start gap-[18px] xl:grid-cols-[minmax(0,1fr)_380px]">
+              <div className="grid min-w-0 content-start gap-[18px]">
+                <Card>
+                  <CardHeader className="flex-row items-center gap-2.5">
+                    <CardTitle className="flex-1">Progress</CardTitle>
+                    {active && run.startedAt && (
+                      <span className="text-muted-foreground text-[12.5px]" data-testid="scan-eta">
+                        Elapsed {formatDuration(Date.now() - Date.parse(run.startedAt))}
+                        {run.remainingSeconds !== undefined && run.remainingSeconds !== null
+                          ? ` · about ${formatDuration(run.remainingSeconds * 1000)} left (finishes ${formatDateTime(run.estimatedFinishAt)})`
+                          : ' · ETA after the first jobs finish'}
+                        {run.notAfter && run.estimatedFinishAt && Date.parse(run.estimatedFinishAt) > Date.parse(run.notAfter) && (
+                          <span className="text-sev-medium-fg"> · window ends first</span>
+                        )}
+                      </span>
+                    )}
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="flex items-center gap-3">
+                      <Progress value={p.percent} aria-label="Scan progress" className="h-2.5" />
+                      <span className="w-14 text-right text-[22px] leading-none font-semibold tabular-nums" data-testid="scan-percent">
+                        {Math.round(p.percent)}%
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-5" data-testid="scan-job-counts">
+                      {(
+                        [
+                          ['total', p.jobsTotal, ''],
+                          ['queued', p.jobsQueued, ''],
+                          ['running', p.jobsRunning, 'text-chg-new-fg'],
+                          ['completed', p.jobsCompleted, 'text-chg-same-fg'],
+                          ['failed', p.jobsFailed, p.jobsFailed ? 'text-destructive' : ''],
+                        ] as const
+                      ).map(([label, value, color]) => (
+                        <div key={label} className="bg-muted/60 rounded-md px-3 py-2">
+                          <span className={cn('block text-[18px] leading-tight font-semibold tabular-nums', color)}>{value}</span>{' '}
+                          <span className="text-muted-foreground text-[12px]">{label}</span>
+                        </div>
+                      ))}
+                    </div>
+                    {!run.coverageComplete && !active && (
+                      <p className="text-sev-medium-fg bg-sev-medium-bg m-0 rounded-md px-3 py-2 text-[13px]">
+                        Coverage incomplete — missing targets are not counted as gone.
+                      </p>
+                    )}
+                  </CardContent>
+                </Card>
+                <Card className="p-4">
+                  <Tabs defaultValue="steps">
+                    <TabsList className="mb-1">
+                      <TabsTrigger value="steps">{t.scans.steps}</TabsTrigger>
+                      <TabsTrigger value="jobs">{t.scans.jobsTitle}</TabsTrigger>
+                      <TabsTrigger value="events">{t.scans.events}</TabsTrigger>
+                    </TabsList>
+                    <TabsContent value="steps">
+                      <StepsTimeline steps={run.steps} run={run} />
+                    </TabsContent>
+                    <TabsContent value="jobs">
+                      <Loadable query={jobs}>
+                        {(data) => (
+                          <>
+                            <JobsTable jobs={data.items} runStatus={run.status} />
+                            <Pagination page={jobsPage} pageSize={jobsPageSize} total={data.total} onPageChange={setJobsPage} />
+                          </>
+                        )}
+                      </Loadable>
+                    </TabsContent>
+                    <TabsContent value="events">
+                      <EventsLog events={events} />
+                    </TabsContent>
+                  </Tabs>
+                </Card>
+              </div>
               <Card>
                 <CardHeader>
                   <CardTitle>Details</CardTitle>
@@ -259,29 +352,6 @@ export function ScanDetailPage() {
                 </CardContent>
               </Card>
             </div>
-            <Tabs defaultValue="steps" className="mt-6">
-              <TabsList>
-                <TabsTrigger value="steps">{t.scans.steps}</TabsTrigger>
-                <TabsTrigger value="jobs">{t.scans.jobsTitle}</TabsTrigger>
-                <TabsTrigger value="events">{t.scans.events}</TabsTrigger>
-              </TabsList>
-              <TabsContent value="steps">
-                <StepsTimeline steps={run.steps} />
-              </TabsContent>
-              <TabsContent value="jobs">
-                <Loadable query={jobs}>
-                  {(data) => (
-                    <>
-                      <JobsTable jobs={data.items} runStatus={run.status} />
-                      <Pagination page={jobsPage} pageSize={jobsPageSize} total={data.total} onPageChange={setJobsPage} />
-                    </>
-                  )}
-                </Loadable>
-              </TabsContent>
-              <TabsContent value="events">
-                <EventsLog events={events} />
-              </TabsContent>
-            </Tabs>
           </>
         )
       }}

@@ -79,7 +79,7 @@ export function SchedulesPage() {
                     <TableCell title={formatDateTime(s.nextFireAt)}>
                       {s.enabled ? formatRelative(s.nextFireAt) : '—'}
                       {s.enabled && s.resumeAt && (
-                        <div className="text-xs text-amber-600" title="The last run hit its window end and restarts when the next window opens">
+                        <div className="text-xs text-sev-medium-fg" title="The last run hit its window end and restarts when the next window opens">
                           Resume pending at {formatDateTime(s.resumeAt)}
                         </div>
                       )}
@@ -104,7 +104,7 @@ export function SchedulesPage() {
                     <TableCell>{s.enabled ? <Badge variant="success">Active</Badge> : <Badge variant="outline">Paused</Badge>}</TableCell>
                     {canEdit && (
                       <TableCell className="space-x-2 text-right whitespace-nowrap">
-                        <Button size="sm" onClick={() => runNow(s)} disabled={trigger.isPending}>
+                        <Button size="sm" variant="outline" onClick={() => runNow(s)} disabled={trigger.isPending}>
                           {t.schedules.trigger}
                         </Button>
                         <Button size="sm" variant="outline" onClick={() => setPaused.mutate({ id: s.id, paused: s.enabled })}>

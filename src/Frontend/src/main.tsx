@@ -2,6 +2,9 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { App } from './App'
 import './index.css'
+import { applyInitialTheme } from './lib/theme'
+
+applyInitialTheme()
 
 async function enableMocks() {
   if (import.meta.env.VITE_USE_MOCKS !== 'true') return

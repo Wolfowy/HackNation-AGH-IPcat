@@ -3,7 +3,7 @@ import { Clock } from 'lucide-react'
 import type { Change, ChangeType } from '@/api/types'
 import { TargetLink } from '@/components/EndpointLink'
 import { EmptyState } from '@/components/feedback'
-import { StatusBadge } from '@/components/page'
+import { pillDot, StatusBadge } from '@/components/page'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { formatDateTime } from '@/lib/format'
@@ -11,14 +11,31 @@ import { cn } from '@/lib/utils'
 
 const show = (v: unknown) => (v === undefined || v === null ? '' : typeof v === 'string' ? v : JSON.stringify(v))
 
-/** Change type; time-of-day variance stands out (it explains "flapping" HTTP responses instead of reporting each one). */
+const CHANGE_COLORS: Partial<Record<ChangeType, string>> = {
+  NewHost: 'bg-chg-new-bg text-chg-new-fg',
+  NewPort: 'bg-chg-new-bg text-chg-new-fg',
+  NewService: 'bg-chg-new-bg text-chg-new-fg',
+  HostReappeared: 'bg-chg-new-bg text-chg-new-fg',
+  HostGone: 'bg-chg-gone-bg text-chg-gone-fg',
+  PortGone: 'bg-chg-gone-bg text-chg-gone-fg',
+}
+
+/** Change type as an ipcat-web change pill (new = blue, changed = yellow, gone = gray); time-of-day variance stands out. */
 export function ChangeTypeBadge({ type }: { type: ChangeType }) {
   return type === 'TimeOfDayVariance' ? (
-    <Badge variant="warning" title="Responses differ consistently by hour of day; repeated HTTP changes are suppressed">
+    <Badge variant="warning" className="rounded-full" title="Responses differ consistently by hour of day; repeated HTTP changes are suppressed">
       <Clock /> Time of day
     </Badge>
   ) : (
-    <Badge variant="outline">{type}</Badge>
+    <span
+      className={cn(
+        'inline-flex items-center gap-[5px] rounded-full px-2 py-0.5 text-[12px] whitespace-nowrap',
+        pillDot,
+        CHANGE_COLORS[type] ?? 'bg-chg-changed-bg text-chg-changed-fg',
+      )}
+    >
+      {type}
+    </span>
   )
 }
 

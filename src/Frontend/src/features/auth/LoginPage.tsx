@@ -1,6 +1,5 @@
 import { useState, type FormEvent } from 'react'
 import { Navigate, useLocation, useNavigate } from 'react-router'
-import { Radar } from 'lucide-react'
 import { ApiError, errorMessage } from '@/api/client'
 import { useAuth } from '@/auth/AuthProvider'
 import { FormField } from '@/components/form'
@@ -40,9 +39,9 @@ export function LoginPage() {
     <div className="bg-muted/40 flex min-h-screen items-center justify-center p-4">
       <Card className="w-full max-w-sm">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-xl">
-            <Radar className="text-primary size-6" /> {t.login.title}
-          </CardTitle>
+          <img src="/brand/ipcat-lockup-horizontal-light.svg" alt="ip_cat" className="mb-3 h-10 w-auto self-start dark:hidden" />
+          <img src="/brand/ipcat-lockup-horizontal-dark.svg" alt="" className="mb-3 hidden h-10 w-auto self-start dark:block" />
+          <CardTitle className="text-xl">{t.login.title}</CardTitle>
         </CardHeader>
         <CardContent>
           <form className="grid gap-4" onSubmit={submit}>
