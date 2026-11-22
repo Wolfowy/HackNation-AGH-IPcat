@@ -2,6 +2,7 @@ using System.Globalization;
 using Microsoft.Extensions.DependencyInjection;
 using WebScan.Contracts;
 using WebScan.Server.Kernel.Ports;
+using WebScan.Server.Modules.Scanning.Persistence;
 using WebScan.Server.Modules.Scanning.Planning;
 using WebScan.Server.Modules.Scanning.Runs;
 
@@ -42,19 +43,11 @@ public sealed class AgentStepExecutor(TaskPlanner planner, IServiceProvider serv
             return StepOutcome.Failed($"{step.Operation} needs endpoints from input.fromSteps.");
         }
 
-        var defaults = context.Definition.Defaults ?? new WorkflowDefaults();
-        var retry = step.Retry ?? defaults.Retry ?? new RetryPolicy();
         PlanResult plan;
         try
         {
-            plan = await planner.PlanAsync(new AgentStepSpec
+            plan = await planner.PlanAsync(Spec(context.Run, context.WorkflowRunId, context.Definition, step, parameters.Values) with
             {
-                ScanRunId = context.Run.Id, WorkflowRunId = context.WorkflowRunId, StepId = step.Id, Operation = step.Operation,
-                NetworkIds = context.Run.NetworkIds, Parameters = parameters.Values, PreferredToolId = step.ToolId,
-                RequiredParameters = descriptor.Parameters.Select(p => p.Name).Where(step.Parameters.ContainsKey).ToList(),
-                Priority = context.Run.Priority, RunRateCap = context.Run.MaxRatePerSecond, NotAfter = context.Run.NotAfter,
-                TimeoutSeconds = step.TimeoutSeconds ?? defaults.TimeoutSeconds, MaxConcurrency = step.MaxConcurrency ?? defaults.MaxConcurrency,
-                MaxAttempts = retry.MaxAttempts, BackoffSeconds = retry.BackoffSeconds, BatchSize = defaults.BatchSize,
                 Signatures = signatures, Hosts = hosts, Endpoints = endpoints,
             }, ct);
         }
@@ -65,10 +58,26 @@ public sealed class AgentStepExecutor(TaskPlanner planner, IServiceProvider serv
 
         if (plan.JobsTotal == 0)
             return StepOutcome.Skipped(plan.OutOfScope > 0 ? $"All {plan.OutOfScope} targets are outside the authorized scope." : "No targets in the authorized scope.");
-        var message = $"{plan.JobsTotal} jobs, {plan.TargetCount} targets";
+        var message = $"{plan.JobsTotal} jobs, {plan.TargetCount} targets, {plan.BatchReason}";
         if (plan.Unassignable > 0) message += $"; {plan.Unassignable} jobs wait for an eligible agent ({plan.UnassignableReason})";
         if (plan.OutOfScope > 0) message += $"; {plan.OutOfScope} out-of-scope targets dropped";
         return StepOutcome.Waiting(plan.JobsTotal, message);
+    }
+
+    /// <summary>Planner spec of an agent step over the run scope (also used by the duration estimate before a run exists).</summary>
+    public static AgentStepSpec Spec(ScanRun run, Guid? workflowRunId, ScanWorkflowDefinition definition, WorkflowStep step, IReadOnlyDictionary<string, string> parameters)
+    {
+        var defaults = definition.Defaults ?? new WorkflowDefaults();
+        var retry = step.Retry ?? defaults.Retry ?? new RetryPolicy();
+        return new AgentStepSpec
+        {
+            ScanRunId = run.Id, WorkflowRunId = workflowRunId, StepId = step.Id, Operation = step.Operation,
+            NetworkIds = run.NetworkIds, Parameters = parameters, PreferredToolId = step.ToolId,
+            RequiredParameters = OperationCatalog.Get(step.Operation).Parameters.Select(p => p.Name).Where(step.Parameters.ContainsKey).ToList(),
+            Priority = run.Priority, RunRateCap = run.MaxRatePerSecond, NotAfter = run.NotAfter,
+            TimeoutSeconds = step.TimeoutSeconds ?? defaults.TimeoutSeconds, MaxConcurrency = step.MaxConcurrency ?? defaults.MaxConcurrency,
+            MaxAttempts = retry.MaxAttempts, BackoffSeconds = retry.BackoffSeconds, BatchSize = defaults.BatchSize,
+        };
     }
 }
 

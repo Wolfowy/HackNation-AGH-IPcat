@@ -220,6 +220,17 @@ export function ScanDetailPage() {
                     <span>{p.jobsCompleted} completed</span>
                     <span className={p.jobsFailed ? 'text-destructive' : undefined}>{p.jobsFailed} failed</span>
                   </div>
+                  {active && run.startedAt && (
+                    <p className="text-muted-foreground text-sm" data-testid="scan-eta">
+                      Elapsed {formatDuration(Date.now() - Date.parse(run.startedAt))}
+                      {run.remainingSeconds !== undefined && run.remainingSeconds !== null
+                        ? ` · about ${formatDuration(run.remainingSeconds * 1000)} left (finishes ${formatDateTime(run.estimatedFinishAt)})`
+                        : ' · ETA after the first jobs finish'}
+                      {run.notAfter && run.estimatedFinishAt && Date.parse(run.estimatedFinishAt) > Date.parse(run.notAfter) && (
+                        <span className="text-amber-600"> · window ends first</span>
+                      )}
+                    </p>
+                  )}
                   {!run.coverageComplete && !active && (
                     <p className="text-sm text-amber-600">Coverage incomplete — missing targets are not counted as gone.</p>
                   )}
@@ -242,6 +253,7 @@ export function ScanDetailPage() {
                       ['Window ends', formatDateTime(run.notAfter)],
                       ['Tags', <Chips values={run.tags} />],
                       ['Notes', <span className="whitespace-pre-wrap">{run.notes ?? '—'}</span>],
+                      ['Estimated finish', active ? formatDateTime(run.estimatedFinishAt) : '—'],
                     ]}
                   />
                 </CardContent>

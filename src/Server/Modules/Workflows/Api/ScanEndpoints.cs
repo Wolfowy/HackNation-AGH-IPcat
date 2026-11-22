@@ -10,6 +10,9 @@ using WebScan.Server.Kernel.Scanning;
 using WebScan.Server.Kernel.Security;
 using WebScan.Server.Modules.Scanning.Api;
 using WebScan.Server.Modules.Scanning.Persistence;
+using WebScan.Server.Modules.Scanning.Planning;
+using WebScan.Server.Modules.Workflows.Definitions;
+using WebScan.Server.Modules.Workflows.Execution;
 using WebScan.Server.Modules.Workflows.Persistence;
 
 namespace WebScan.Server.Modules.Workflows.Api;
@@ -23,10 +26,17 @@ public sealed record ScanRunDto(
     Guid Id, string Name, ScanRunStatus Status, string WorkflowKey, int WorkflowVersion, IReadOnlyList<Guid> NetworkIds, string TriggeredBy,
     int Priority, int? MaxRatePerSecond, Guid? ScheduleId, DateTimeOffset CreatedAt, DateTimeOffset? StartedAt, DateTimeOffset? FinishedAt,
     DateTimeOffset? NotAfter, ScanProgressDto Progress, bool CoverageComplete, string? Message, string? Notes, IReadOnlyList<string> Tags,
-    IReadOnlyList<ScanStepDto>? Steps = null);
+    IReadOnlyList<ScanStepDto>? Steps = null, double? RemainingSeconds = null, DateTimeOffset? EstimatedFinishAt = null);
 
 /// <summary>User metadata of a run (full replacement); editable whatever the run state.</summary>
 public sealed record UpdateScanDto(string? Name, string? Notes, IReadOnlyList<string>? Tags);
+
+public sealed record ScanEstimateRequest(string WorkflowKey, int? WorkflowVersion, IReadOnlyList<Guid> NetworkIds, int? MaxRatePerSecond, int? WindowMinutes);
+
+/// <summary>Estimate of the steps that start first (scope-based agent steps); later steps depend on what they discover.</summary>
+public sealed record ScanEstimateDto(
+    long AddressCount, IReadOnlyList<StepEstimate> Steps, double? EstimatedSecondsMin, double? EstimatedSecondsMax,
+    int? WindowMinutes, bool ExceedsWindow, IReadOnlyList<string> Warnings);
 
 public sealed record ScanStepDto(
     string StepId, ScanOperation Operation, StepStatus Status, int JobsTotal, int JobsCompleted, DateTimeOffset? StartedAt, DateTimeOffset? FinishedAt, string? Message);
@@ -38,7 +48,7 @@ public static class ScanEndpoints
     {
         var scans = endpoints.MapGroup("/api/scans").WithTags("Scans");
 
-        scans.MapGet("", async (ScanRunStatus? status, int? page, int? pageSize, ScanningDbContext db, CancellationToken ct) =>
+        scans.MapGet("", async (ScanRunStatus? status, int? page, int? pageSize, ScanningDbContext db, TimeProvider time, CancellationToken ct) =>
         {
             var (p, size) = Paged<ScanRunDto>.Normalize(page, pageSize);
             var query = db.ScanRuns.AsNoTracking();
@@ -46,7 +56,8 @@ public static class ScanEndpoints
             var total = await query.CountAsync(ct);
             var runs = await query.OrderByDescending(r => r.CreatedAt).ThenBy(r => r.Id).Skip((p - 1) * size).Take(size).ToListAsync(ct);
             var progress = await ProgressAsync(db, runs.Select(r => r.Id).ToList(), ct);
-            return new Paged<ScanRunDto>(runs.Select(r => ToDto(r, progress)).ToList(), total, p, size);
+            var now = time.GetUtcNow();
+            return new Paged<ScanRunDto>(runs.Select(r => ToDto(r, progress, now)).ToList(), total, p, size);
         }).RequireAuthorization(Policies.CanRead);
 
         scans.MapPost("", async (StartScanDto body, ClaimsPrincipal user, IScanLauncher launcher, ScanningDbContext db, IAuditLog audit, TimeProvider time, CancellationToken ct) =>
@@ -69,7 +80,7 @@ public static class ScanEndpoints
             }
             await audit.WriteAsync(new AuditEntry("scan.started", "ScanRun", runId.ToString(), new { body.Name, body.WorkflowKey, body.NetworkIds }), ct);
             var run = await db.ScanRuns.AsNoTracking().FirstAsync(r => r.Id == runId, ct);
-            return Results.Created($"/api/scans/{runId}", ToDto(run, await ProgressAsync(db, [runId], ct)));
+            return Results.Created($"/api/scans/{runId}", ToDto(run, await ProgressAsync(db, [runId], ct), time.GetUtcNow()));
         }).RequireAuthorization(Policies.CanEdit);
 
         scans.MapPost("/import", async (HttpRequest request, string? format, string? zone, string? name, bool? snapshot, ClaimsPrincipal user,
@@ -92,7 +103,39 @@ public static class ScanEndpoints
                 : Results.ValidationProblem(new Dictionary<string, string[]> { ["file"] = [.. result.Errors.Take(50)] }, statusCode: StatusCodes.Status422UnprocessableEntity);
         }).RequireAuthorization(Policies.CanManage).DisableAntiforgery();
 
-        scans.MapGet("/{id:guid}", async (Guid id, ScanningDbContext db, WorkflowsDbContext wdb, CancellationToken ct) =>
+        scans.MapPost("/estimate", async (ScanEstimateRequest body, WorkflowDefinitionStore definitions, INetworkScopeService scope, TaskPlanner planner, CancellationToken ct) =>
+        {
+            IResult Invalid(string key, string message) => Results.ValidationProblem(new Dictionary<string, string[]> { [key] = [message] }, statusCode: StatusCodes.Status422UnprocessableEntity);
+            if (body.WindowMinutes is < 1 or > 7 * 24 * 60) return Invalid("windowMinutes", "windowMinutes must be between 1 and 10080.");
+            if (body.MaxRatePerSecond is < 1) return Invalid("maxRatePerSecond", "maxRatePerSecond must be at least 1.");
+            var networkIds = (body.NetworkIds ?? []).Distinct().ToList();
+            if (networkIds.Count == 0) return Invalid("networkIds", "At least one network is required.");
+            if (string.IsNullOrWhiteSpace(body.WorkflowKey) || await definitions.GetAsync(body.WorkflowKey, body.WorkflowVersion, ct) is not { } workflow)
+                return Invalid("workflowKey", $"Workflow '{body.WorkflowKey}' not found.");
+            var missing = networkIds.Except((await scope.ResolveAsync(networkIds, ct)).Segments.Select(s => s.NetworkId)).ToList();
+            if (missing.Count > 0) return Invalid("networkIds", $"Unknown or disabled networks: {string.Join(", ", missing)}.");
+
+            try
+            {
+                var addresses = (await planner.ResolveScopeAsync(networkIds, ct))
+                    .Sum(s => (long)UInt128.Min(long.MaxValue, s.Addresses.Count) + s.Hostnames.Count);
+                var run = new ScanRun { Id = Guid.Empty, Name = "estimate", WorkflowKey = workflow.Key, NetworkIds = networkIds, MaxRatePerSecond = body.MaxRatePerSecond, TriggeredBy = "estimate" };
+                var definition = workflow.Definition;
+                var steps = new List<StepEstimate>();
+                foreach (var step in definition.Steps.Where(s => s.DependsOn.Count == 0 && s.Input is null && OperationCatalog.Get(s.Operation) is { Plane: OperationPlane.Agent, InputKind: TargetKind.Hosts }))
+                {
+                    var parameters = ParameterValidator.Validate(OperationCatalog.Get(step.Operation).Parameters, step.Parameters);
+                    if (parameters.IsValid) steps.Add(await planner.EstimateAsync(AgentStepExecutor.Spec(run, null, definition, step, parameters.Values), ct));
+                }
+                return Results.Ok(BuildEstimate(addresses, steps, body.WindowMinutes));
+            }
+            catch (PlanningException ex)
+            {
+                return Invalid("networkIds", ex.Message);
+            }
+        }).RequireAuthorization(Policies.CanRead);
+
+        scans.MapGet("/{id:guid}", async (Guid id, ScanningDbContext db, WorkflowsDbContext wdb, TimeProvider time, CancellationToken ct) =>
         {
             var run = await db.ScanRuns.AsNoTracking().FirstOrDefaultAsync(r => r.Id == id, ct);
             if (run is null) return Results.NotFound();
@@ -108,10 +151,10 @@ public static class ScanEndpoints
                 steps = states.OrderBy(s => order.IndexOf(s.StepId)).Select(s => new ScanStepDto(s.StepId, s.Operation, s.Status,
                     counts.GetValueOrDefault(s.StepId)?.Total ?? 0, counts.GetValueOrDefault(s.StepId)?.Completed ?? 0, s.StartedAt, s.FinishedAt, s.Message)).ToList();
             }
-            return Results.Ok(ToDto(run, await ProgressAsync(db, [id], ct)) with { Steps = steps });
+            return Results.Ok(ToDto(run, await ProgressAsync(db, [id], ct), time.GetUtcNow()) with { Steps = steps });
         }).RequireAuthorization(Policies.CanRead);
 
-        scans.MapPut("/{id:guid}", async (Guid id, UpdateScanDto body, ScanningDbContext db, IAuditLog audit, CancellationToken ct) =>
+        scans.MapPut("/{id:guid}", async (Guid id, UpdateScanDto body, ScanningDbContext db, IAuditLog audit, TimeProvider time, CancellationToken ct) =>
         {
             var name = body.Name?.Trim() ?? "";
             var tags = (body.Tags ?? []).Select(t => t.Trim()).Where(t => t.Length > 0).Distinct().ToList();
@@ -129,7 +172,7 @@ public static class ScanEndpoints
             run.Tags = tags;
             await db.SaveChangesAsync(ct); // only these columns are updated, so concurrent status changes by the pipeline are kept
             await audit.WriteAsync(new AuditEntry("scan.updated", "ScanRun", id.ToString(), new { run.Name, run.Tags }), ct);
-            return Results.Ok(ToDto(run, await ProgressAsync(db, [id], ct)));
+            return Results.Ok(ToDto(run, await ProgressAsync(db, [id], ct), time.GetUtcNow()));
         }).RequireAuthorization(Policies.CanEdit);
 
         scans.MapPost("/{id:guid}/cancel", async (Guid id, IScanLauncher launcher, ScanningDbContext db, IAuditLog audit, ClaimsPrincipal user, CancellationToken ct) =>
@@ -173,23 +216,62 @@ public static class ScanEndpoints
         }).RequireAuthorization(Policies.CanRead);
     }
 
-    private static async Task<Dictionary<Guid, ScanProgressDto>> ProgressAsync(ScanningDbContext db, IReadOnlyList<Guid> runIds, CancellationToken ct)
+    /// <summary>Combines step estimates (first steps run in parallel: the slowest bounds the run) and warns about the window.</summary>
+    public static ScanEstimateDto BuildEstimate(long addresses, IReadOnlyList<StepEstimate> steps, int? windowMinutes)
+    {
+        var warnings = new List<string>();
+        foreach (var s in steps)
+        {
+            if (s.Jobs > 0 && s.EligibleAgents == 0) warnings.Add($"No online agent can run step '{s.StepId}' ({s.UnassignableReason ?? "no eligible agent"}).");
+            else if (s.Unassignable > 0) warnings.Add($"{s.Unassignable} of {s.Jobs} jobs of step '{s.StepId}' have no eligible online agent ({s.UnassignableReason}).");
+            if (s.Jobs > 0 && s.EligibleAgents > 0 && s.EstimatedSecondsMax is null)
+                warnings.Add($"No throughput measured yet for step '{s.StepId}'; the duration is known after agents complete a few jobs.");
+        }
+        var known = steps.Where(s => s.EstimatedSecondsMax is not null).ToList();
+        double? min = known.Count > 0 ? known.Max(s => s.EstimatedSecondsMin) : null;
+        double? max = known.Count > 0 ? known.Max(s => s.EstimatedSecondsMax) : null;
+        var exceeds = windowMinutes is { } w && max > w * 60;
+        if (exceeds)
+            warnings.Add(min > windowMinutes * 60
+                ? $"The first steps alone take longer than the {windowMinutes}-minute window; the run will be stopped at the window end with partial results."
+                : $"The first steps may take longer than the {windowMinutes}-minute window; the run would be stopped at the window end with partial results.");
+        return new ScanEstimateDto(addresses, steps, min, max, windowMinutes, exceeds, warnings);
+    }
+
+    /// <summary>Remaining seconds of an active run: its open targets at the rate the run achieved so far (null until a job finished).</summary>
+    // shortcut: steps not planned yet (their targets come from discoveries) are not counted; the ETA grows when they start.
+    public static double? RemainingSeconds(ScanRunStatus status, DateTimeOffset? startedAt, DateTimeOffset now, long targetsDone, long targetsOpen)
+    {
+        if (status.IsTerminal() || startedAt is null || targetsDone <= 0) return null;
+        var elapsed = (now - startedAt.Value).TotalSeconds;
+        return elapsed <= 0 ? null : Math.Round(targetsOpen * elapsed / targetsDone);
+    }
+
+    private sealed record RunProgress(ScanProgressDto Dto, long TargetsDone, long TargetsOpen);
+
+    private static async Task<Dictionary<Guid, RunProgress>> ProgressAsync(ScanningDbContext db, IReadOnlyList<Guid> runIds, CancellationToken ct)
     {
         var rows = await db.Jobs.AsNoTracking().Where(j => runIds.Contains(j.ScanRunId))
-            .GroupBy(j => new { j.ScanRunId, j.Status }).Select(g => new { g.Key.ScanRunId, g.Key.Status, Count = g.Count() }).ToListAsync(ct);
+            .GroupBy(j => new { j.ScanRunId, j.Status }).Select(g => new { g.Key.ScanRunId, g.Key.Status, Count = g.Count(), Targets = g.Sum(j => j.TargetCount) }).ToListAsync(ct);
         return rows.GroupBy(r => r.ScanRunId).ToDictionary(g => g.Key, g =>
         {
             int C(JobStatus s) => g.Where(r => r.Status == s).Sum(r => r.Count);
             var total = g.Sum(r => r.Count);
             var done = C(JobStatus.Completed) + C(JobStatus.Failed) + C(JobStatus.Cancelled);
-            return new ScanProgressDto(total, C(JobStatus.Queued), C(JobStatus.Leased), C(JobStatus.Completed), C(JobStatus.Failed),
-                total == 0 ? 0 : Math.Round(100.0 * done / total, 1));
+            var open = g.Where(r => r.Status is JobStatus.Queued or JobStatus.Leased).Sum(r => r.Targets);
+            return new RunProgress(new ScanProgressDto(total, C(JobStatus.Queued), C(JobStatus.Leased), C(JobStatus.Completed), C(JobStatus.Failed),
+                total == 0 ? 0 : Math.Round(100.0 * done / total, 1)), g.Sum(r => r.Targets) - open, open);
         });
     }
 
-    private static ScanRunDto ToDto(ScanRun r, IReadOnlyDictionary<Guid, ScanProgressDto> progress) => new(
-        r.Id, r.Name, r.Status, r.WorkflowKey, r.WorkflowVersion, r.NetworkIds, r.TriggeredBy, r.Priority, r.MaxRatePerSecond, r.ScheduleId,
-        r.CreatedAt, r.StartedAt, r.FinishedAt, r.NotAfter,
-        progress.GetValueOrDefault(r.Id) ?? new ScanProgressDto(0, 0, 0, 0, 0, r.Status.IsTerminal() ? 100 : 0), r.CoverageComplete, r.Message,
-        r.Notes, r.Tags);
+    private static ScanRunDto ToDto(ScanRun r, IReadOnlyDictionary<Guid, RunProgress> progress, DateTimeOffset now)
+    {
+        var p = progress.GetValueOrDefault(r.Id);
+        var remaining = p is null ? null : RemainingSeconds(r.Status, r.StartedAt, now, p.TargetsDone, p.TargetsOpen);
+        return new ScanRunDto(
+            r.Id, r.Name, r.Status, r.WorkflowKey, r.WorkflowVersion, r.NetworkIds, r.TriggeredBy, r.Priority, r.MaxRatePerSecond, r.ScheduleId,
+            r.CreatedAt, r.StartedAt, r.FinishedAt, r.NotAfter,
+            p?.Dto ?? new ScanProgressDto(0, 0, 0, 0, 0, r.Status.IsTerminal() ? 100 : 0), r.CoverageComplete, r.Message, r.Notes, r.Tags,
+            RemainingSeconds: remaining, EstimatedFinishAt: remaining is { } sec ? now.AddSeconds(sec) : null);
+    }
 }

@@ -149,6 +149,17 @@ Tools are **data, not code paths**. Nothing on the server switches on tool names
   hostnames kept as separate host entries. IPv6 segments larger than `Planner:MaxIpv6SegmentAddresses` are rejected.
 * Batching: `IpRangeSet.SplitIntoBatches(batchSize)` (default 256, configurable 64–1024, rounded to power of two) — deterministic,
   non-overlapping, CIDR-aligned.
+* Adaptive batch size (`TargetPlanner.ChooseBatchSize`): per step, measured per-job throughput (targets/s over each agent's last 20
+  completed jobs of the step's **capability** with the tool it would use, averaged over the online agents authorized for the step's
+  zones) × `targetJobSeconds` (scan limits, default 300 s, 30–3600), clamped to 64–1024 and rounded down to a power of two. The
+  `job_performance` EWMA is not used here: it is per tool, so nmap ping sweeps and nmap port scans would share one rate. A workflow
+  `defaults.batchSize` wins; without measurements `defaultBatchSize` is used. The chosen size and why are in the step message and the
+  `JobQueued` event (`data.batchSize`). Re-planning a step that already has jobs (retry) keeps the size its jobs were cut with
+  (the size whose batches match the existing `target_key`s), so dedup still holds after throughput changed.
+* Estimates (`TaskPlanner.EstimateAsync`, a dry run of the planner): jobs, batch size and eligible online agents of a step plus a
+  duration range — best case: all jobs in parallel (min of jobs, eligible agents' `maxConcurrentJobs`, step `maxConcurrency`, zone cap)
+  at the fastest agent's rate, never faster than one packet per target at the rate cap; worst case: waves of full batches at the
+  slowest agent's rate. Unknown (null) until agents have measurements. Per-network rate caps are ignored here.
 * Eligibility: agent Active + online + approved tool with capability + authorized zone (and network if restricted) + reachability
   (interface subnet or route covering the batch; default route counts only if `Planner:AllowDefaultRoute`). Perspective = (agent, interface).
 * Tool parameters: a job carries the step's explicitly set parameters (`required_parameters`); only tools whose
@@ -181,10 +192,22 @@ Tools are **data, not code paths**. Nothing on the server switches on tool names
 * Step input = observations of `Input.FromSteps` filtered by `Input.Filter`; `When` gates execution (else Skipped).
   Independent steps run in parallel. Timeouts, retries (`RetryPolicy`), `OnFailure`, cancellation, window expiry
   (`NotAfter` → cancel active jobs, run = `WindowExpired`, partial observations kept, coverage marked incomplete).
+* ETA of active runs (`ScanRunDto.remainingSeconds`, `estimatedFinishAt`): targets of queued/leased jobs at the rate the run achieved
+  so far (finished job targets / elapsed). Null until a job finished; steps not planned yet (their targets come from discoveries) are
+  not counted, so the ETA grows when they start.
 * Built-in workflow `standard-discovery` is seeded (DiscoverHosts → ScanPorts → DetectService → [HTTP: HttpProbe → ExecuteSignatures]
   [TLS: TlsProbe] → PersistObservations → ComparePreviousScan → PublishFinding).
 * Schedules: Quartz.NET (RAM store, rebuilt from DB at startup), cron + IANA time zone, allowed windows, overlap policy;
   `(scheduleId, fireTime)` unique → no duplicate runs.
+* Resume in the next window (`resumeInNextWindow`, default on): when the schedule's last run ends `WindowExpired` and the schedule
+  has allowed windows, `ScheduleRunFinishedHandler` stores `resumeAt` = start of the next allowed window and adds a one-off Quartz
+  trigger (restored at startup; misfire = fire now, skipped if that window is already over). The resume fire goes through the normal
+  path (pause, windows, overlap policy) with fire time = window start, so a cron fire at the same instant dedups on
+  `(scheduleId, fireTime)`; afterwards regular cron fires inside the same window are skipped (`resumed-in-window`), so a window gets
+  one run. Any other run start clears a pending resume; pausing drops it. The resumed run scans the **full scope** again: per-run
+  coverage is a union over all steps, so restricting to uncovered addresses would skip later steps (ports, services) for hosts the
+  expired run only discovered. A scan that never fits its window therefore never completes; the estimate warns about this.
+  Schedules without allowed windows are not resumed (their next cron fire is the next window).
 
 ## 10. Discovery & analysis (stream D)
 
@@ -245,11 +268,15 @@ Role shorthand: R=CanRead, E=CanEdit, M=CanManage, A=AdminOnly.
 * `GET /api/workflows/{key}/versions[/{version}]` (R); `POST /api/workflows` (M, definition → v1); `POST /api/workflows/{key}/versions` (M); `POST /api/workflows/validate` (R) → {valid, errors[]}
 * `GET /api/schedules` (R) → [{id, name, cronExpression, timeZone, workflowKey, workflowVersion?, networkIds[], priority, maxRatePerSecond?,
   windowDurationMinutes?, allowedWindows:[{daysOfWeek[], start:"HH:mm", end:"HH:mm"}], overlapPolicy: Skip|CancelPrevious|Queue, enabled,
-  nextFireAt?, lastRunId?, lastRunStatus?}]; `POST` (M), `PUT /{id}` (E), `DELETE /{id}` (M), `POST /{id}/trigger` (E) → {scanRunId}, `POST /{id}/pause|resume` (E)
+  nextFireAt?, lastRunId?, lastRunStatus?, resumeInNextWindow, resumeAt?}]; `POST` (M), `PUT /{id}` (E), `DELETE /{id}` (M), `POST /{id}/trigger` (E) → {scanRunId}, `POST /{id}/pause|resume` (E)
 * `GET /api/scans?status&page&pageSize` (R) → paged [{id, name, status: Pending|Running|Completed|PartiallyCompleted|Failed|Cancelled|WindowExpired,
   workflowKey, workflowVersion, networkIds[], triggeredBy, priority, createdAt, startedAt?, finishedAt?, notAfter?,
-  progress:{jobsTotal, jobsQueued, jobsRunning, jobsCompleted, jobsFailed, percent}, coverageComplete, notes?, tags[]}]
+  progress:{jobsTotal, jobsQueued, jobsRunning, jobsCompleted, jobsFailed, percent}, coverageComplete, notes?, tags[], remainingSeconds?, estimatedFinishAt?}]
 * `POST /api/scans` (E) {name, workflowKey, workflowVersion?, networkIds[], priority?, maxRatePerSecond?, windowMinutes?} → run
+* `POST /api/scans/estimate` (R) {workflowKey, workflowVersion?, networkIds[], maxRatePerSecond?, windowMinutes?} → {addressCount,
+  steps:[{stepId, operation, targets, jobs, batchSize, batchReason, eligibleAgents, targetsPerSecond?, estimatedSecondsMin?,
+  estimatedSecondsMax?, unassignable, unassignableReason?}], estimatedSecondsMin?, estimatedSecondsMax?, windowMinutes?, exceedsWindow,
+  warnings[]} — covers the scope-based first steps only (later steps depend on discoveries); nothing is queued
 * `PUT /api/scans/{id}` (E) {name, notes?, tags[] (≤20)} → run — user metadata, editable in any run state
 * `POST /api/scans/import?format=json|csv|nmap-xml|httpx-jsonl|naabu-jsonl|nuclei-jsonl&zone&name?&snapshot?` (M), raw file body →
   201 {scanRunId, rows, observations, changesDetected, errors[]} (422 ValidationProblem when nothing is importable)
@@ -259,7 +286,7 @@ Role shorthand: R=CanRead, E=CanEdit, M=CanManage, A=AdminOnly.
   agentId?, interfaceName?, toolId?, targetSummary, targetCount, attempt, maxAttempts, createdAt, startedAt?, finishedAt?, durationMs?, error?, progressPercent?}]
 * `GET /api/jobs/{id}` (R); `POST /api/jobs/{id}/cancel` (E); `POST /api/jobs/{id}/retry` (E)
 * `GET /api/scan-limits` (R) / `PUT` (A) → {defaultBatchSize, leaseDurationSeconds, maxAttempts, maxConcurrentJobsPerZone, maxConcurrentJobsPerInterface,
-  maxConcurrentJobsPerSubnet, subnetPrefixLength, maxRatePerSecondGlobal}
+  maxConcurrentJobsPerSubnet, subnetPrefixLength, maxRatePerSecondGlobal, unassignedJobTimeoutSeconds, targetJobSeconds}
 * `GET /api/stats/planner` (R) → {queue:{queued, leased}, performance:[{agentId, interfaceName, toolId, jobsCompleted, avgDurationMs, avgTargetsPerSecond}]}
 * SignalR `/hubs/scans` (JWT via `access_token` query): server → client `scanEvent(ScanExecutionEvent)`; client → server `JoinRun(runId)`.
 

@@ -34,6 +34,15 @@ public sealed class Schedule
     /// <summary>Fire deferred by <see cref="OverlapPolicy.Queue"/>; started when the previous run finishes.</summary>
     public DateTimeOffset? QueuedFireTime { get; set; }
 
+    /// <summary>When a scheduled run ends WindowExpired, start it again at the next allowed window start (one-off fire).</summary>
+    public bool ResumeInNextWindow { get; set; } = true;
+
+    /// <summary>Pending one-off resume fire (start of the next allowed window); cleared when it fires or any other run starts.</summary>
+    public DateTimeOffset? ResumeAt { get; set; }
+
+    /// <summary>End of the window in which a resume fire started a run: regular cron fires inside that window are skipped.</summary>
+    public DateTimeOffset? ResumedWindowEnd { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
 }

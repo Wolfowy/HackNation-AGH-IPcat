@@ -96,4 +96,5 @@ cd tests/E2ETests/playwright && BASE_URL=http://localhost:8088 E2E_ADMIN_USER=$A
 | `OpenTelemetry:OtlpEndpoint` | eksport śladów/metryk/logów |
 | `Agent:*` (agent) | `src/Agent/Worker/appsettings.json` — opis każdej opcji w komentarzach |
 
-Limity skanowania (partie, lease, limity na strefę/interfejs/podsieć, globalny rate) — `GET/PUT /api/scan-limits` lub panel **Admin**.
+Limity skanowania (partie, lease, limity na strefę/interfejs/podsieć, globalny rate, docelowy czas zadania `targetJobSeconds`
+do adaptacyjnego rozmiaru partii) — `GET/PUT /api/scan-limits` lub panel **Admin**.

@@ -48,6 +48,23 @@ describe('start scan form', () => {
     server.events.removeAllListeners()
   })
 
+  it('shows a live estimate that follows the networks and warns about a short window', async () => {
+    const { user } = renderApp('/scans/new', { role: 'Editor' })
+    await screen.findByRole('option', { name: /Quick port sweep/ })
+    await user.selectOptions(screen.getByLabelText('Workflow'), 'quick-ports')
+    expect(screen.queryByRole('region', { name: 'Scan estimate' })).not.toBeInTheDocument() // no networks yet
+
+    await user.type(screen.getByRole('combobox', { name: 'Search networks' }), 'dmz')
+    await user.click(screen.getByRole('option', { name: /DMZ public services/ }))
+    const estimate = await screen.findByRole('region', { name: 'Scan estimate' })
+    await waitFor(() => expect(estimate).toHaveTextContent('253 addresses'))
+    expect(estimate).toHaveTextContent(/about 1m 3s – 2m 7s/)
+    expect(estimate).toHaveTextContent(/discover: 1 jobs, batch size 512/)
+
+    await user.type(screen.getByLabelText('Window (minutes)'), '1')
+    await waitFor(() => expect(estimate).toHaveTextContent('longer than the 1-minute window'))
+  })
+
   it('requires at least one network', async () => {
     const { user } = renderApp('/scans/new', { role: 'Editor' })
     await screen.findByRole('option', { name: /Quick port sweep/ })
@@ -85,6 +102,28 @@ describe('scan detail live progress', () => {
     await user.click(screen.getByRole('tab', { name: 'Events' }))
     const log = await screen.findByTestId('events-log')
     expect(within(log).getAllByText('JobCompleted').length).toBeGreaterThan(0)
+  })
+
+  const halfDoneRun = () => {
+    const db = getDb()
+    const run = db.runs.find((r) => r.status === 'Running')!
+    const jobs = db.jobs.filter((j) => j.scanRunId === run.id)
+    jobs.forEach((j, i) => (j.status = i < jobs.length / 2 ? 'Completed' : 'Queued'))
+    run.startedAt = new Date(Date.now() - 10 * 60_000).toISOString()
+    return run
+  }
+
+  it('shows the remaining time of a running scan on the detail page', async () => {
+    const run = halfDoneRun()
+    renderApp(`/scans/${run.id}`, { role: 'Viewer' })
+    expect(await screen.findByTestId('scan-eta')).toHaveTextContent(/Elapsed 10m 0s · about \d+m( \d+s)? left/)
+  })
+
+  it('shows the remaining time of a running scan in the list', async () => {
+    const run = halfDoneRun()
+    renderApp('/scans', { role: 'Viewer' })
+    const row = (await screen.findByRole('link', { name: run.name })).closest('tr')!
+    expect(within(row).getByText(/^ETA \d+m/)).toBeInTheDocument()
   })
 
   it('ignores events of other runs', async () => {

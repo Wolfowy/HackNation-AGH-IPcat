@@ -76,7 +76,14 @@ export function SchedulesPage() {
                       <code className="text-xs">{s.cronExpression}</code>
                       <div className="text-muted-foreground text-xs">{s.timeZone}</div>
                     </TableCell>
-                    <TableCell title={formatDateTime(s.nextFireAt)}>{s.enabled ? formatRelative(s.nextFireAt) : '—'}</TableCell>
+                    <TableCell title={formatDateTime(s.nextFireAt)}>
+                      {s.enabled ? formatRelative(s.nextFireAt) : '—'}
+                      {s.enabled && s.resumeAt && (
+                        <div className="text-xs text-amber-600" title="The last run hit its window end and restarts when the next window opens">
+                          Resume pending at {formatDateTime(s.resumeAt)}
+                        </div>
+                      )}
+                    </TableCell>
                     <TableCell className="font-mono text-xs">
                       {s.workflowKey}
                       {s.workflowVersion ? ` v${s.workflowVersion}` : ' (latest)'}

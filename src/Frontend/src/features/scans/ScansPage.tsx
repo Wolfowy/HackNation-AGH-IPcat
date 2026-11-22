@@ -12,7 +12,7 @@ import { Button } from '@/components/ui/button'
 import { NativeSelect } from '@/components/ui/input'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { t } from '@/i18n/strings'
-import { formatDateTime, formatRelative } from '@/lib/format'
+import { formatDateTime, formatDuration, formatRelative } from '@/lib/format'
 import { ScanImportDialog } from './ScanImportDialog'
 
 export function ScansPage() {
@@ -93,6 +93,11 @@ export function ScansPage() {
                       </TableCell>
                       <TableCell>
                         <ProgressCell percent={run.progress.percent} label={`${run.name} progress`} />
+                        {run.remainingSeconds !== undefined && run.remainingSeconds !== null && (
+                          <div className="text-muted-foreground text-xs" title={formatDateTime(run.estimatedFinishAt)}>
+                            ETA {formatDuration(run.remainingSeconds * 1000)}
+                          </div>
+                        )}
                       </TableCell>
                       <TableCell className="text-sm whitespace-nowrap">
                         {run.progress.jobsCompleted}/{run.progress.jobsTotal}

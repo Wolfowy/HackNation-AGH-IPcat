@@ -12,6 +12,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Input, NativeSelect } from '@/components/ui/input'
 import { t } from '@/i18n/strings'
 import { optionalNumber } from '@/lib/format'
+import { ScanEstimatePanel } from './ScanEstimatePanel'
 
 interface StartScanValues {
   name: string
@@ -40,7 +41,23 @@ export function StartScanPage() {
     },
   })
   const { register, watch, setValue, setError, clearErrors, formState } = form
-  const workflowKey = watch('workflowKey')
+  const [workflowKey, workflowVersion, networkIds, maxRatePerSecond, windowMinutes] = watch([
+    'workflowKey',
+    'workflowVersion',
+    'networkIds',
+    'maxRatePerSecond',
+    'windowMinutes',
+  ])
+  const estimateRequest =
+    workflowKey && networkIds.length > 0
+      ? {
+          workflowKey,
+          workflowVersion: optionalNumber(workflowVersion),
+          networkIds,
+          maxRatePerSecond: optionalNumber(maxRatePerSecond),
+          windowMinutes: optionalNumber(windowMinutes),
+        }
+      : null
   const versions = useWorkflowVersions(workflowKey)
   const errors = formState.errors
 
@@ -102,7 +119,7 @@ export function StartScanPage() {
               legend="Networks"
               placeholder="Search by name, zone, range or #tag…"
               options={(networks.data ?? []).filter((n) => n.enabled).map(networkOption)}
-              value={watch('networkIds')}
+              value={networkIds}
               onChange={(v) => {
                 setValue('networkIds', v)
                 clearErrors('networkIds')
@@ -126,6 +143,7 @@ export function StartScanPage() {
                 <Input type="number" min={1} {...register('windowMinutes', { min: { value: 1, message: 'Min 1' } })} />
               </FormField>
             </div>
+            <ScanEstimatePanel request={estimateRequest} />
             <div className="flex gap-2">
               <Button type="submit" disabled={formState.isSubmitting}>
                 {t.scans.start}

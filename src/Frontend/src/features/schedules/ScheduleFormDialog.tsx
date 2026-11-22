@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { Input, NativeSelect } from '@/components/ui/input'
 import { t } from '@/i18n/strings'
 import { optionalNumber } from '@/lib/format'
+import { ScanEstimatePanel } from '@/features/scans/ScanEstimatePanel'
 
 // Quartz.NET cron format: second minute hour day-of-month month day-of-week [year].
 export const CRON_PRESETS = [
@@ -47,6 +48,7 @@ interface Values {
   windowDurationMinutes: string
   overlapPolicy: OverlapPolicy
   enabled: boolean
+  resumeInNextWindow: boolean
 }
 
 const validateCron = (v: string) => {
@@ -116,11 +118,29 @@ export function ScheduleFormDialog({ schedule, onClose }: { schedule?: Schedule;
       windowDurationMinutes: schedule?.windowDurationMinutes?.toString() ?? '',
       overlapPolicy: schedule?.overlapPolicy ?? 'Skip',
       enabled: schedule?.enabled ?? true,
+      resumeInNextWindow: schedule?.resumeInNextWindow ?? true,
     },
   })
   const { register, watch, setValue, setError, clearErrors, formState } = form
   const errors = formState.errors
-  const versions = useWorkflowVersions(watch('workflowKey'))
+  const [workflowKey, workflowVersion, networkIds, maxRatePerSecond, windowDurationMinutes] = watch([
+    'workflowKey',
+    'workflowVersion',
+    'networkIds',
+    'maxRatePerSecond',
+    'windowDurationMinutes',
+  ])
+  const versions = useWorkflowVersions(workflowKey)
+  const estimateRequest =
+    workflowKey && networkIds.length > 0
+      ? {
+          workflowKey,
+          workflowVersion: optionalNumber(workflowVersion),
+          networkIds,
+          maxRatePerSecond: optionalNumber(maxRatePerSecond),
+          windowMinutes: optionalNumber(windowDurationMinutes),
+        }
+      : null
 
   const submit = submitHandler(form, async (v) => {
     if (v.networkIds.length === 0) return setError('networkIds', { message: 'Select at least one network.' })
@@ -137,6 +157,7 @@ export function ScheduleFormDialog({ schedule, onClose }: { schedule?: Schedule;
       allowedWindows: windows,
       overlapPolicy: v.overlapPolicy,
       enabled: v.enabled,
+      resumeInNextWindow: v.resumeInNextWindow,
     }
     if (schedule) await update.mutateAsync({ id: schedule.id, ...body })
     else await create.mutateAsync(body)
@@ -209,7 +230,7 @@ export function ScheduleFormDialog({ schedule, onClose }: { schedule?: Schedule;
             legend="Networks"
             placeholder="Search by name, zone, range or #tag…"
             options={(networks.data ?? []).map(networkOption)}
-            value={watch('networkIds')}
+            value={networkIds}
             onChange={(v) => {
               setValue('networkIds', v)
               clearErrors('networkIds')
@@ -228,6 +249,17 @@ export function ScheduleFormDialog({ schedule, onClose }: { schedule?: Schedule;
             </FormField>
           </div>
           <WindowsEditor windows={windows} onChange={setWindows} />
+          <div className="grid gap-1">
+            <CheckboxField
+              label="Resume in the next window"
+              checked={watch('resumeInNextWindow')}
+              onChange={(v) => setValue('resumeInNextWindow', v)}
+            />
+            <p className="text-muted-foreground text-xs">
+              When a run is stopped at its window end, start it again (full scope) when the next allowed window opens. Needs allowed windows.
+            </p>
+          </div>
+          <ScanEstimatePanel request={estimateRequest} />
           <CheckboxField label="Enabled" checked={watch('enabled')} onChange={(v) => setValue('enabled', v)} />
           <DialogFooter>
             <Button type="submit" disabled={formState.isSubmitting}>
