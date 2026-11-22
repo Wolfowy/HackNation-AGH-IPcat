@@ -58,14 +58,18 @@ internal sealed class NetworkScopeService(NetworksDbContext db, ILogger<NetworkS
                 MaxRatePerSecond = network.MaxRatePerSecond,
             });
         }
-        return new ResolvedScope { Segments = segments, GlobalExclusions = policy?.Excluded ?? [] };
+        return new ResolvedScope
+        {
+            Segments = segments, GlobalExclusions = policy?.Excluded ?? [],
+            AllowedPorts = policy?.AllowedPorts ?? [], ExcludedPorts = policy?.ExcludedPorts ?? [],
+        };
     }
 
     public async Task<bool> IsAuthorizedAsync(string target, CancellationToken ct = default) =>
         (await NetworksEndpoints.LoadRulesAsync(db, ct)).IsAuthorized(target);
 }
 
-/// <summary>Seeds the scope policy from <c>Networks:SeedScopePolicy:Allowed/Excluded</c> while the policy is empty.</summary>
+/// <summary>Seeds the scope policy from <c>Networks:SeedScopePolicy:Allowed/Excluded/AllowedPorts/ExcludedPorts</c> while the policy is empty.</summary>
 internal sealed class ScopePolicySeeder(IServiceScopeFactory scopes, IConfiguration configuration, TimeProvider time,
     ILogger<ScopePolicySeeder> logger) : IHostedService
 {
@@ -74,10 +78,14 @@ internal sealed class ScopePolicySeeder(IServiceScopeFactory scopes, IConfigurat
         var allowed = ReadList("Networks:SeedScopePolicy:Allowed");
         if (allowed.Count == 0) return;
         var excluded = ReadList("Networks:SeedScopePolicy:Excluded");
+        var allowedPorts = ReadList("Networks:SeedScopePolicy:AllowedPorts");
+        var excludedPorts = ReadList("Networks:SeedScopePolicy:ExcludedPorts");
 
         var errors = new ValidationErrors();
         ScopeRules.ValidateEntries(errors, "Networks:SeedScopePolicy:Allowed", allowed, allowWildcards: true, required: true);
         ScopeRules.ValidateEntries(errors, "Networks:SeedScopePolicy:Excluded", excluded, allowWildcards: true, required: false);
+        ScopeRules.ValidatePorts(errors, "Networks:SeedScopePolicy:AllowedPorts", allowedPorts);
+        ScopeRules.ValidatePorts(errors, "Networks:SeedScopePolicy:ExcludedPorts", excludedPorts);
         if (!errors.IsValid) throw new InvalidOperationException($"Invalid scope policy seed: {string.Join("; ", errors.Messages)}");
 
         await using var scope = scopes.CreateAsyncScope();
@@ -85,9 +93,9 @@ internal sealed class ScopePolicySeeder(IServiceScopeFactory scopes, IConfigurat
         var current = await db.ScopePolicies.AsNoTracking().SingleOrDefaultAsync(cancellationToken);
         if (current is { Allowed.Count: > 0 }) return;
 
-        await NetworksEndpoints.SetPolicyAsync(db, allowed, excluded, time.GetUtcNow(), cancellationToken);
-        logger.LogInformation("Scope policy seeded from configuration: allowed {Allowed}, excluded {Excluded}",
-            string.Join(",", allowed), string.Join(",", excluded));
+        await NetworksEndpoints.SetPolicyAsync(db, allowed, excluded, allowedPorts, excludedPorts, time.GetUtcNow(), cancellationToken);
+        logger.LogInformation("Scope policy seeded from configuration: allowed {Allowed}, excluded {Excluded}, ports {AllowedPorts} minus {ExcludedPorts}",
+            string.Join(",", allowed), string.Join(",", excluded), allowedPorts.Count == 0 ? "all" : string.Join(",", allowedPorts), string.Join(",", excludedPorts));
     }
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;

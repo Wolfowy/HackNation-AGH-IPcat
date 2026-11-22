@@ -40,6 +40,9 @@ public sealed record AgentStepSpec
     /// <summary>Host targets found by earlier steps; null (with <see cref="Endpoints"/> null) = the whole run scope.</summary>
     public IReadOnlyCollection<string>? Hosts { get; init; }
 
+    /// <summary>Address ↔ hostname pairs among <see cref="Hosts"/> (see <see cref="TargetPlanner.PlanHosts"/>).</summary>
+    public ILookup<string, string>? HostAliases { get; init; }
+
     /// <summary>Endpoint targets for endpoint operations.</summary>
     public IReadOnlyCollection<ScanEndpoint>? Endpoints { get; init; }
 }
@@ -57,7 +60,10 @@ public sealed class TaskPlanner(
     private readonly PlannerOptions _options = plannerOptions.Value;
 
     /// <summary>Scope of the networks with the planner's own re-check against the global scope policy.</summary>
-    public async Task<IReadOnlyList<SegmentTargets>> ResolveScopeAsync(IReadOnlyCollection<Guid> networkIds, CancellationToken ct = default)
+    public async Task<IReadOnlyList<SegmentTargets>> ResolveScopeAsync(IReadOnlyCollection<Guid> networkIds, CancellationToken ct = default) =>
+        (await ResolveAsync(networkIds, ct)).Segments;
+
+    private async Task<(IReadOnlyList<SegmentTargets> Segments, ResolvedScope Resolved)> ResolveAsync(IReadOnlyCollection<Guid> networkIds, CancellationToken ct)
     {
         var resolved = await scope.ResolveAsync(networkIds, ct);
         var segments = new List<ScopeSegment>();
@@ -71,17 +77,25 @@ public sealed class TaskPlanner(
             }
             segments.Add(segment with { Include = allowed });
         }
-        return TargetPlanner.ResolveTargets(resolved with { Segments = segments }, _options.MaxIpv6SegmentAddresses);
+        return (TargetPlanner.ResolveTargets(resolved with { Segments = segments }, _options.MaxIpv6SegmentAddresses), resolved);
     }
 
     public async Task<PlanResult> PlanAsync(AgentStepSpec spec, CancellationToken ct = default)
     {
         var limits = await limitsStore.GetAsync(ct);
-        var segments = await ResolveScopeAsync(spec.NetworkIds, ct);
+        var (segments, resolved) = await ResolveAsync(spec.NetworkIds, ct);
+
+        // Scope policy ports: port parameters and endpoints are clipped here, and the agent re-checks AuthorizedPorts.
+        var ports = PortScope.Effective(resolved.AllowedPorts, resolved.ExcludedPorts);
+        if (ports.IsEmpty) throw new PlanningException("The scope policy's port rules exclude every port; nothing can be scanned.");
+        var parameters = TargetPlanner.ClipPorts(spec.Operation, spec.Parameters, ports, resolved.AllowedPorts.Count > 0);
+        foreach (var (name, value) in parameters.Where(p => spec.Parameters[p.Key] != p.Value))
+            logger.LogInformation("Run {RunId} step {StepId}: {Parameter} clipped to the scope policy's ports: {Value}", spec.ScanRunId, spec.StepId, name, value);
+
         var batchSize = TargetPlanner.NormalizeBatchSize(spec.BatchSize, limits.DefaultBatchSize);
         var plan = OperationCatalog.Get(spec.Operation).InputKind == TargetKind.Endpoints
-            ? TargetPlanner.PlanEndpoints(segments, spec.Endpoints ?? [], batchSize, limits.SubnetPrefixLength)
-            : TargetPlanner.PlanHosts(segments, batchSize, limits.SubnetPrefixLength, spec.Hosts);
+            ? TargetPlanner.PlanEndpoints(segments, spec.Endpoints ?? [], batchSize, limits.SubnetPrefixLength, ports.IsAll ? null : ports)
+            : TargetPlanner.PlanHosts(segments, batchSize, limits.SubnetPrefixLength, spec.Hosts, spec.HostAliases);
         if (plan.OutOfScope > 0)
             logger.LogWarning("Run {RunId} step {StepId}: {Count} targets outside the authorized scope were dropped", spec.ScanRunId, spec.StepId, plan.OutOfScope);
 
@@ -124,7 +138,7 @@ public sealed class TaskPlanner(
                 JobId = jobId, ScanRunId = spec.ScanRunId, WorkflowRunId = spec.WorkflowRunId, WorkflowStepId = spec.StepId,
                 Operation = spec.Operation, Tool = new ToolSelection { Capability = capability, ToolId = spec.PreferredToolId },
                 Targets = new JobTargets { Hosts = batch.Hosts, Endpoints = batch.Endpoints, Count = batch.Count },
-                AuthorizedScope = batch.AuthorizedScope, Parameters = spec.Parameters,
+                AuthorizedScope = batch.AuthorizedScope, AuthorizedPorts = ports.IsAll ? null : ports.ToString(), Parameters = parameters,
                 Limits = new JobLimits { RatePerSecond = requested, TimeoutSeconds = spec.TimeoutSeconds },
                 Priority = spec.Priority, NotAfter = spec.NotAfter, Signatures = spec.Signatures,
             };

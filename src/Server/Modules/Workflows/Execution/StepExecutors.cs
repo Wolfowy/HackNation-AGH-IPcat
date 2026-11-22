@@ -56,6 +56,7 @@ public sealed class AgentStepExecutor(TaskPlanner planner, IServiceProvider serv
                 TimeoutSeconds = step.TimeoutSeconds ?? defaults.TimeoutSeconds, MaxConcurrency = step.MaxConcurrency ?? defaults.MaxConcurrency,
                 MaxAttempts = retry.MaxAttempts, BackoffSeconds = retry.BackoffSeconds, BatchSize = defaults.BatchSize,
                 Signatures = signatures, Hosts = hosts, Endpoints = endpoints,
+                HostAliases = hosts is null ? null : StepInputs.HostAliases(context.Input),
             }, ct);
         }
         catch (PlanningException ex)

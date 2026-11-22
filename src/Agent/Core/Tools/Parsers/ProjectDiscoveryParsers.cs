@@ -79,12 +79,11 @@ public sealed partial class HttpxJsonlParser : IToolOutputParser
 
             foreach (var entry in tech)
             {
-                var colon = entry.IndexOf(':');
-                var name = colon > 0 ? entry[..colon] : entry;
+                var (name, version) = SplitTechnology(entry);
                 yield return context.NewObservation(ObservationKind.Technology, address, port, TransportProtocol.Tcp, name.ToLowerInvariant(), observedAt) with
                 {
                     Hostname = hostname,
-                    Technology = new TechnologyDetails { Name = name, Version = colon > 0 ? entry[(colon + 1)..] : null },
+                    Technology = new TechnologyDetails { Name = name, Version = version },
                     Confidence = new Confidence { Score = 0.8, Method = "tool-reported" },
                 };
             }
@@ -96,6 +95,13 @@ public sealed partial class HttpxJsonlParser : IToolOutputParser
                     Tls = details,
                 };
         }
+    }
+
+    /// <summary>Wappalyzer-style "Name:version" entry (version optional).</summary>
+    internal static (string Name, string? Version) SplitTechnology(string entry)
+    {
+        var colon = entry.IndexOf(':');
+        return colon > 0 ? (entry[..colon], entry[(colon + 1)..] is { Length: > 0 } v ? v : null) : (entry, null);
     }
 
     /// <summary>Maps the TLS block shared by httpx and tlsx (<c>subject_cn</c>, <c>fingerprint_hash.sha256</c>, ...).</summary>

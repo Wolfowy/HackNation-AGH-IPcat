@@ -40,9 +40,17 @@ public sealed record ZoneDto(string Name, string? Description, int NetworkCount)
 
 public sealed record CreateZoneRequest(string? Name, string? Description);
 
-public sealed record ScopePolicyDto(IReadOnlyList<string> Allowed, IReadOnlyList<string> Excluded, DateTimeOffset? UpdatedAt);
+public sealed record ScopePolicyDto(IReadOnlyList<string> Allowed, IReadOnlyList<string> Excluded,
+    IReadOnlyList<string> AllowedPorts, IReadOnlyList<string> ExcludedPorts, DateTimeOffset? UpdatedAt)
+{
+    public static ScopePolicyDto From(ScopePolicy? p) =>
+        new(p?.Allowed ?? [], p?.Excluded ?? [], p?.AllowedPorts ?? [], p?.ExcludedPorts ?? [], p?.UpdatedAt);
+}
 
-public sealed record ScopePolicyRequest(IReadOnlyList<string>? Allowed, IReadOnlyList<string>? Excluded);
+/// <param name="AllowedPorts">Port allowlist (empty = every port); null keeps the current list (older clients).</param>
+/// <param name="ExcludedPorts">Port denylist; null keeps the current list.</param>
+public sealed record ScopePolicyRequest(IReadOnlyList<string>? Allowed, IReadOnlyList<string>? Excluded,
+    IReadOnlyList<string>? AllowedPorts = null, IReadOnlyList<string>? ExcludedPorts = null);
 
 internal static partial class NetworksEndpoints
 {
@@ -250,31 +258,34 @@ internal static partial class NetworksEndpoints
         return Results.NoContent();
     }
 
-    private static async Task<ScopePolicyDto> GetPolicy(NetworksDbContext db, CancellationToken ct)
-    {
-        var policy = await db.ScopePolicies.AsNoTracking().SingleOrDefaultAsync(ct);
-        return new ScopePolicyDto(policy?.Allowed ?? [], policy?.Excluded ?? [], policy?.UpdatedAt);
-    }
+    private static async Task<ScopePolicyDto> GetPolicy(NetworksDbContext db, CancellationToken ct) =>
+        ScopePolicyDto.From(await db.ScopePolicies.AsNoTracking().SingleOrDefaultAsync(ct));
 
     private static async Task<IResult> PutPolicy(ScopePolicyRequest request, NetworksDbContext db, IAuditLog audit, TimeProvider time, CancellationToken ct)
     {
         var errors = new ValidationErrors();
         ScopeRules.ValidateEntries(errors, "allowed", request.Allowed, allowWildcards: true, required: false);
         ScopeRules.ValidateEntries(errors, "excluded", request.Excluded, allowWildcards: true, required: false);
+        ScopeRules.ValidatePorts(errors, "allowedPorts", request.AllowedPorts);
+        ScopeRules.ValidatePorts(errors, "excludedPorts", request.ExcludedPorts);
         if (!errors.IsValid) return errors.ToResult();
 
-        var policy = await SetPolicyAsync(db, request.Allowed, request.Excluded, time.GetUtcNow(), ct);
-        await audit.WriteAsync(new AuditEntry("scope_policy.updated", "scope_policy", null, new { policy.Allowed, policy.Excluded }), ct);
-        return Results.Ok(new ScopePolicyDto(policy.Allowed, policy.Excluded, policy.UpdatedAt));
+        var policy = await SetPolicyAsync(db, request.Allowed, request.Excluded, request.AllowedPorts, request.ExcludedPorts, time.GetUtcNow(), ct);
+        await audit.WriteAsync(new AuditEntry("scope_policy.updated", "scope_policy", null,
+            new { policy.Allowed, policy.Excluded, policy.AllowedPorts, policy.ExcludedPorts }), ct);
+        return Results.Ok(ScopePolicyDto.From(policy));
     }
 
+    /// <summary>Replaces address entries; port lists are replaced only when given (null keeps them).</summary>
     internal static async Task<ScopePolicy> SetPolicyAsync(NetworksDbContext db, IEnumerable<string>? allowed, IEnumerable<string>? excluded,
-        DateTimeOffset now, CancellationToken ct)
+        IEnumerable<string>? allowedPorts, IEnumerable<string>? excludedPorts, DateTimeOffset now, CancellationToken ct)
     {
         var policy = await db.ScopePolicies.SingleOrDefaultAsync(ct);
         if (policy is null) db.ScopePolicies.Add(policy = new ScopePolicy());
         policy.Allowed = ScopeRules.Normalize(allowed);
         policy.Excluded = ScopeRules.Normalize(excluded);
+        if (allowedPorts is not null) policy.AllowedPorts = ScopeRules.NormalizePorts(allowedPorts);
+        if (excludedPorts is not null) policy.ExcludedPorts = ScopeRules.NormalizePorts(excludedPorts);
         policy.UpdatedAt = now;
         await db.SaveChangesAsync(ct);
         return policy;

@@ -46,7 +46,9 @@ export const useScopePolicy = () =>
 
 export const useUpdateScopePolicy = () =>
   useApiMutation(
-    (body: Pick<ScopePolicy, 'allowed' | 'excluded'>) => api<ScopePolicy>('/api/scope-policy', { method: 'PUT', body }),
+    // Port lists left out are kept by the server.
+    (body: Pick<ScopePolicy, 'allowed' | 'excluded'> & Partial<Pick<ScopePolicy, 'allowedPorts' | 'excludedPorts'>>) =>
+      api<ScopePolicy>('/api/scope-policy', { method: 'PUT', body }),
     [['scope-policy'], ['agent-subnets']],
   )
 

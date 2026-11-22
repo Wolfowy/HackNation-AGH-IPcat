@@ -19,6 +19,12 @@ public sealed record ResolvedScope
 
     /// <summary>Global exclusions (scope policy) that apply to every segment.</summary>
     public IReadOnlyList<string> GlobalExclusions { get; init; } = [];
+
+    /// <summary>Scope policy port allowlist ("80", "8000-8100"); empty = every port.</summary>
+    public IReadOnlyList<string> AllowedPorts { get; init; } = [];
+
+    /// <summary>Scope policy port denylist; wins over <see cref="AllowedPorts"/>.</summary>
+    public IReadOnlyList<string> ExcludedPorts { get; init; } = [];
 }
 
 public sealed record ScopeSegment

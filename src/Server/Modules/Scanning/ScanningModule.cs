@@ -28,6 +28,8 @@ public static class ScanningModule
     {
         services.AddModuleDbContext<ScanningDbContext>(ScanningDbContext.Schema);
         services.Configure<PlannerOptions>(configuration.GetSection(PlannerOptions.Section));
+        // nmap stays the default service detector when an alternative (nerva) is approved; configuring the key replaces this.
+        services.PostConfigure<PlannerOptions>(o => o.ToolPreference.TryAdd(ToolCapabilities.ServiceDetection, ["nmap"]));
         services.Configure<ScanningOptions>(configuration.GetSection(ScanningOptions.Section));
         services.TryAddSingleton(TimeProvider.System);
 

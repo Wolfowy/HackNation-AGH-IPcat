@@ -36,15 +36,32 @@ public static class StepInputs
     private static readonly HashSet<string> HttpServices = new(StringComparer.OrdinalIgnoreCase) { "http", "http-alt", "http-proxy" };
     private static readonly HashSet<string> HttpsServices = new(StringComparer.OrdinalIgnoreCase) { "https", "https-alt" };
 
-    /// <summary>Distinct addresses of observations that show a live host.</summary>
+    /// <summary>
+    /// Distinct addresses and hostnames of observations that show a live host. The hostname keeps domain targets scannable by name
+    /// (their resolved address is usually outside the scope); the planner drops whichever of the two is not in scope.
+    /// </summary>
     public static IReadOnlyCollection<string> Hosts(IEnumerable<DiscoveryObservation> observations) =>
-        observations.Where(o => o.Kind is not (ObservationKind.HostDown or ObservationKind.PortClosed))
-            .Select(o => o.Address).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        Live(observations).SelectMany(o => Name(o) is { } name ? new[] { o.Address, name } : [o.Address])
+            .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
 
-    /// <summary>Endpoints from PortOpen/Service/HttpResponse/... observations; scheme from service detection or HTTP probing.</summary>
+    /// <summary>Address → hostnames and hostname → addresses of the <see cref="Hosts"/> entries.</summary>
+    public static ILookup<string, string> HostAliases(IEnumerable<DiscoveryObservation> observations) =>
+        Live(observations).Where(o => o.Hostname is not null)
+            .SelectMany(o => new[] { (Key: o.Address.ToLowerInvariant(), Alias: Name(o)!), (Key: Name(o)!, Alias: o.Address.ToLowerInvariant()) })
+            .Distinct().ToLookup(p => p.Key, p => p.Alias, StringComparer.OrdinalIgnoreCase);
+
+    private static IEnumerable<DiscoveryObservation> Live(IEnumerable<DiscoveryObservation> observations) =>
+        observations.Where(o => o.Kind is not (ObservationKind.HostDown or ObservationKind.PortClosed));
+
+    private static string? Name(DiscoveryObservation o) => o.Hostname?.TrimEnd('.').ToLowerInvariant();
+
+    /// <summary>
+    /// Endpoints from PortOpen/Service/HttpResponse/... observations; scheme from service detection or HTTP probing. Each known
+    /// hostname of an address:port is a separate endpoint (virtual hosts); the planner drops redundant bare-address duplicates.
+    /// </summary>
     public static IReadOnlyCollection<ScanEndpoint> Endpoints(IEnumerable<DiscoveryObservation> observations)
     {
-        var endpoints = new Dictionary<(string, int, TransportProtocol), ScanEndpoint>();
+        var endpoints = new Dictionary<(string, int, TransportProtocol, string?), ScanEndpoint>();
         foreach (var o in observations)
         {
             if (o.Port is not { } port || o.Kind is ObservationKind.HostDown or ObservationKind.PortClosed) continue;
@@ -54,11 +71,11 @@ public static class StepInputs
                 ObservationKind.Service when o.Service is { } s => s.Tunnel == "ssl" || HttpsServices.Contains(s.Name) ? "https" : HttpServices.Contains(s.Name) ? "http" : null,
                 _ => null,
             };
-            var key = (o.Address.ToLowerInvariant(), port, o.Transport ?? TransportProtocol.Tcp);
+            var key = (o.Address.ToLowerInvariant(), port, o.Transport ?? TransportProtocol.Tcp, Name(o));
             if (endpoints.TryGetValue(key, out var existing))
-                endpoints[key] = existing with { Scheme = existing.Scheme ?? scheme, Hostname = existing.Hostname ?? o.Hostname };
+                endpoints[key] = existing with { Scheme = existing.Scheme ?? scheme };
             else
-                endpoints[key] = new ScanEndpoint { Address = o.Address, Port = port, Transport = key.Item3, Hostname = o.Hostname, Scheme = scheme };
+                endpoints[key] = new ScanEndpoint { Address = o.Address, Port = port, Transport = key.Item3, Hostname = key.Item4, Scheme = scheme };
         }
         return endpoints.Values.ToList();
     }

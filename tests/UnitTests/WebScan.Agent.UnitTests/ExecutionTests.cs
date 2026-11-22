@@ -159,6 +159,46 @@ public class JobValidatorTests : IAsyncLifetime
     }
 
     [Fact]
+    public void Endpoints_are_scoped_by_the_name_tools_connect_to()
+    {
+        // Domain target: the resolved address is outside the scope, the name is inside → probed by name.
+        var byName = Jobs.Endpoints(ScanOperation.HttpProbe, ToolCapabilities.HttpProbe,
+            [new ScanEndpoint { Address = "203.0.113.7", Port = 443, Hostname = "app.example.com" }], ["10.0.0.0/24", "app.example.com"]);
+        Assert.True(_validator.Validate(byName).IsValid);
+
+        // A hostname outside the scope is never dialled, even when the address is in scope (DNS could point anywhere).
+        var foreignName = Jobs.Endpoints(ScanOperation.HttpProbe, ToolCapabilities.HttpProbe,
+            [new ScanEndpoint { Address = "10.0.0.5", Port = 443, Hostname = "evil.org" }], ["10.0.0.0/24"]);
+        Assert.Contains("'evil.org:443' is outside the authorized scope", _validator.Validate(foreignName).Error);
+    }
+
+    [Fact]
+    public void Authorized_ports_reject_endpoints_and_port_parameters_outside_them()
+    {
+        var endpoints = Jobs.Endpoints(ScanOperation.HttpProbe, ToolCapabilities.HttpProbe,
+            [new ScanEndpoint { Address = "10.0.0.5", Port = 443 }, new ScanEndpoint { Address = "10.0.0.5", Port = 8080 }], ["10.0.0.0/24"]);
+        Assert.True(_validator.Validate(endpoints with { AuthorizedPorts = "80,443,8000-8100" }).IsValid);
+        Assert.Contains("'10.0.0.5:8080' is outside the authorized ports", _validator.Validate(endpoints with { AuthorizedPorts = "80,443" }).Error);
+
+        var ports = PortScan(["10.0.0.1"], ["10.0.0.0/24"], new() { ["ports"] = "22,80" }) with { AuthorizedPorts = "22,80,443" };
+        Assert.True(_validator.Validate(ports).IsValid);
+        Assert.Contains("outside the authorized ports", _validator.Validate(ports with { Parameters = new Dictionary<string, string> { ["ports"] = "22-25" } }).Error);
+        Assert.Contains("outside the authorized ports", _validator.Validate(ports with { Parameters = new Dictionary<string, string> { ["ports"] = "top-100" } }).Error);
+        Assert.Contains("are invalid", _validator.Validate(ports with { AuthorizedPorts = "top-100" }).Error);
+        Assert.True(_validator.Validate(ports with { AuthorizedPorts = null, Parameters = new Dictionary<string, string> { ["ports"] = "top-100" } }).IsValid);
+    }
+
+    [Fact]
+    public void Probe_ports_are_checked_only_for_tcp_ping_methods()
+    {
+        var discovery = Jobs.Hosts(ScanOperation.DiscoverHosts, ToolCapabilities.HostDiscovery, ["10.0.0.0/28"], ["10.0.0.0/24"]) with { AuthorizedPorts = "443" };
+
+        Assert.Contains("probePorts", _validator.Validate(discovery).Error); // default probePorts 22,80,443,3389,8080
+        Assert.True(_validator.Validate(discovery with { Parameters = new Dictionary<string, string> { ["probePorts"] = "443" } }).IsValid);
+        Assert.True(_validator.Validate(discovery with { Parameters = new Dictionary<string, string> { ["method"] = "none" } }).IsValid);
+    }
+
+    [Fact]
     public void Unknown_parameter_is_rejected()
     {
         var result = _validator.Validate(PortScan(["10.0.0.1"], ["10.0.0.0/24"], new() { ["ports"] = "80", ["extraArgs"] = "--script=evil" }));

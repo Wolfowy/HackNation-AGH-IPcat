@@ -1,0 +1,22 @@
+// nerva (Praetorian, Apache-2.0; maintained fork of the archived fingerprintx): service fingerprinting of known-open host:port
+// endpoints with 170+ protocol plugins (RDP, LDAP, SMB, ICS, databases, HTTP product fingerprints for appliances/devops/IoT).
+// An alternative "service-detection" tool: the planner keeps nmap by default (Planner:ToolPreference:service-detection), a workflow
+// step selects nerva with "toolId": "nerva". Endpoints are written as host:port with the virtual host name when known (SNI).
+// --deep and --misconfigs stay OFF on purpose: they add admin-path, login and misconfiguration probes beyond identification.
+// nerva has no version flag: "--help" only proves the binary runs, so the version is reported as "unknown" (the image pins v1.84.6).
+{
+  "id": "nerva",
+  "displayName": "nerva",
+  "executable": "nerva",
+  "versionArgs": ["--help"],
+  "maxConcurrency": 2,
+  "defaultTimeoutSeconds": 3600,
+  "capabilities": {
+    "service-detection": {
+      "parser": "nerva-jsonl",
+      "input": { "mode": "file", "format": "endpoints" },
+      "output": { "mode": "file" },
+      "arguments": ["-l", "{input}", "--json", "-o", "{output}", "--rate-limit", "{rate}", "--workers", "{parallelism}", "--timeout", "3000"]
+    }
+  }
+}

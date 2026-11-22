@@ -87,7 +87,15 @@ namespace WebScan.Server.Modules.Networks.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("text[]");
 
+                    b.PrimitiveCollection<List<string>>("AllowedPorts")
+                        .IsRequired()
+                        .HasColumnType("text[]");
+
                     b.PrimitiveCollection<List<string>>("Excluded")
+                        .IsRequired()
+                        .HasColumnType("text[]");
+
+                    b.PrimitiveCollection<List<string>>("ExcludedPorts")
                         .IsRequired()
                         .HasColumnType("text[]");
 

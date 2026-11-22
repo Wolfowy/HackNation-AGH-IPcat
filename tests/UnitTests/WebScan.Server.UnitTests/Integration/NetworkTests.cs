@@ -129,6 +129,46 @@ public sealed class NetworkTests(WebScanFactory factory)
     }
 
     [Fact]
+    public async Task Scope_policy_ports_are_validated_audited_kept_by_older_clients_and_resolved()
+    {
+        var admin = await factory.AdminAsync();
+        var original = await (await admin.GetAsync("/api/scope-policy")).ReadAsync<ScopePolicyDto>();
+        Assert.Empty(original.AllowedPorts); // empty allowlist = every port
+        try
+        {
+            var invalid = await admin.PutJsonAsync("/api/scope-policy",
+                new { allowed = original.Allowed, excluded = original.Excluded, allowedPorts = new[] { "80", "top-100", "0", "90-80" } });
+            Assert.Equal(HttpStatusCode.UnprocessableEntity, invalid.StatusCode);
+            Assert.Equal(3, (await invalid.ReadAsync<ValidationProblemDetails>()).Errors["allowedPorts"].Length);
+
+            var updated = await (await admin.PutJsonAsync("/api/scope-policy",
+                new { allowed = original.Allowed, excluded = original.Excluded, allowedPorts = new[] { " 80", "443", "8000-8100", "443" }, excludedPorts = new[] { "8080" } }))
+                .ReadAsync<ScopePolicyDto>();
+            Assert.Equal(["80", "443", "8000-8100"], updated.AllowedPorts);
+            Assert.Equal(["8080"], updated.ExcludedPorts);
+
+            // A client that does not know the port fields (e.g. "Add to scope policy") keeps them.
+            var kept = await (await admin.PutJsonAsync("/api/scope-policy", new { allowed = original.Allowed, excluded = original.Excluded })).ReadAsync<ScopePolicyDto>();
+            Assert.Equal(["80", "443", "8000-8100"], kept.AllowedPorts);
+
+            await using var scope = factory.Services.CreateAsyncScope();
+            var resolved = await scope.ServiceProvider.GetRequiredService<INetworkScopeService>().ResolveAsync([]);
+            Assert.Equal(["80", "443", "8000-8100"], resolved.AllowedPorts);
+            Assert.Equal(["8080"], resolved.ExcludedPorts);
+
+            var audit = await (await admin.GetAsync("/api/audit?action=scope_policy.updated&pageSize=5")).ReadAsync<PagedResult<WebScan.Server.Infrastructure.AuditEntryDto>>();
+            Assert.Contains(audit.Items, e => e.Details?.GetRawText().Contains("8000-8100") == true);
+
+            var manager = await factory.UserWithRoleAsync("Manager");
+            Assert.Equal(HttpStatusCode.Forbidden, (await manager.PutJsonAsync("/api/scope-policy", new { allowed = original.Allowed, allowedPorts = Array.Empty<string>() })).StatusCode);
+        }
+        finally
+        {
+            await admin.PutJsonAsync("/api/scope-policy", new { allowed = original.Allowed, excluded = original.Excluded, allowedPorts = original.AllowedPorts, excludedPorts = original.ExcludedPorts });
+        }
+    }
+
+    [Fact]
     public async Task Json_import_export_round_trip()
     {
         var admin = await factory.AdminAsync();

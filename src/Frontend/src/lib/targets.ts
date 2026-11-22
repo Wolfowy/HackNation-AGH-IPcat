@@ -43,6 +43,22 @@ export function validateTarget(raw: string): string | null {
 /** Validates every line; returns a combined message or true (react-hook-form `validate` contract). */
 export function validateTargetLines(lines: string[], required: boolean): true | string {
   if (required && lines.length === 0) return 'At least one entry is required.'
-  const errors = lines.map(validateTarget).filter((e): e is string => e !== null)
+  return combine(lines.map(validateTarget))
+}
+
+/** Scope policy port entry: "80" or "8000-8100" (1–65535). */
+export function validatePort(raw: string): string | null {
+  const match = /^(\d{1,5})(?:-(\d{1,5}))?$/.exec(raw.trim())
+  if (!match) return `"${raw.trim()}": not a port or port range (e.g. 443, 8000-8100)`
+  const from = Number(match[1])
+  const to = Number(match[2] ?? match[1])
+  if (from < 1 || to > 65535) return `"${raw.trim()}": ports are 1–65535`
+  return from <= to ? null : `"${raw.trim()}": range start is after its end`
+}
+
+export const validatePortLines = (lines: string[]): true | string => combine(lines.map(validatePort))
+
+function combine(results: (string | null)[]): true | string {
+  const errors = results.filter((e): e is string => e !== null)
   return errors.length ? errors.slice(0, 3).join('; ') + (errors.length > 3 ? ` (+${errors.length - 3} more)` : '') : true
 }

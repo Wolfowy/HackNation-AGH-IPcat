@@ -88,9 +88,9 @@ cd tests/E2ETests/playwright && BASE_URL=http://localhost:8088 E2E_ADMIN_USER=$A
 | `Bootstrap:AdminUserName/AdminPassword` | pierwszy administrator |
 | `Agents:BootstrapEnrollmentToken/BootstrapEnrollmentZones` | token zapisu agentów dla automatyzacji |
 | `Agents:HeartbeatTimeoutSeconds` | po jakim czasie agent jest offline (zadania wracają do kolejki) |
-| `Networks:SeedScopePolicy:Allowed/Excluded` | początkowa polityka autoryzowanego zakresu |
+| `Networks:SeedScopePolicy:Allowed/Excluded/AllowedPorts/ExcludedPorts` | początkowa polityka autoryzowanego zakresu (porty: `80,443,8000-8100`; puste = wszystkie) |
 | `Tools:AutoApprove` | narzędzia zatwierdzane automatycznie (domyślnie nmap, naabu, httpx, nuclei) |
-| `Planner:OperationCapabilities`, `Planner:ToolPreference` | mapowanie operacja → capability, preferencje narzędzi |
+| `Planner:OperationCapabilities`, `Planner:ToolPreference` | mapowanie operacja → capability, preferencje narzędzi (domyślnie `service-detection` = `nmap`; `Planner__ToolPreference__service-detection__0=nerva` zmienia domyślne) |
 | `DataProtection:CertificatePath` | ochrona kluczy szyfrujących dane w spoczynku certyfikatem |
 | `OpenTelemetry:OtlpEndpoint` | eksport śladów/metryk/logów |
 | `Agent:*` (agent) | `src/Agent/Worker/appsettings.json` — opis każdej opcji w komentarzach |

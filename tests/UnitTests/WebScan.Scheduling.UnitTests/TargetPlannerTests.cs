@@ -127,6 +127,86 @@ public sealed class TargetPlannerTests
     }
 
     [Fact]
+    public void Virtual_host_endpoints_are_planned_by_name_and_bare_duplicates_dropped()
+    {
+        var segments = Resolve(Segment("web", ["10.0.0.0/24", "app.example.com", "api.example.com"]));
+        var endpoints = new List<ScanEndpoint>
+        {
+            // Domain target: resolved address outside the scope, the name inside.
+            new() { Address = "203.0.113.7", Port = 443, Hostname = "App.Example.com." },
+            new() { Address = "203.0.113.7", Port = 443, Hostname = "api.example.com" },
+            new() { Address = "203.0.113.7", Port = 443, Scheme = "https" }, // bare duplicate of the named ones: not out of scope, its scheme is kept
+            // In-scope address with a known name: probed by name only.
+            new() { Address = "10.0.0.5", Port = 80, Scheme = "http" },
+            new() { Address = "10.0.0.5", Port = 80, Hostname = "app.example.com" },
+            // Name outside the scope (e.g. reverse DNS): stripped, the address is probed.
+            new() { Address = "10.0.0.6", Port = 8080, Hostname = "ptr.isp.example.net" },
+            new() { Address = "198.51.100.1", Port = 80, Hostname = "evil.example.org" }, // neither in scope
+        };
+
+        var plan = TargetPlanner.PlanEndpoints(segments, endpoints, 64, 16);
+        var planned = plan.Batches.SelectMany(b => b.Endpoints).Select(e => $"{e.Hostname ?? "-"}@{e.Address}:{e.Port}/{e.Scheme ?? "-"}").Order();
+
+        Assert.Equal(["-@10.0.0.6:8080/-", "api.example.com@203.0.113.7:443/https", "app.example.com@10.0.0.5:80/http", "app.example.com@203.0.113.7:443/https"], planned);
+        Assert.Equal(1, plan.OutOfScope);
+    }
+
+    [Fact]
+    public void Endpoints_outside_the_scope_policy_ports_are_dropped()
+    {
+        var segments = Resolve(Segment("dc", ["10.0.0.0/24"]));
+        ScanEndpoint[] endpoints = [new() { Address = "10.0.0.1", Port = 22 }, new() { Address = "10.0.0.1", Port = 443 }, new() { Address = "10.0.0.2", Port = 8080 }];
+        PortSet.TryParse("80,443,8000-8100", out var ports);
+
+        var plan = TargetPlanner.PlanEndpoints(segments, endpoints, 64, 16, ports);
+
+        Assert.Equal(["10.0.0.1:443", "10.0.0.2:8080"], plan.Batches.SelectMany(b => b.Endpoints).Select(e => $"{e.Address}:{e.Port}"));
+        Assert.Equal(1, plan.OutOfScope);
+    }
+
+    [Fact]
+    public void Resolved_addresses_of_domain_targets_are_aliases_not_out_of_scope()
+    {
+        var segments = Resolve(Segment("web", ["10.0.0.0/24", "app.example.com"]));
+        string[] hosts = ["203.0.113.7", "app.example.com", "10.0.0.5", "ptr.isp.example.net", "192.168.1.1"];
+        var aliases = new[] { ("203.0.113.7", "app.example.com"), ("app.example.com", "203.0.113.7"), ("10.0.0.5", "ptr.isp.example.net"), ("ptr.isp.example.net", "10.0.0.5") }
+            .ToLookup(p => p.Item1, p => p.Item2);
+
+        var plan = TargetPlanner.PlanHosts(segments, 256, 16, hosts, aliases);
+
+        Assert.Equal(["10.0.0.5", "app.example.com"], plan.Batches.SelectMany(b => b.Hosts).Order());
+        Assert.Equal(1, plan.OutOfScope); // only 192.168.1.1
+        Assert.Equal(3, TargetPlanner.PlanHosts(segments, 256, 16, hosts).OutOfScope);
+    }
+
+    [Theory]
+    [InlineData("top-100", "80,443", "80,443")]
+    [InlineData("top-5", "1-1000", "21-23,80,443")] // nmap's top 5 ∩ allowlist
+    [InlineData("1-100", "22,80,443,8080", "22,80")]
+    [InlineData("top-5000", "22,8080", "22,8080")] // beyond the embedded top-1000: the allowlist itself
+    public void Port_parameters_are_clipped_to_the_allowlist(string requested, string allowlist, string expected)
+    {
+        PortSet.TryParse(allowlist, out var allowed);
+        var clipped = TargetPlanner.ClipPorts(ScanOperation.ScanPorts, new Dictionary<string, string> { ["ports"] = requested, ["scanType"] = "connect" }, allowed, hasAllowlist: true);
+        Assert.Equal(expected, clipped["ports"]);
+        Assert.Equal("connect", clipped["scanType"]);
+    }
+
+    [Fact]
+    public void Port_clipping_fails_closed()
+    {
+        var excludedOnly = PortScope.Effective([], ["23"]);
+        Assert.Equal("1-1000", TargetPlanner.ClipPorts(ScanOperation.ScanPorts, new Dictionary<string, string> { ["ports"] = "1-1000" }, PortSet.All, false)["ports"]);
+        Assert.DoesNotContain("23", TargetPlanner.ClipPorts(ScanOperation.ScanPorts, new Dictionary<string, string> { ["ports"] = "top-100" }, excludedOnly, false)["ports"].Split(','));
+        Assert.Throws<PlanningException>(() => TargetPlanner.ClipPorts(ScanOperation.ScanPorts, new Dictionary<string, string> { ["ports"] = "top-5000" }, excludedOnly, false));
+
+        PortSet.TryParse("8443", out var only8443);
+        var discovery = new Dictionary<string, string> { ["method"] = "default", ["probePorts"] = "22,80,443" };
+        Assert.Contains("no port allowed", Assert.Throws<PlanningException>(() => TargetPlanner.ClipPorts(ScanOperation.DiscoverHosts, discovery, only8443, true)).Message);
+        Assert.Equal("22,80,443", TargetPlanner.ClipPorts(ScanOperation.DiscoverHosts, new Dictionary<string, string>(discovery) { ["method"] = "icmp" }, only8443, true)["probePorts"]);
+    }
+
+    [Fact]
     public void Linear_intersection_matches_the_reference_implementation()
     {
         var random = new Random(7);

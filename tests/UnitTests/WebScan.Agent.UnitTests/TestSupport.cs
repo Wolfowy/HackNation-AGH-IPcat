@@ -95,7 +95,7 @@ internal static class Parsing
         IToolAdapter[] adapters = withFake
             ? [new ManifestToolAdapter(Microsoft.Extensions.Logging.Abstractions.NullLogger<ManifestToolAdapter>.Instance), new FakeScannerAdapter(new StaticOptionsMonitor<AgentOptions>(new AgentOptions()))]
             : [new ManifestToolAdapter(Microsoft.Extensions.Logging.Abstractions.NullLogger<ManifestToolAdapter>.Instance)];
-        return new ToolComponentRegistry([new NmapXmlParser(), new NaabuJsonlParser(), new HttpxJsonlParser(), new NucleiJsonlParser(), new GenericJsonlParser()], adapters);
+        return new ToolComponentRegistry([new NmapXmlParser(), new NaabuJsonlParser(), new HttpxJsonlParser(), new NucleiJsonlParser(), new GenericJsonlParser(), new NervaJsonlParser()], adapters);
     }
 }
 

@@ -42,6 +42,33 @@ describe('network form', () => {
   })
 })
 
+describe('scope policy ports', () => {
+  it('lets administrators restrict ports, with format hints', async () => {
+    const { user } = renderApp('/networks', { role: 'Administrator' })
+    await user.click(await screen.findByRole('tab', { name: 'Scope policy' }))
+    const allowed = await screen.findByLabelText('Allowed ports')
+    expect(screen.getByLabelText('Excluded ports')).toHaveValue('23')
+    expect(screen.getByText(/Empty = every port/)).toBeInTheDocument()
+
+    await user.type(allowed, '443{enter}9000-8000{enter}70000')
+    expect(await screen.findByText(/"9000-8000": range start is after its end; "70000": ports are 1–65535/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Save scope policy' })).toBeDisabled()
+
+    await user.clear(allowed)
+    await user.type(allowed, '443{enter}8000-8100')
+    await user.click(screen.getByRole('button', { name: 'Save scope policy' }))
+    expect((await screen.findAllByText('Saved')).length).toBeGreaterThan(0)
+    expect(await screen.findByLabelText('Allowed ports')).toHaveValue('443\n8000-8100')
+  })
+
+  it('shows the port lists read-only to managers', async () => {
+    const { user } = renderApp('/networks', { role: 'Manager' })
+    await user.click(await screen.findByRole('tab', { name: 'Scope policy' }))
+    expect(await screen.findByLabelText('Allowed ports')).toHaveAttribute('readonly')
+    expect(screen.queryByRole('button', { name: 'Save scope policy' })).not.toBeInTheDocument()
+  })
+})
+
 describe('agent subnets', () => {
   async function openTab(role: 'Manager' | 'Administrator') {
     const app = renderApp('/networks', { role })

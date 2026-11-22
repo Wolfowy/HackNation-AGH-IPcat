@@ -19,7 +19,7 @@ COPY src/Agent/ src/Agent/
 RUN RID="linux-$([ "$TARGETARCH" = "arm64" ] && echo arm64 || echo x64)" \
  && dotnet publish src/Agent/Worker/WebScan.Agent.Worker.csproj -c Release -r "$RID" --self-contained true --no-restore -o /out
 
-# ---------- tools-download: pinned ProjectDiscovery releases, verified against pinned SHA-256 ----------
+# ---------- tools-download: pinned ProjectDiscovery (+ nerva) releases, verified against pinned SHA-256 ----------
 FROM debian:bookworm-slim AS tools-download
 ARG TARGETARCH
 ARG NAABU_VERSION=2.7.0
@@ -34,15 +34,19 @@ ARG NUCLEI_SHA256_ARM64=8044e3d9768ba0a744b2872c1a87e813006f013da97ca9f50f7661a4
 ARG TLSX_VERSION=1.5.0
 ARG TLSX_SHA256_AMD64=9458e2066d311f9d96973a6a103922fe2529ee98f1061eff464917f6f22809d4
 ARG TLSX_SHA256_ARM64=04238d8df8f4e3ec4bd11608d2bcb9528287c0e8723bd57f5687818b9d71b9af
+# nerva (Praetorian, Apache-2.0): optional service fingerprinter; checksums from the release's checksums.txt.
+ARG NERVA_VERSION=1.84.6
+ARG NERVA_SHA256_AMD64=12ab00578f44028f55a2a418b7bc20c8fd92bf7da42803c7e5646014496b879f
+ARG NERVA_SHA256_ARM64=6e2abae47cd9da76fb383657f3938c6dbf277888b17a106706e2f7d744537ce8
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl unzip && rm -rf /var/lib/apt/lists/*
 WORKDIR /dl
 SHELL ["/bin/bash", "-euo", "pipefail", "-c"]
 RUN case "$TARGETARCH" in amd64|arm64) ;; *) echo "unsupported arch: $TARGETARCH" >&2; exit 1 ;; esac; \
     ARCH_UPPER="${TARGETARCH^^}"; \
     fetch() { \
-      local tool="$1" version="$2" sha="$3"; \
+      local tool="$1" version="$2" sha="$3" org="${4:-projectdiscovery}"; \
       local zip="${tool}_${version}_linux_${TARGETARCH}.zip"; \
-      curl -fsSL -o "$zip" "https://github.com/projectdiscovery/${tool}/releases/download/v${version}/${zip}"; \
+      curl -fsSL -o "$zip" "https://github.com/${org}/${tool}/releases/download/v${version}/${zip}"; \
       echo "${sha}  ${zip}" | sha256sum -c -; \
       unzip -o -q "$zip" "$tool" -d /dl/bin; \
     }; \
@@ -50,9 +54,10 @@ RUN case "$TARGETARCH" in amd64|arm64) ;; *) echo "unsupported arch: $TARGETARCH
     fetch httpx  "$HTTPX_VERSION"  "$(eval echo \$HTTPX_SHA256_${ARCH_UPPER})"; \
     fetch nuclei "$NUCLEI_VERSION" "$(eval echo \$NUCLEI_SHA256_${ARCH_UPPER})"; \
     fetch tlsx   "$TLSX_VERSION"   "$(eval echo \$TLSX_SHA256_${ARCH_UPPER})"; \
+    fetch nerva  "$NERVA_VERSION"  "$(eval echo \$NERVA_SHA256_${ARCH_UPPER})" praetorian-inc; \
     chmod 0755 /dl/bin/*
 
-# ---------- toolbox: Debian runtime with nmap + ProjectDiscovery tools, non-root ----------
+# ---------- toolbox: Debian runtime with nmap + ProjectDiscovery tools + nerva, non-root ----------
 FROM debian:bookworm-slim AS toolbox
 RUN apt-get update \
  && apt-get install -y --no-install-recommends nmap libpcap0.8 ca-certificates libcap2-bin libssl3 libstdc++6 zlib1g \

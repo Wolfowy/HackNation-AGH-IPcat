@@ -84,7 +84,10 @@ public static class ArgumentBuilder
     }
 }
 
-/// <summary>Writes job targets in the input format a tool expects.</summary>
+/// <summary>
+/// Writes job targets in the input format a tool expects. Endpoints are addressed by <see cref="ScanEndpoint.Hostname"/> when known
+/// (URL host, SNI and Host header of virtual hosts), else by <see cref="ScanEndpoint.Address"/>; lines are deduplicated.
+/// </summary>
 public static class TargetFormatter
 {
     public static IEnumerable<string> Lines(JobTargets targets, ToolInputFormat format)
@@ -92,13 +95,16 @@ public static class TargetFormatter
         if (targets.Endpoints.Count == 0) return targets.Hosts;
         return format switch
         {
-            ToolInputFormat.Hosts => targets.Endpoints.Select(e => e.Address).Distinct(StringComparer.OrdinalIgnoreCase),
-            ToolInputFormat.Endpoints => targets.Endpoints.Select(Endpoint).Distinct(),
-            _ => targets.Endpoints.Select(e => e.Scheme is "http" or "https" ? $"{e.Scheme}://{Endpoint(e)}" : Endpoint(e)).Distinct(),
+            ToolInputFormat.Hosts => targets.Endpoints.Select(Host).Distinct(StringComparer.OrdinalIgnoreCase),
+            ToolInputFormat.Endpoints => targets.Endpoints.Select(Endpoint).Distinct(StringComparer.OrdinalIgnoreCase),
+            _ => targets.Endpoints.Select(e => e.Scheme is "http" or "https" ? $"{e.Scheme}://{Endpoint(e)}" : Endpoint(e)).Distinct(StringComparer.OrdinalIgnoreCase),
         };
     }
 
-    public static string Endpoint(ScanEndpoint e) => $"{HostPart(e.Address)}:{e.Port}";
+    /// <summary>The name a tool connects to: hostname when known (virtual host), else the address.</summary>
+    public static string Host(ScanEndpoint e) => e.Hostname ?? e.Address;
+
+    public static string Endpoint(ScanEndpoint e) => $"{HostPart(Host(e))}:{e.Port}";
 
     public static string HostPart(string address) =>
         IPAddress.TryParse(address, out var ip) && ip.AddressFamily == AddressFamily.InterNetworkV6 ? $"[{address}]" : address;
@@ -111,7 +117,7 @@ public static class TargetFormatter
     {
         if (targets.Endpoints.Count == 0) return [targets];
         return targets.Endpoints
-            .GroupBy(e => e.Address, StringComparer.OrdinalIgnoreCase)
+            .GroupBy(Host, StringComparer.OrdinalIgnoreCase)
             .GroupBy(g => string.Join(",", g.Select(e => e.Port).Distinct().Order()))
             .Select(group => new JobTargets { Endpoints = [.. group.SelectMany(g => g)], Count = group.Sum(g => g.Count()) })
             .ToList();

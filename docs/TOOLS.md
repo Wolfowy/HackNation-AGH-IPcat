@@ -38,7 +38,7 @@ Weryfikacja lokalna: `dotnet WebScan.Agent.Worker.dll --list-tools` (rejestr) i 
     "port-scan": {                     // capability (otwarty zbiór; znane: host-discovery, port-scan, service-detection,
                                        //  http-probe, tls-probe, signature-scan, dns-resolve)
       "adapter": "manifest",           // domyślny: generyczny runner szablonu argv; albo id adaptera z pluginu
-      "parser": "naabu-jsonl",         // nmap-xml | naabu-jsonl | httpx-jsonl | nuclei-jsonl | generic-jsonl | <plugin>
+      "parser": "naabu-jsonl",         // nmap-xml | naabu-jsonl | httpx-jsonl | nuclei-jsonl | nerva-jsonl | generic-jsonl | <plugin>
       "parserOptions": { },            // np. mapowanie pól dla generic-jsonl
       "input":  { "mode": "file", "format": "hosts" },   // file|stdin; hosts|endpoints|urls
       "output": { "mode": "file" },                      // file|stdout
@@ -75,6 +75,40 @@ tylko do agentów z `rawSockets` ≠ false (`Agent:RawSockets`, domyślnie wykry
 `parserOptions`: `kind` (rodzaj obserwacji), `fields` (pole obserwacji → ścieżka JSON z kropkami), `attributes`
 (dodatkowe pary klucz/ścieżka), `requireFields`, `discriminator` (część identyfikatora obserwacji). Pełny przykład: `tools.d/tlsx.json`.
 
+### Cele wejściowe narzędzi: hosty wirtualne
+
+`TargetFormatter` adresuje endpoint **nazwą** (`ScanEndpoint.Hostname`), gdy jest znana — URL `https://app.example.com:443`,
+SNI i nagłówek Host trafiają do właściwego vhosta — a w przeciwnym razie adresem IP. Linie są deduplikowane, grupowanie
+`{ports}` (nmap) idzie po nazwie. Ponieważ narzędzie samo rozwiązuje nazwę, **nazwa musi należeć do zakresu**: planer
+zostawia `Hostname` tylko, gdy nazwa jest w sieci (wtedy adres może leżeć poza nią — cele domenowe), inaczej ją usuwa i
+sprawdza adres; agent odrzuca endpoint, którego `Hostname ?? Address` jest poza `AuthorizedScope`. Łańcuch
+discover → ports → services → http zachowuje nazwę: kroki hostowe dostają nazwę i adres (planer bierze to, co w zakresie,
+a rozwiązany adres celu domenowego nie liczy się jako „poza zakresem”), kroki endpointowe dostają osobny endpoint na każdy
+vhost, a goły adres obok nazwanego endpointu jest pomijany (bez podwójnego sondowania; jego `scheme` jest zachowany).
+
+### Porty z polityki zakresu
+
+`ScanJob.AuthorizedPorts` (np. `80,443,8000-8079,8081-8100`; brak = wszystkie) pochodzi z `AllowedPorts − ExcludedPorts`
+polityki. Planer przycina `ports` i `probePorts` (tylko metody pingu TCP) oraz endpointy; `top-N` zamienia na jawną listę
+**nmap top-N ∩ dozwolone** (wbudowana lista 1000 najczęstszych portów TCP z nmap-services 7.95), dla N > 1000 — na samą
+listę dozwolonych (a przy samych wykluczeniach odrzuca krok). Agent odrzuca zadanie z endpointem lub parametrem portów poza
+`AuthorizedPorts` (także `top-N`, którego nie da się sprawdzić). Manifesty nie muszą nic robić: dostają jawną listę.
+
+### nerva — alternatywne rozpoznawanie usług
+
+`tools.d/nerva.json` ([praetorian-inc/nerva](https://github.com/praetorian-inc/nerva), Apache-2.0, utrzymywany fork
+fingerprintx): `service-detection` dla znanych otwartych `host:port` (170+ wtyczek protokołów: RDP, LDAP, SMB, ICS, bazy,
+fingerprinty produktów HTTP). Wyjście `--json` (`host, ip, port, protocol, tls, transport, version, metadata`) mapuje parser
+`nerva-jsonl` na obserwacje `Service` (nazwa, wersja, `tls` → tunnel `ssl`, CPE, baner, skalarne metadane jako zamaskowane
+atrybuty `nerva.*`; nagłówki odpowiedzi pomijane) oraz `Technology` z `metadata.technologies`. `--deep` i `--misconfigs`
+są **wyłączone** (dodają sondy ścieżek admina, logowania i błędnych konfiguracji). Obsługuje tylko parametr `rate`.
+
+Wybór: planer domyślnie bierze nmap (`Planner:ToolPreference:service-detection` = `["nmap"]`, ustawienie klucza zastępuje
+domyślne); krok workflow wybiera nervę przez `"toolId": "nerva"` (krok z jawnym `versionIntensity`/`grabBanner` zostaje przy
+nmap). Nowe id nie jest zatwierdzone automatycznie — admin zatwierdza je w **Agents → Tools**. Obraz agenta zawiera
+binarkę (wersja i SHA-256 przypięte w Dockerfile); lokalnie `go install github.com/praetorian-inc/nerva/cmd/nerva@latest`.
+nerva nie ma flagi wersji, więc agent zgłasza wersję `unknown`; brak binarki = narzędzie po prostu niezgłoszone.
+
 ## Pluginy (kod)
 
 Assembly zbudowane na `src/Agent/Tools.Abstractions` (`IToolAdapter`, `IToolOutputParser`, `IObservationWriter`,
@@ -85,6 +119,6 @@ dozwolonych skrótów `Agent:TrustedPluginSha256`. Pluginy i manifesty instaluje
 ## Bezpieczeństwo
 
 * Workflow zawiera tylko zatwierdzone typy operacji i zwalidowane parametry — żadnych poleceń ani skryptów.
-* Agent waliduje każdy cel względem `ScanJob.AuthorizedScope` i parametry względem schematu, zanim zbuduje argv.
+* Agent waliduje każdy cel względem `ScanJob.AuthorizedScope`, porty względem `ScanJob.AuthorizedPorts` i parametry względem schematu, zanim zbuduje argv.
 * Nowe narzędzie nie dostaje zadań, dopóki administrator go nie zatwierdzi.
 * Szablony Nuclei trafiają do agenta tylko jako zatwierdzone wersje (`SignatureBundle` z weryfikowanym SHA-256).
