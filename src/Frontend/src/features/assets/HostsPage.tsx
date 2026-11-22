@@ -17,6 +17,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { t } from '@/i18n/strings'
 import { formatRelative, zoneLabel } from '@/lib/format'
 import { useDebounced } from '@/lib/useDebounced'
+import { InterestBadge } from './insight'
 
 export function UnstableBadge() {
   return (
@@ -40,16 +41,57 @@ export function NetworkDeviceBadge({ confidence }: { confidence?: DeviceConfiden
   )
 }
 
+/** "Most interesting first" + minimum interest score, shared by the hosts and services lists. */
+export function InterestFilters({
+  byInterest,
+  minInterest,
+  onChange,
+}: {
+  byInterest: boolean
+  minInterest: number
+  onChange: (byInterest: boolean, minInterest: number) => void
+}) {
+  return (
+    <>
+      <FormField label="Min. interest">
+        <NativeSelect value={minInterest} onChange={(e) => onChange(byInterest, Number(e.target.value))}>
+          <option value={0}>{t.common.all}</option>
+          {[10, 30, 60].map((n) => (
+            <option key={n} value={n}>
+              ≥ {n}
+            </option>
+          ))}
+        </NativeSelect>
+      </FormField>
+      <label className="flex h-9 items-center gap-2 text-sm">
+        <input type="checkbox" className="accent-primary size-4" checked={byInterest} onChange={(e) => onChange(e.target.checked, minInterest)} />
+        Most interesting first
+      </label>
+    </>
+  )
+}
+
 export function HostsPage() {
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState<HostStatus | ''>('')
   const [zone, setZone] = useState('')
   const [groupByZone, setGroupByZone] = useState(false)
   const [onlyDevices, setOnlyDevices] = useState(false)
+  const [byInterest, setByInterest] = useState(false)
+  const [minInterest, setMinInterest] = useState(0)
   const [page, setPage] = useState(1)
   const pageSize = 50
   const debouncedSearch = useDebounced(search)
-  const hosts = useHosts({ search: debouncedSearch, status, zone, networkDevice: onlyDevices || undefined, page, pageSize })
+  const hosts = useHosts({
+    search: debouncedSearch,
+    status,
+    zone,
+    networkDevice: onlyDevices || undefined,
+    sort: byInterest ? 'interest' : '',
+    minInterest: minInterest || undefined,
+    page,
+    pageSize,
+  })
   const zones = useZones()
   const importAssets = useImportAssets()
 
@@ -133,6 +175,15 @@ export function HostsPage() {
           />
           Only network devices
         </label>
+        <InterestFilters
+          byInterest={byInterest}
+          minInterest={minInterest}
+          onChange={(sort, min) => {
+            setByInterest(sort)
+            setMinInterest(min)
+            setPage(1)
+          }}
+        />
       </Filters>
       <Loadable query={hosts}>
         {(data) =>
@@ -147,6 +198,7 @@ export function HostsPage() {
                     <TableHead>Address</TableHead>
                     <TableHead>MAC</TableHead>
                     <TableHead>Status</TableHead>
+                    <TableHead title="Analytical priority 0–100 (most interesting service); hover for the reasons">Interest</TableHead>
                     <TableHead>Open ports</TableHead>
                     <TableHead>Technologies</TableHead>
                     <TableHead>Owner / classification</TableHead>
@@ -159,7 +211,7 @@ export function HostsPage() {
                       {/* The server sorts by zone, then address: a header wherever the zone changes. */}
                       {groupByZone && h.zone !== data.items[i - 1]?.zone && (
                         <TableRow className="bg-muted/50 hover:bg-muted/50" data-testid="zone-group">
-                          <TableCell colSpan={8} className="font-semibold">
+                          <TableCell colSpan={9} className="font-semibold">
                             Zone {zoneLabel(h.zone)}
                           </TableCell>
                         </TableRow>
@@ -180,6 +232,9 @@ export function HostsPage() {
                         <TableCell className="space-x-1 whitespace-nowrap">
                           <StatusBadge status={h.status} />
                           {h.unstable && <UnstableBadge />}
+                        </TableCell>
+                        <TableCell>
+                          <InterestBadge score={h.interestScore} reasons={h.interestReasons} />
                         </TableCell>
                         <TableCell className="tabular-nums">{h.openPortCount}</TableCell>
                         <TableCell>

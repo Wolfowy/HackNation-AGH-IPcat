@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useServices } from '@/api/assets'
+import { InterestFilters } from './HostsPage'
 import { ExportButtons } from '@/components/actions'
 import { Loadable } from '@/components/feedback'
 import { FormField } from '@/components/form'
@@ -13,6 +14,8 @@ export function ServicesPage() {
   const [search, setSearch] = useState('')
   const [port, setPort] = useState('')
   const [serviceName, setServiceName] = useState('')
+  const [byInterest, setByInterest] = useState(false)
+  const [minInterest, setMinInterest] = useState(0)
   const [page, setPage] = useState(1)
   const pageSize = 50
   const debouncedPort = useDebounced(port)
@@ -21,6 +24,8 @@ export function ServicesPage() {
     // The server binds `port` as an int: anything non-numeric would be a 400.
     port: /^\d+$/.test(debouncedPort) ? debouncedPort : undefined,
     serviceName: useDebounced(serviceName),
+    sort: byInterest ? 'interest' : '',
+    minInterest: minInterest || undefined,
     page,
     pageSize,
   })
@@ -42,6 +47,15 @@ export function ServicesPage() {
         <FormField label="Service name">
           <Input className="w-40" placeholder="http, ssh…" value={serviceName} onChange={onFilter(setServiceName)} />
         </FormField>
+        <InterestFilters
+          byInterest={byInterest}
+          minInterest={minInterest}
+          onChange={(sort, min) => {
+            setByInterest(sort)
+            setMinInterest(min)
+            setPage(1)
+          }}
+        />
       </Filters>
       <Loadable query={services}>
         {(data) => (

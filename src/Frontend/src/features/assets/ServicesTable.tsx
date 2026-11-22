@@ -6,6 +6,7 @@ import { Chips } from '@/components/page'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { formatRelative, zoneLabel } from '@/lib/format'
+import { InterestBadge, TimeOfDayBadge } from './insight'
 
 export function ServicesTable({ services, showHost = true }: { services: Service[]; showHost?: boolean }) {
   if (services.length === 0) return <EmptyState>No services.</EmptyState>
@@ -16,6 +17,7 @@ export function ServicesTable({ services, showHost = true }: { services: Service
           {showHost && <TableHead>Zone</TableHead>}
           {showHost && <TableHead>Host</TableHead>}
           <TableHead>Endpoint</TableHead>
+          <TableHead title="Analytical priority 0–100; hover for the reasons">Interest</TableHead>
           <TableHead>State</TableHead>
           <TableHead>Service</TableHead>
           <TableHead>HTTP</TableHead>
@@ -40,10 +42,15 @@ export function ServicesTable({ services, showHost = true }: { services: Service
               <span className="text-muted-foreground">/{s.transport.toLowerCase()}</span>
             </TableCell>
             <TableCell>
+              <InterestBadge score={s.interestScore} reasons={s.interestReasons} />
+            </TableCell>
+            <TableCell>
               <Badge variant={s.state === 'Open' ? 'success' : 'outline'}>{s.state}</Badge>
             </TableCell>
             <TableCell>
-              <div className="font-medium">{s.serviceName ?? 'unknown'}</div>
+              <div className="flex items-center gap-1 font-medium">
+                {s.serviceName ?? 'unknown'} {s.timeOfDayVariance && <TimeOfDayBadge />}
+              </div>
               <div className="text-muted-foreground text-xs">
                 {[s.product, s.version].filter(Boolean).join(' ')}
                 {s.confidence !== undefined && ` · ${Math.round(s.confidence * 100)}%`}

@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -121,6 +122,12 @@ public sealed class WorkflowRuntime(
                 var c = counts.GetValueOrDefault(state.StepId, StepJobCounts.None);
                 if (c.Active > 0 && !wf.WindowExpired) continue;
                 if (wf.WindowExpired && c.Completed < c.Total) await FinishStepAsync(run, wf, state, StepStatus.Cancelled, "Scan window expired", ct);
+                else if (!wf.WindowExpired && NextRecheckRoundDelay(stepById[state.StepId], state.Attempt) is { } delay)
+                {
+                    state.Status = StepStatus.Pending; // next RecheckMissing round: it probes only what is still missing
+                    state.NextAttemptAt = now.Add(delay);
+                    await db.SaveChangesAsync(ct);
+                }
                 else await FinishAgentStepAsync(run, wf, state, c, ct);
                 progressed = true;
             }
@@ -224,6 +231,16 @@ public sealed class WorkflowRuntime(
                 else await FinishStepAsync(run, wf, state, StepStatus.Failed, outcome.Message, ct);
                 break;
         }
+    }
+
+    /// <summary>Delay before the next round of a RecheckMissing step whose jobs finished; null when its last round ran.</summary>
+    internal static TimeSpan? NextRecheckRoundDelay(WorkflowStep step, int attempt)
+    {
+        if (step.Operation != ScanOperation.RecheckMissing) return null;
+        var values = ParameterValidator.Validate(OperationCatalog.Get(step.Operation).Parameters, step.Parameters).Values;
+        return attempt < int.Parse(values["attempts"], CultureInfo.InvariantCulture)
+            ? TimeSpan.FromSeconds(int.Parse(values["delaySeconds"], CultureInfo.InvariantCulture))
+            : null;
     }
 
     private Task FinishAgentStepAsync(ScanRun run, WorkflowRun wf, WorkflowStepRun state, StepJobCounts c, CancellationToken ct)

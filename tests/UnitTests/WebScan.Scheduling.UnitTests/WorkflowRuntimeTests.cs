@@ -247,6 +247,44 @@ public sealed class WorkflowRuntimeTests(TestHost host) : DbTestBase(host)
     }
 
     [Fact]
+    public async Task RecheckMissing_reprobes_only_missing_targets_in_scope_round_by_round_before_persist()
+    {
+        var net = Host.Scope.Add(Zone, ["10.61.0.0/28"]);
+        Host.Agents.Set(Agents.Simple(AgentId, Zone, "10.61.0.0/24", maxJobs: 10));
+        var key = await CreateWorkflowAsync(
+            new() { Id = "discover", Operation = ScanOperation.DiscoverHosts },
+            new()
+            {
+                Id = "recheck", Operation = ScanOperation.RecheckMissing, DependsOn = ["discover"],
+                Parameters = new Dictionary<string, string> { ["attempts"] = "3", ["delaySeconds"] = "0" },
+            },
+            new() { Id = "persist", Operation = ScanOperation.PersistObservations, DependsOn = ["recheck"] });
+        var runId = await LaunchAsync(net, key);
+        static ScanEndpoint E(string address, int port) => new() { Address = address, Port = port };
+        Host.Recheck.Targets = (run, round) => run != runId ? RecheckTargets.None : round switch
+        {
+            1 => new(["10.61.0.5", "10.99.0.1"], [E("10.61.0.1", 8080), E("10.61.0.1", 22), E("10.61.0.2", 8080)], 1),
+            2 => new(["10.61.0.5"], [], 1), // still silent after round 1
+            _ => RecheckTargets.None, // answered in round 2: round 3 queues nothing
+        };
+
+        await RunAgentUntilFinishedAsync(runId, Lab());
+
+        Assert.Equal(ScanRunStatus.Completed, (await Host.RunAsync(runId)).Status);
+        var steps = await StepsAsync(runId);
+        Assert.Equal(StepStatus.Completed, steps["recheck"].Status);
+        Assert.StartsWith("Round 3/3", steps["recheck"].Message);
+        Assert.Equal(3, Host.Recheck.Calls[runId]);
+        var jobs = await JobsAsync(runId, "recheck");
+        Assert.Equal(2, jobs.Count(j => j.Operation == ScanOperation.DiscoverHosts && j.Targets.Hosts.SequenceEqual(["10.61.0.5"]))); // same target, both rounds
+        var portScans = jobs.Where(j => j.Operation == ScanOperation.ScanPorts).ToDictionary(j => j.Parameters["ports"], j => j.Targets.Hosts.Single());
+        Assert.Equal(new Dictionary<string, string> { ["22,8080"] = "10.61.0.1", ["8080"] = "10.61.0.2" }, portScans); // only each host's own ports
+        Assert.DoesNotContain(jobs, j => j.Targets.Hosts.Contains("10.99.0.1")); // outside the authorized scope
+        Assert.Contains(Host.Discovery.Persisted, p => p.RunId == runId);
+        Assert.True(steps["persist"].StartedAt >= steps["recheck"].FinishedAt);
+    }
+
+    [Fact]
     public async Task Window_expiry_keeps_partial_results_and_persists_them_with_incomplete_coverage()
     {
         var net = Host.Scope.Add(Zone, ["10.67.0.0/28"]);

@@ -15,6 +15,7 @@ using Testcontainers.PostgreSql;
 using WebScan.Contracts;
 using WebScan.Server.Infrastructure.Persistence;
 using WebScan.Server.Kernel.Ports;
+using WebScan.Server.Kernel.Scanning;
 using WebScan.Server.Kernel.Security;
 using WebScan.Server.Modules.Analytics;
 using WebScan.Server.Modules.Discovery;
@@ -46,6 +47,7 @@ public sealed class TestApp : IAsyncLifetime
     public FakeHttpHandler DefectDojo { get; } = new();
     public RecordingScanEventPublisher ScanEvents { get; } = new();
     public FakeNetworkScope NetworkScope { get; } = new();
+    public FakeRecentScans RecentScans { get; } = new();
     public IServiceProvider Services => _app!.Services;
 
     public async Task InitializeAsync()
@@ -76,6 +78,7 @@ public sealed class TestApp : IAsyncLifetime
         services.AddSingleton<IScanEventPublisher>(ScanEvents);
         services.AddSingleton<ISecretProtector, FakeSecretProtector>();
         services.AddSingleton<INetworkScopeService>(NetworkScope);
+        services.AddSingleton<IRecentScanRunReader>(RecentScans);
         services.AddHttpContextAccessor();
         services.AddScoped<ICurrentUser, HttpContextCurrentUser>();
         services.ConfigureHttpJsonOptions(o => ContractJson.Configure(o.SerializerOptions));
@@ -146,7 +149,17 @@ public sealed class TestApp : IAsyncLifetime
         Audit.Entries.Clear();
         ScanEvents.Events.Clear();
         DefectDojo.Reset();
+        RecentScans.Runs.Clear();
     }
+}
+
+/// <summary>Scanning module stand-in for the dashboard's recent scans.</summary>
+public sealed class FakeRecentScans : IRecentScanRunReader
+{
+    public List<ScanRunSummary> Runs { get; } = [];
+
+    public Task<IReadOnlyList<ScanRunSummary>> GetRecentAsync(int count, CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<ScanRunSummary>>(Runs.Take(count).ToList());
 }
 
 public sealed class ManualClock(DateTimeOffset start) : TimeProvider

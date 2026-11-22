@@ -117,6 +117,12 @@ public sealed class Host
     /// <summary>Last covering outcomes, oldest first: 'U' seen, 'D' missed (max <see cref="StateHistoryLength"/>).</summary>
     public string StateHistory { get; set; } = "";
 
+    /// <summary>Covering outcomes per UTC hour of day (index = hour, 24 entries once compared): times seen.</summary>
+    public List<int> HourlySeen { get; set; } = [];
+
+    /// <summary>Covering outcomes per UTC hour of day: times missed (with <see cref="HourlySeen"/> = time-of-day availability).</summary>
+    public List<int> HourlyMissed { get; set; } = [];
+
     /// <summary>Null until the host took part in a comparison (→ the next comparison reports it as new).</summary>
     public DateTimeOffset? ComparedAt { get; set; }
 

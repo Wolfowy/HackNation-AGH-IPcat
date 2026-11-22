@@ -102,6 +102,25 @@ export const OPERATIONS: OperationDescriptor[] = [
       rate,
     ],
   },
+  {
+    // Targets are computed server-side from the previous asset state; jobs run as DiscoverHosts / ScanPorts.
+    operation: 'RecheckMissing',
+    plane: 'Agent',
+    requiredCapability: 'port-scan',
+    inputKind: 'None',
+    parameters: [
+      { name: 'attempts', type: 'Integer', min: 1, max: 5, default: '2', description: 'Re-check rounds; each round probes only what is still missing.' },
+      {
+        name: 'delaySeconds',
+        type: 'Integer',
+        min: 0,
+        max: 3600,
+        default: '30',
+        description: 'Wait between rounds (lets briefly unreachable hosts come back).',
+      },
+      rate,
+    ],
+  },
   { operation: 'EvaluateCondition', plane: 'Server', inputKind: 'None', parameters: [] },
   { operation: 'PersistObservations', plane: 'Server', inputKind: 'None', parameters: [] },
   {

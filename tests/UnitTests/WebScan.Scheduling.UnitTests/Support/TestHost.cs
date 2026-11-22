@@ -66,6 +66,7 @@ public sealed class TestHost : IAsyncLifetime
     public FakeAgentDirectory Agents { get; } = new();
     public FakeNetworkScope Scope { get; } = new();
     public FakeDiscoveryProcessor Discovery { get; } = new();
+    public FakeRecheckTargetSource Recheck { get; } = new();
     public FakeFindingPublisher Findings { get; } = new();
     public FakeSignatureCatalog Signatures { get; } = new();
     public RecordingAuditLog Audit { get; } = new();
@@ -102,6 +103,7 @@ public sealed class TestHost : IAsyncLifetime
         services.AddSingleton<IAgentDirectory>(Agents);
         services.AddSingleton<INetworkScopeService>(Scope);
         services.AddSingleton<IDiscoveryRunProcessor>(Discovery);
+        services.AddSingleton<IRecheckTargetSource>(Recheck);
         services.AddSingleton<IFindingPublisher>(Findings);
         services.AddSingleton<ISignatureCatalog>(Signatures);
         services.AddSingleton<IAuditLog>(Audit);

@@ -5,6 +5,7 @@ import type {
   AssetAnnotation,
   Change,
   ChangeType,
+  DashboardInsights,
   DashboardSummary,
   Finding,
   Host,
@@ -24,11 +25,23 @@ export const useDashboardSummary = () =>
     refetchInterval: 60_000,
   })
 
+export const useDashboardInsights = (days = 14) =>
+  useQuery({
+    queryKey: ['dashboard', 'insights', days],
+    queryFn: ({ signal }) => api<DashboardInsights>('/api/dashboard/insights', { query: { days }, signal }),
+    refetchInterval: 60_000,
+  })
+
+/** 'interest' = highest interest score first (server default: zone/address order). */
+export type AssetSort = 'interest' | ''
+
 export interface HostListParams {
   search?: string
   status?: HostStatus | ''
   zone?: string
   networkDevice?: boolean
+  sort?: AssetSort
+  minInterest?: number
   page: number
   pageSize: number
 }
@@ -54,6 +67,8 @@ export interface ServiceListParams {
   port?: string
   serviceName?: string
   search?: string
+  sort?: AssetSort
+  minInterest?: number
   page: number
   pageSize: number
 }

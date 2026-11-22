@@ -165,7 +165,8 @@ function defaultWorkflows(): WorkflowVersion[] {
         onFailure: 'Continue',
       },
       { id: 'signatures', operation: 'ExecuteSignatures', dependsOn: ['http'], input: { fromSteps: ['http'] }, parameters: { severities: 'info,low,medium' } },
-      { id: 'persist', operation: 'PersistObservations', dependsOn: ['signatures', 'tls'] },
+      { id: 'recheck', operation: 'RecheckMissing', dependsOn: ['signatures', 'tls'], parameters: { attempts: '2', delaySeconds: '30' }, onFailure: 'Continue' },
+      { id: 'persist', operation: 'PersistObservations', dependsOn: ['recheck'] },
       { id: 'compare', operation: 'ComparePreviousScan', dependsOn: ['persist'], parameters: { missingThreshold: '3' } },
       { id: 'publish', operation: 'PublishFinding', dependsOn: ['compare'], parameters: { destination: 'internal', minSeverity: 'medium' } },
     ],
@@ -856,6 +857,16 @@ ${extra}    matchers:
     macAddress: '52:54:00:AB:CD:EF',
     macVendor: 'QEMU virtual NIC',
   })
+
+  // Time-of-day behaviour (server: TimeOfDayVariance from hourly HTTP snapshots): a maintenance page every night. Without rand().
+  const nightly = services.find((s) => s.zone === 'dmz' && s.state === 'Open' && s.http)
+  if (nightly) {
+    nightly.timeOfDayVariance = true
+    nightly.hourlyResponses = [
+      { hour: 2, seen: 6, missed: 0, response: "503 'Maintenance'" },
+      { hour: 14, seen: 6, missed: 0, response: `${nightly.http!.statusCode ?? 200} '${nightly.http!.title ?? ''}'` },
+    ]
+  }
 
   // Network devices (server rule: one MAC on hosts of 2+ zones = interfaces of one physical device). Without rand(), like the twin;
   // .1/.251/.252 are outside the generated 2–250 range.

@@ -66,6 +66,16 @@ public sealed class FakeDiscoveryProcessor : IDiscoveryRunProcessor
     }
 }
 
+/// <summary>Discovery stand-in for RecheckMissing: <see cref="Targets"/> per run (default: nothing missing), every call recorded.</summary>
+public sealed class FakeRecheckTargetSource : IRecheckTargetSource
+{
+    public Func<Guid, int, RecheckTargets> Targets { get; set; } = (_, _) => RecheckTargets.None;
+    public ConcurrentDictionary<Guid, int> Calls { get; } = new();
+
+    public Task<RecheckTargets> FindRecheckTargetsAsync(Guid scanRunId, RunCoverage coverage, CancellationToken ct = default) =>
+        Task.FromResult(Targets(scanRunId, Calls.AddOrUpdate(scanRunId, 1, (_, n) => n + 1)));
+}
+
 public sealed class FakeFindingPublisher : IFindingPublisher
 {
     public ConcurrentQueue<Guid> Published { get; } = new();

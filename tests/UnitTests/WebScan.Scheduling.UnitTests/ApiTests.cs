@@ -25,7 +25,7 @@ public sealed class ApiTests(TestHost host) : DbTestBase(host)
     public async Task Operations_expose_catalog_and_effective_capability_mapping()
     {
         var body = await Host.UserClient(Roles.Viewer).GetFromJsonAsync<JsonElement>("/api/operations");
-        Assert.Equal(10, body.GetProperty("operations").GetArrayLength());
+        Assert.Equal(11, body.GetProperty("operations").GetArrayLength());
         Assert.Equal("port-scan", body.GetProperty("capabilityMapping").GetProperty("ScanPorts").GetString());
         Assert.False(body.GetProperty("capabilityMapping").TryGetProperty("PersistObservations", out _));
     }
@@ -90,7 +90,7 @@ public sealed class ApiTests(TestHost host) : DbTestBase(host)
         var page = await viewer.GetFromJsonAsync<Paged<ScanRunDto>>("/api/scans?status=Running&pageSize=200", ContractJson.Options);
         Assert.Contains(page!.Items, r => r.Id == run.Id);
         var detail = await viewer.GetFromJsonAsync<ScanRunDto>($"/api/scans/{run.Id}", ContractJson.Options);
-        Assert.Equal(9, detail!.Steps!.Count);
+        Assert.Equal(10, detail!.Steps!.Count);
         Assert.Equal("discover", detail.Steps[0].StepId);
         Assert.Equal(WebScan.Server.Modules.Workflows.Persistence.StepStatus.Running, detail.Steps[0].Status);
         Assert.Equal(1, detail.Steps[0].JobsTotal);

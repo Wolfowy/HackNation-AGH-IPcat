@@ -10,6 +10,17 @@ public interface IScanRunStatusReader
     Task<IReadOnlyDictionary<Guid, string>> GetStatusesAsync(IReadOnlyCollection<Guid> scanRunIds, CancellationToken ct = default);
 }
 
+/// <summary>Latest scan runs for overviews (e.g. the dashboard). Implemented by the Scanning module.</summary>
+public interface IRecentScanRunReader
+{
+    /// <summary>Newest first (by creation time).</summary>
+    Task<IReadOnlyList<ScanRunSummary>> GetRecentAsync(int count, CancellationToken ct = default);
+}
+
+public sealed record ScanRunSummary(
+    Guid Id, string Name, string Status, string WorkflowKey, DateTimeOffset CreatedAt, DateTimeOffset? StartedAt, DateTimeOffset? FinishedAt,
+    bool CoverageComplete);
+
 public static class ScanRunStatusNames
 {
     public static bool IsActive(string? status) => status is "Pending" or "Running";

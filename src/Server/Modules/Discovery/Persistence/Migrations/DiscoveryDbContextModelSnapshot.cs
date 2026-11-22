@@ -258,6 +258,14 @@ namespace WebScan.Server.Modules.Discovery.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("text[]");
 
+                    b.PrimitiveCollection<List<int>>("HourlyMissed")
+                        .IsRequired()
+                        .HasColumnType("integer[]");
+
+                    b.PrimitiveCollection<List<int>>("HourlySeen")
+                        .IsRequired()
+                        .HasColumnType("integer[]");
+
                     b.Property<DateTimeOffset?>("LastScannedAt")
                         .HasColumnType("timestamp with time zone");
 

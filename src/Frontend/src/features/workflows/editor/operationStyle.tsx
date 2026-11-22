@@ -1,4 +1,4 @@
-import { Database, Diff, FingerprintPattern, Globe, Lock, Network, Radar, Send, ShieldCheck, Split, type LucideIcon } from 'lucide-react'
+import { Database, Diff, FingerprintPattern, Globe, Lock, Network, Radar, RefreshCw, Send, ShieldCheck, Split, type LucideIcon } from 'lucide-react'
 import type { OperationPlane, ScanOperation } from '@/api/types'
 import { cn } from '@/lib/utils'
 
@@ -13,6 +13,7 @@ const ICONS: Record<ScanOperation, LucideIcon> = {
   PersistObservations: Database,
   ComparePreviousScan: Diff,
   PublishFinding: Send,
+  RecheckMissing: RefreshCw,
 }
 
 /** Agent-plane (network traffic via scanner agents) vs server-plane operations. */

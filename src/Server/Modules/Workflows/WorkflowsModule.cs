@@ -27,6 +27,7 @@ public static class WorkflowsModule
         services.AddHostedService<WorkflowSeeder>();
 
         services.AddScoped<IStepExecutor, AgentStepExecutor>();
+        services.AddScoped<IStepExecutor, RecheckMissingExecutor>();
         services.AddScoped<IStepExecutor, EvaluateConditionExecutor>();
         services.AddScoped<IStepExecutor, DiscoveryStepExecutor>();
         services.AddScoped<IStepExecutor, PublishFindingExecutor>();

@@ -10,7 +10,8 @@ namespace WebScan.Server.Modules.Workflows.Execution;
 /// <summary>Agent-plane operations: turns the step input (or the run scope) into queued jobs via the planner.</summary>
 public sealed class AgentStepExecutor(TaskPlanner planner, IServiceProvider services) : IStepExecutor
 {
-    public bool CanExecute(ScanOperation operation) => OperationCatalog.Get(operation).Plane == OperationPlane.Agent;
+    public bool CanExecute(ScanOperation operation) =>
+        OperationCatalog.Get(operation).Plane == OperationPlane.Agent && operation != ScanOperation.RecheckMissing;
 
     public async Task<StepOutcome> ExecuteAsync(StepExecutionContext context, CancellationToken ct)
     {
@@ -69,6 +70,71 @@ public sealed class AgentStepExecutor(TaskPlanner planner, IServiceProvider serv
         if (plan.Unassignable > 0) message += $"; {plan.Unassignable} jobs wait for an eligible agent ({plan.UnassignableReason})";
         if (plan.OutOfScope > 0) message += $"; {plan.OutOfScope} out-of-scope targets dropped";
         return StepOutcome.Waiting(plan.JobsTotal, message);
+    }
+}
+
+/// <summary>
+/// RecheckMissing, one round per execution: asks Discovery what the run has not observed although it was known (inside the
+/// run's coverage; unstable hosts always) and queues DiscoverHosts jobs for missing hosts and ScanPorts jobs for missing endpoints
+/// (existing capabilities, no new tool). Their observations belong to the run, so a target that answers is not counted as a miss.
+/// The runtime starts the next round after <c>delaySeconds</c> until <c>attempts</c> rounds ran or nothing is missing.
+/// </summary>
+public sealed class RecheckMissingExecutor(TaskPlanner planner, ScanRunStore runs, IServiceProvider services) : IStepExecutor
+{
+    public bool CanExecute(ScanOperation operation) => operation == ScanOperation.RecheckMissing;
+
+    public async Task<StepOutcome> ExecuteAsync(StepExecutionContext context, CancellationToken ct)
+    {
+        var step = context.Step;
+        var parameters = ParameterValidator.Validate(OperationCatalog.Get(step.Operation).Parameters, step.Parameters);
+        if (!parameters.IsValid) return StepOutcome.Failed(string.Join(" ", parameters.Errors));
+        var source = services.GetService<IRecheckTargetSource>();
+        if (source is null) return StepOutcome.Skipped("IRecheckTargetSource is not registered (Discovery module missing).");
+
+        var runId = context.Run.Id;
+        var complete = !context.WindowExpired && !await runs.HasFailedJobsAsync(runId, ct);
+        var targets = await source.FindRecheckTargetsAsync(runId, await runs.CoverageAsync(runId, complete, ct), ct);
+        var round = $"Round {context.Attempt}/{parameters.Values["attempts"]}";
+        if (targets.Hosts.Count + targets.Endpoints.Count == 0) return StepOutcome.Completed($"{round}: nothing known is missing from this run.");
+
+        var defaults = context.Definition.Defaults ?? new WorkflowDefaults();
+        var retry = step.Retry ?? defaults.Retry ?? new RetryPolicy();
+        async Task<PlanResult> PlanAsync(ScanOperation operation, IReadOnlyCollection<string> hosts, string? ports)
+        {
+            var values = new Dictionary<string, string> { ["rate"] = parameters.Values["rate"] };
+            if (ports is not null) values["ports"] = ports;
+            var validated = ParameterValidator.Validate(OperationCatalog.Get(operation).Parameters, values);
+            if (!validated.IsValid) throw new PlanningException(string.Join(" ", validated.Errors));
+            return await planner.PlanAsync(new AgentStepSpec
+            {
+                ScanRunId = runId, WorkflowRunId = context.WorkflowRunId, StepId = step.Id, Operation = operation, NetworkIds = context.Run.NetworkIds,
+                Parameters = validated.Values, PreferredToolId = step.ToolId, RequiredParameters = ports is null ? [] : ["ports"],
+                Priority = context.Run.Priority, RunRateCap = context.Run.MaxRatePerSecond, NotAfter = context.Run.NotAfter,
+                TimeoutSeconds = step.TimeoutSeconds ?? defaults.TimeoutSeconds, MaxConcurrency = step.MaxConcurrency ?? defaults.MaxConcurrency,
+                MaxAttempts = retry.MaxAttempts, BackoffSeconds = retry.BackoffSeconds, BatchSize = defaults.BatchSize, Hosts = hosts,
+                TargetKeySalt = $"{context.Attempt}|{operation}|{ports}", // every round re-probes, even the same targets
+            }, ct);
+        }
+
+        var plans = new List<PlanResult>();
+        try
+        {
+            if (targets.Hosts.Count > 0) plans.Add(await PlanAsync(ScanOperation.DiscoverHosts, targets.Hosts, null));
+            // One port scan per distinct port set: each host is probed only on its own known ports.
+            foreach (var group in targets.Endpoints.GroupBy(e => e.Address, StringComparer.OrdinalIgnoreCase)
+                         .GroupBy(h => string.Join(',', h.Select(e => e.Port).Distinct().Order())))
+                plans.Add(await PlanAsync(ScanOperation.ScanPorts, group.Select(h => h.Key).ToList(), group.Key));
+        }
+        catch (PlanningException ex)
+        {
+            return StepOutcome.Failed(ex.Message);
+        }
+
+        var jobs = plans.Sum(p => p.JobsTotal);
+        var what = $"{targets.Hosts.Count} hosts ({targets.UnstableHosts} unstable), {targets.Endpoints.Count} endpoints";
+        if (jobs == 0) return StepOutcome.Completed($"{round}: {what} missing, none inside the authorized scope.");
+        var unassignable = plans.Sum(p => p.Unassignable);
+        return StepOutcome.Waiting(jobs, $"{round}: re-checking {what}; {jobs} jobs" + (unassignable > 0 ? $", {unassignable} wait for an eligible agent" : ""));
     }
 }
 

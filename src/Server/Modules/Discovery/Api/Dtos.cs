@@ -8,32 +8,57 @@ public sealed record PagedResult<T>(IReadOnlyList<T> Items, int Total, int Page,
 
 public sealed record DashboardSummaryDto(int HostsTotal, int HostsActive, int ServicesTotal, int ChangesLast24h, int FindingsOpen, DateTimeOffset? LastScanAt);
 
+/// <summary><c>GET /api/dashboard/insights</c>: what deserves attention, in one call.</summary>
+/// <param name="TopFindings">Counted findings, highest severity first, then most recent.</param>
+/// <param name="TopServices">Open services with the highest interest score (with reasons).</param>
+/// <param name="ChangesByDay">Every UTC day of the window (oldest first), also days without changes.</param>
+public sealed record DashboardInsightsDto(
+    IReadOnlyList<FindingDto> TopFindings, IReadOnlyList<ServiceDto> TopServices, IReadOnlyList<ChangeDayDto> ChangesByDay,
+    IReadOnlyList<RecentScanDto> RecentScans, int UnstableHosts, int TimeOfDayVarianceServices);
+
+/// <param name="Date">UTC day, yyyy-MM-dd.</param>
+/// <param name="ByType">Change type → count (types without changes omitted).</param>
+public sealed record ChangeDayDto(string Date, int Total, IReadOnlyDictionary<string, int> ByType);
+
+/// <param name="ChangesDetected">Changes found by the run's comparison (null: not compared).</param>
+public sealed record RecentScanDto(
+    Guid Id, string Name, string Status, string WorkflowKey, DateTimeOffset CreatedAt, DateTimeOffset? StartedAt, DateTimeOffset? FinishedAt,
+    double? DurationSeconds, bool CoverageComplete, int? ChangesDetected);
+
+/// <summary>One UTC hour of day: covering scans that saw / missed the asset; for HTTP services the usual response in that hour.</summary>
+public sealed record HourVisibilityDto(int Hour, int Seen, int Missed, string? Response = null);
+
 public sealed record AnnotationDto(string? Description, string? Classification, string? BusinessState, string? Owner, IReadOnlyList<string> Tags);
 
+/// <param name="InterestScore">Analytical priority 0–100 (max over the host's services), <paramref name="InterestReasons"/> explain it.</param>
 public sealed record HostListItemDto(
     Guid Id, string Address, IReadOnlyList<string> Hostnames, HostStatus Status, bool Unstable, DateTimeOffset FirstSeenAt,
     DateTimeOffset LastSeenAt, DateTimeOffset? LastScannedAt, int OpenPortCount, IReadOnlyList<string> Technologies, string Zone,
     AnnotationDto? Annotation, IReadOnlyList<string> Classifications, string? MacAddress, string? MacVendor, bool NetworkDevice,
-    string? NetworkDeviceConfidence);
+    string? NetworkDeviceConfidence, int InterestScore = 0, IReadOnlyList<string>? InterestReasons = null);
 
 /// <param name="DeviceInterfaces">The other zones' interfaces of the same network device (same MAC).</param>
+/// <param name="HourlyVisibility">24 UTC hours: how often covering scans saw / missed the host at that hour.</param>
 public sealed record HostDetailDto(
     Guid Id, string Address, IReadOnlyList<string> Hostnames, HostStatus Status, bool Unstable, DateTimeOffset FirstSeenAt,
     DateTimeOffset LastSeenAt, DateTimeOffset? LastScannedAt, int OpenPortCount, string Zone, AnnotationDto? Annotation,
     IReadOnlyList<string> Classifications, string? MacAddress, string? MacVendor, string? OsGuess, int ConsecutiveMisses, int StateChangeCount,
     IReadOnlyList<ServiceDto> Services, IReadOnlyList<TechnologyDto> Technologies, IReadOnlyList<CertificateDto> Certificates,
     IReadOnlyList<FindingDto> Findings, IReadOnlyList<ChangeDto> RecentChanges, bool NetworkDevice, string? NetworkDeviceConfidence,
-    IReadOnlyList<DeviceInterfaceDto> DeviceInterfaces);
+    IReadOnlyList<DeviceInterfaceDto> DeviceInterfaces, IReadOnlyList<HourVisibilityDto> HourlyVisibility, int InterestScore,
+    IReadOnlyList<string> InterestReasons);
 
 public sealed record HttpInfoDto(string Url, int? StatusCode, string? Title, string? WebServer);
 
 public sealed record TlsInfoDto(string? SubjectCommonName, string? Issuer, DateTimeOffset? NotAfter, string FingerprintSha256);
 
+/// <param name="HourlyResponses">For services with <paramref name="TimeOfDayVariance"/>: observed HTTP responses per UTC hour (null otherwise).</param>
 public sealed record ServiceDto(
     Guid Id, Guid HostId, string Address, int Port, TransportProtocol Transport, ServiceState State, string? ServiceName, string? Product,
     string? Version, string? Banner, IReadOnlyList<string> Cpe, HttpInfoDto? Http, TlsInfoDto? Tls, IReadOnlyList<string> Technologies,
     double? Confidence, string? ConfidenceMethod, bool TimeOfDayVariance, DateTimeOffset FirstSeenAt, DateTimeOffset LastSeenAt,
-    string? Url, string Zone);
+    string? Url, string Zone, int InterestScore = 0, IReadOnlyList<string>? InterestReasons = null,
+    IReadOnlyList<HourVisibilityDto>? HourlyResponses = null);
 
 /// <summary>
 /// Graph read model of <c>GET /api/topology</c> (current state): network devices → zones → subnets → hosts, plus the scan perspectives

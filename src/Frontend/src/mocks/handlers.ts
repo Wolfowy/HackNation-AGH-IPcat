@@ -2,6 +2,7 @@
 import { http, HttpResponse, type PathParams } from 'msw'
 import type {
   Change,
+  DashboardInsights,
   HostDetail,
   Network,
   NetworkDevice,
@@ -9,6 +10,7 @@ import type {
   ScanStartRequest,
   ScanWorkflowDefinition,
   ScheduleInput,
+  Service,
   Severity,
   SignatureKind,
   Topology,
@@ -43,6 +45,50 @@ function paged<T>(items: T[], url: URL, defaultPageSize = 50) {
   const page = Math.max(1, Number(url.searchParams.get('page') ?? 1))
   const pageSize = Math.min(500, Math.max(1, Number(url.searchParams.get('pageSize') ?? defaultPageSize)))
   return { items: items.slice((page - 1) * pageSize, page * pageSize), total: items.length, page, pageSize }
+}
+
+// ---------- interest score (simplified copy of Discovery/Api/InterestScore.cs) ----------
+const SEVERITY_POINTS: Record<string, number> = { critical: 45, high: 35, medium: 20, low: 10, info: 4 }
+const SENSITIVE_PORTS: Record<number, [string, number]> = {
+  21: ['FTP', 12], 22: ['SSH', 8], 23: ['Telnet', 20], 445: ['SMB', 15], 3306: ['MySQL', 15], 3389: ['RDP', 15],
+  5432: ['PostgreSQL', 15], 5900: ['VNC', 15], 6379: ['Redis', 20], 9200: ['Elasticsearch', 20], 27017: ['MongoDB', 20],
+}
+
+function interestOf(s: Service): { interestScore: number; interestReasons: string[] } {
+  const signals: [number, string][] = []
+  const findings = db.findings.filter((f) => f.hostId === s.hostId && f.port === s.port && f.status === 'Open')
+  if (findings.length) {
+    const top = findings.reduce((a, b) => ((SEVERITY_POINTS[b.severity] ?? 0) > (SEVERITY_POINTS[a.severity] ?? 0) ? b : a))
+    const more = findings.length > 1 ? ` (+${findings.length - 1} more)` : ''
+    signals.push([(SEVERITY_POINTS[top.severity] ?? 0) + Math.min(10, 3 * (findings.length - 1)), `Open ${top.severity} finding: ${top.name}${more}`])
+  }
+  const sensitive = SENSITIVE_PORTS[s.port]
+  if (sensitive) signals.push([sensitive[1], `${sensitive[0]} exposed on port ${s.port}`])
+  if (s.http && ![80, 443, 8080, 8443].includes(s.port)) signals.push([10, `Web interface on non-standard port ${s.port}`])
+  if (s.version) signals.push([5, `Version disclosed: ${s.product ?? s.serviceName} ${s.version}`])
+  if (s.tls?.notAfter && Date.parse(s.tls.notAfter) < Date.now()) signals.push([15, `TLS certificate expired on ${s.tls.notAfter.slice(0, 10)}`])
+  const age = Date.now() - Date.parse(s.firstSeenAt)
+  if (age < 7 * 86_400_000) signals.push([8, `First seen ${Math.floor(age / 86_400_000)} day(s) ago`])
+  if (db.hosts.find((h) => h.id === s.hostId)?.unstable) signals.push([5, 'Host is unstable (flapping up/down)'])
+  if (s.timeOfDayVariance) signals.push([10, 'Responds differently by time of day'])
+  signals.sort((a, b) => b[0] - a[0])
+  return { interestScore: Math.min(100, signals.reduce((n, [points]) => n + points, 0)), interestReasons: signals.map(([, reason]) => reason) }
+}
+
+const withInterest = (s: Service): Service => ({ ...s, ...interestOf(s) })
+
+/** Host score = its most interesting open service. */
+const hostInterest = (hostId: string) =>
+  db.services
+    .filter((s) => s.hostId === hostId && s.state === 'Open')
+    .map(interestOf)
+    .reduce((best, x) => (x.interestScore > best.interestScore ? x : best), { interestScore: 0, interestReasons: [] as string[] })
+
+/** ?sort=interest&minInterest=N like AssetQueries.Rank (stable: keeps the default order on ties). */
+function rankByInterest<T extends { interestScore?: number }>(items: T[], url: URL): T[] {
+  const min = Number(url.searchParams.get('minInterest') ?? 0)
+  const kept = items.filter((i) => (i.interestScore ?? 0) >= min)
+  return url.searchParams.get('sort') === 'interest' ? kept.sort((a, b) => (b.interestScore ?? 0) - (a.interestScore ?? 0)) : kept
 }
 
 /** ScanLimits.Validate() ranges (Scanning/Planning/ClaimSelector.cs). */
@@ -264,6 +310,12 @@ function dataFlowErrors(steps: ScanWorkflowDefinition['steps']): string[] {
       errors.push(`Step '${s.id}': ${s.operation} needs endpoints (host:port), but its input only has hosts without ports; read from a step with ports (${endpointProducers.join(', ')}).`)
   }
   const agentSteps = steps.filter((s) => plane(s) === 'Agent').map((s) => s.id)
+  for (const s of steps.filter((x) => x.operation === 'RecheckMissing')) {
+    if (s.input) errors.push(`Step '${s.id}': RecheckMissing computes its targets from the previous asset state (input is not allowed).`)
+    const before = ancestors(s.id)
+    const missing = agentSteps.filter((id) => byId.get(id)!.operation !== 'RecheckMissing' && !before.has(id))
+    if (missing.length) errors.push(`Step '${s.id}' (RecheckMissing) must run after every other agent step; add a dependency path from: ${missing.join(', ')}.`)
+  }
   const persist = steps.filter((s) => s.operation === 'PersistObservations').map((s) => s.id)
   for (const s of steps.filter((x) => ['PersistObservations', 'ComparePreviousScan', 'PublishFinding'].includes(x.operation))) {
     const before = ancestors(s.id)
@@ -935,6 +987,52 @@ export const handlers = [
     }),
   ),
   http.get(
+    '*/api/dashboard/insights',
+    route('read', ({ url }) => {
+      const days = Math.min(90, Math.max(1, Number(url.searchParams.get('days') ?? 14)))
+      const rank = (sev: string) => ['info', 'low', 'medium', 'high', 'critical'].indexOf(sev)
+      const today = new Date(new Date().toISOString().slice(0, 10))
+      const changesByDay = Array.from({ length: days }, (_, i) => {
+        const date = new Date(today.getTime() - (days - 1 - i) * 86_400_000).toISOString().slice(0, 10)
+        const dayChanges = db.changes.filter((c) => c.detectedAt.slice(0, 10) === date)
+        const byType: Record<string, number> = {}
+        for (const c of dayChanges) byType[c.type] = (byType[c.type] ?? 0) + 1
+        return { date, total: dayChanges.length, byType }
+      })
+      const insights: DashboardInsights = {
+        topFindings: db.findings
+          .filter((f) => f.status === 'Open')
+          .sort((a, b) => rank(b.severity) - rank(a.severity) || b.matchedAt.localeCompare(a.matchedAt))
+          .slice(0, 10),
+        topServices: db.services
+          .filter((s) => s.state === 'Open')
+          .map(withInterest)
+          .filter((s) => (s.interestScore ?? 0) > 0)
+          .sort((a, b) => (b.interestScore ?? 0) - (a.interestScore ?? 0))
+          .slice(0, 10),
+        changesByDay,
+        recentScans: [...db.runs]
+          .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+          .slice(0, 10)
+          .map((r) => ({
+            id: r.id,
+            name: r.name,
+            status: r.status,
+            workflowKey: r.workflowKey,
+            createdAt: r.createdAt,
+            startedAt: r.startedAt,
+            finishedAt: r.finishedAt,
+            durationSeconds: r.startedAt && r.finishedAt ? (Date.parse(r.finishedAt) - Date.parse(r.startedAt)) / 1000 : undefined,
+            coverageComplete: r.coverageComplete,
+            changesDetected: r.finishedAt ? db.changes.filter((c) => c.scanRunId === r.id).length : undefined,
+          })),
+        unstableHosts: db.hosts.filter((h) => h.unstable && h.status !== 'Gone').length,
+        timeOfDayVarianceServices: db.services.filter((s) => s.timeOfDayVariance && s.state === 'Open').length,
+      }
+      return HttpResponse.json(insights)
+    }),
+  ),
+  http.get(
     '*/api/assets/hosts',
     route('read', ({ url }) => {
       const search = url.searchParams.get('search')?.toLowerCase()
@@ -942,7 +1040,7 @@ export const handlers = [
       const zone = url.searchParams.get('zone')
       const { deviceOf } = inferDevices(db.hosts)
       const items = db.hosts
-        .map((h) => withDeviceFlags(h, deviceOf))
+        .map((h) => ({ ...withDeviceFlags(h, deviceOf), ...hostInterest(h.id) }))
         .filter(
           (h) =>
             (!status || h.status === status) &&
@@ -951,7 +1049,7 @@ export const handlers = [
             (!search || [h.address, ...h.hostnames, ...h.technologies.map(String)].some((v) => v.toLowerCase().includes(search))),
         )
         .sort((a, b) => a.zone.localeCompare(b.zone) || a.address.localeCompare(b.address)) // server order: zone, then address
-      return HttpResponse.json(paged(items, url))
+      return HttpResponse.json(paged(rankByInterest(items, url), url))
     }),
   ),
   http.get(
@@ -962,8 +1060,13 @@ export const handlers = [
       const { deviceOf } = inferDevices(db.hosts)
       const detail: HostDetail = {
         ...withDeviceFlags(host, deviceOf),
+        ...hostInterest(host.id),
         deviceInterfaces: deviceOf.get(host.id)?.interfaces.filter((i) => i.hostId !== host.id) ?? [],
-        services: db.services.filter((s) => s.hostId === host.id),
+        services: db.services.filter((s) => s.hostId === host.id).map(withInterest),
+        // Nightly (02h) and afternoon (14h) scans; unstable hosts are missed now and then at night.
+        hourlyVisibility: Array.from({ length: 24 }, (_, hour) =>
+          hour === 2 ? { hour, seen: host.unstable ? 3 : 6, missed: host.unstable ? 3 : 0 } : hour === 14 ? { hour, seen: 6, missed: 0 } : { hour, seen: 0, missed: 0 },
+        ),
         technologies: db.hostTechnologies[host.id] ?? [],
         certificates: db.certificates[host.id] ?? [],
         findings: db.findings.filter((f) => f.hostId === host.id),
@@ -989,14 +1092,16 @@ export const handlers = [
       const port = url.searchParams.get('port')
       const serviceName = url.searchParams.get('serviceName')?.toLowerCase()
       const zone = url.searchParams.get('zone')
-      const items = db.services.filter(
-        (s) =>
-          (!port || String(s.port) === port) &&
-          (!zone || s.zone === zone) &&
-          (!serviceName || (s.serviceName ?? '').toLowerCase().includes(serviceName)) &&
-          (!search || [s.address, s.product ?? '', s.http?.title ?? ''].some((v) => v.toLowerCase().includes(search))),
-      )
-      return HttpResponse.json(paged(items, url))
+      const items = db.services
+        .filter(
+          (s) =>
+            (!port || String(s.port) === port) &&
+            (!zone || s.zone === zone) &&
+            (!serviceName || (s.serviceName ?? '').toLowerCase().includes(serviceName)) &&
+            (!search || [s.address, s.product ?? '', s.http?.title ?? ''].some((v) => v.toLowerCase().includes(search))),
+        )
+        .map(withInterest)
+      return HttpResponse.json(paged(rankByInterest(items, url), url))
     }),
   ),
   http.get(

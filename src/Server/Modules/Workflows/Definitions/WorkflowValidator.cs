@@ -122,6 +122,15 @@ public static partial class WorkflowValidator
             if (step.Operation != ScanOperation.PersistObservations && !ancestors.Overlaps(persistIds))
                 errors.Add($"{at} needs a PersistObservations step before it (it records coverage and waits for all results).");
         }
+
+        // RecheckMissing re-probes what the other agent steps missed, so it can only run after all of them.
+        foreach (var step in steps.Where(s => s.Operation == ScanOperation.RecheckMissing))
+        {
+            var ancestors = DagScheduler.Ancestors(steps, step.Id);
+            var notBefore = agentSteps.Where(id => byId[id].Operation != ScanOperation.RecheckMissing && !ancestors.Contains(id)).ToList();
+            if (notBefore.Count > 0)
+                errors.Add($"Step '{step.Id}' (RecheckMissing) must run after every other agent step; add a dependency path from: {string.Join(", ", notBefore)}.");
+        }
     }
 
     /// <summary>JSON may carry explicit nulls for collections; treat them as empty.</summary>
@@ -148,6 +157,8 @@ public static partial class WorkflowValidator
             errors.Add($"{at}: server step {step.Operation} has no targets (input/when are not allowed).");
         if (descriptor.InputKind == TargetKind.Endpoints && step.Input is null) errors.Add($"{at}: {step.Operation} needs endpoints from input.fromSteps.");
         if (step.When is not null && step.Input is null && !isServer) errors.Add($"{at}: 'when' is evaluated on the step input and requires input.fromSteps.");
+        if (step.Operation == ScanOperation.RecheckMissing && step.Input is not null)
+            errors.Add($"{at}: RecheckMissing computes its targets from the previous asset state (input is not allowed).");
 
         if (step.Input is not null)
         {

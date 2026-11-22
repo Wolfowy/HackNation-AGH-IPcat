@@ -20,6 +20,7 @@ import { ChangesTable } from '../changes/ChangesTable'
 import { FindingsTable } from '../findings/FindingsTable'
 import { ConfidenceBar } from './ConfidenceBar'
 import { NetworkDeviceBadge, UnstableBadge } from './HostsPage'
+import { AvailabilityStrip, InterestBadge, ResponseStrip, TimeOfDayBadge } from './insight'
 import { ServicesTable } from './ServicesTable'
 
 interface AnnotationValues {
@@ -104,6 +105,7 @@ export function HostDetailPage() {
               <span className="flex items-center gap-3 font-mono">
                 {h.address} <StatusBadge status={h.status} />
                 {h.unstable && <UnstableBadge />}
+                {h.services.some((s) => s.timeOfDayVariance) && <TimeOfDayBadge />}
                 {h.networkDevice && <NetworkDeviceBadge confidence={h.networkDeviceConfidence} />}
               </span>
             }
@@ -131,6 +133,19 @@ export function HostDetailPage() {
                     ['Last seen', `${formatDateTime(h.lastSeenAt)} (${formatRelative(h.lastSeenAt)})`],
                     ['Last scanned', formatDateTime(h.lastScannedAt)],
                     ['Open ports', h.openPortCount],
+                    [
+                      'Interest',
+                      <div data-testid="host-interest">
+                        <InterestBadge score={h.interestScore} reasons={h.interestReasons} />
+                        {!!h.interestReasons?.length && (
+                          <ul className="text-muted-foreground mt-1 list-disc pl-4 text-xs">
+                            {h.interestReasons.map((r) => (
+                              <li key={r}>{r}</li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>,
+                    ],
                     ['Tags', <Chips values={h.annotation?.tags} />],
                   ]}
                 />
@@ -138,6 +153,35 @@ export function HostDetailPage() {
             </Card>
             <AnnotationEditor host={h} />
           </div>
+          {(!!h.hourlyVisibility?.length || h.services.some((s) => s.hourlyResponses?.length)) && (
+            <Card className="mt-6" data-testid="time-of-day">
+              <CardHeader>
+                <CardTitle>Time of day</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4 text-sm">
+                {!!h.hourlyVisibility?.length && (
+                  <div>
+                    <div className="mb-1 font-medium">Availability by hour (UTC)</div>
+                    <AvailabilityStrip hours={h.hourlyVisibility} />
+                    <p className="text-muted-foreground mt-1 text-xs">
+                      Green: always answered · amber: sometimes missed · red: never answered · grey: never scanned at that hour.
+                      {h.unstable && ' Unstable hosts are re-checked before a scan counts them as missing.'}
+                    </p>
+                  </div>
+                )}
+                {h.services
+                  .filter((s) => s.hourlyResponses?.length)
+                  .map((s) => (
+                    <div key={s.id}>
+                      <div className="mb-1 flex items-center gap-2 font-medium">
+                        HTTP response of <span className="font-mono">:{s.port}</span> by hour (UTC) {s.timeOfDayVariance && <TimeOfDayBadge />}
+                      </div>
+                      <ResponseStrip hours={s.hourlyResponses!} />
+                    </div>
+                  ))}
+              </CardContent>
+            </Card>
+          )}
           {h.deviceInterfaces.length > 0 && (
             <Card className="mt-6" data-testid="device-interfaces">
               <CardHeader>
