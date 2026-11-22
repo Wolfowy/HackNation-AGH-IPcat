@@ -1,4 +1,4 @@
-# WebScan — Distributed Network Discovery & Attack Surface Intelligence
+# ip_cat — Distributed Network Discovery & Attack Surface Intelligence
 
 Rozproszona platforma inwentaryzacji i obserwacji infrastruktury sieciowej (10 000+ adresów) w architekturze Controller–Agent.
 
