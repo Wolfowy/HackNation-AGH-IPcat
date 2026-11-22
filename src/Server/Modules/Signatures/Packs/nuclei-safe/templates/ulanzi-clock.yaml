@@ -1,0 +1,26 @@
+id: ulanzi-clock
+
+info:
+  name: Ulanzi Clock Detect
+  author: fabaff
+  severity: info
+  description: Ulanzi Clock panel was detected.
+  metadata:
+    max-request: 1
+  tags: panel,ulanzi,iot,discovery,pack-nuclei-safe
+
+http:
+  - method: GET
+    path:
+      - '{{BaseURL}}'
+
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '<title>Ulanzi Clock</title>'
+
+      - type: status
+        status:
+          - 200

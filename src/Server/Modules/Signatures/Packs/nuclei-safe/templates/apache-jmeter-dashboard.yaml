@@ -1,0 +1,40 @@
+id: apache-jmeter-dashboard
+
+info:
+  name: Apache JMeter Dashboard Login Panel - Detect
+  author: tess
+  severity: info
+  description: Apache JMeter Dashboard login panel was detected.
+  classification:
+    cvss-metrics: CVSS:3.0/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:N
+    cwe-id: CWE-200
+    cpe: cpe:2.3:a:apache:jmeter:*:*:*:*:*:*:*:*
+  metadata:
+    verified: true
+    max-request: 1
+    vendor: apache
+    product: jmeter
+    shodan-query:
+      - title:"Apache JMeter Dashboard"
+      - http.title:"apache jmeter dashboard"
+    fofa-query: title="apache jmeter dashboard"
+    google-query: intitle:"apache jmeter dashboard"
+  tags: apache,jmeter,panel,discovery,pack-nuclei-safe
+
+http:
+  - method: GET
+    path:
+      - '{{BaseURL}}'
+
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: body
+        words:
+          - "Apache JMeter Dashboard"
+          - "Dashboard"
+        condition: and
+
+      - type: status
+        status:
+          - 200

@@ -1,0 +1,29 @@
+id: carel-plantvisor-panel
+
+info:
+  name: CAREL Pl@ntVisor Panel
+  author: Hardik-Solanki
+  severity: info
+  description: Carel plantvisor panel was detected.
+  metadata:
+    max-request: 1
+    shodan-query: title:"CAREL Pl@ntVisor"
+  tags: panels,scada,iot,carel,discovery,pack-nuclei-safe
+
+http:
+  - method: GET
+    path:
+      - '{{BaseURL}}'
+
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'CAREL Pl@ntVisor'
+          - 'alt="CAREL'
+        condition: or
+
+      - type: status
+        status:
+          - 200

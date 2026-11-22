@@ -117,7 +117,7 @@ public static partial class SignatureValidator
             if (tech is not null)
             {
                 if (string.IsNullOrWhiteSpace(tech.Name) || tech.Name.Length > 100) errors.Add("outcome.technology.name is required (max 100 chars).");
-                if (tech.VersionField is not null && !ConditionFields.All.Contains(tech.VersionField))
+                if (tech.VersionField is not null && !ConditionFields.IsValid(tech.VersionField))
                     errors.Add($"outcome.technology.versionField: unknown field '{tech.VersionField}'.");
             }
             if (outcome.ClassificationTag is not null && !TagPattern().IsMatch(outcome.ClassificationTag))

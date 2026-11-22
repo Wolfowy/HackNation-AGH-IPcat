@@ -1,0 +1,28 @@
+id: snapdrop-detect
+
+info:
+  name: Snapdrop Detect
+  author: tess
+  severity: info
+  description: Snapdrop panel was detected.
+  metadata:
+    verified: true
+    max-request: 1
+    shodan-query: http.title:"Snapdrop"
+  tags: iot,snapdrop,discovery,pack-nuclei-safe
+
+http:
+  - method: GET
+    path:
+      - '{{BaseURL}}'
+
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'content="Snapdrop"'
+
+      - type: status
+        status:
+          - 200

@@ -1,0 +1,3077 @@
+{
+  "name": "nuclei-safe",
+  "version": "v10.5.2",
+  "tag": "pack-nuclei-safe",
+  "source": "https://github.com/projectdiscovery/nuclei-templates/archive/refs/tags/v10.5.2.tar.gz",
+  "sourceSha256": "016b7abbf931d4d1a851a5a568e44510dc61691dc8a5202e3b24e701515ec574",
+  "license": "MIT",
+  "attribution": "Templates by ProjectDiscovery, Inc. and the nuclei-templates contributors (https://github.com/projectdiscovery/nuclei-templates), MIT License (see LICENSE.md). Modified: pack tag added, signature digest removed.",
+  "generator": "scripts/build-nuclei-safe-pack.cs",
+  "counts": {
+    "iot": 49,
+    "panel": 305,
+    "technology": 156
+  },
+  "templates": [
+    {
+      "id": "activemq-panel",
+      "name": "Apache ActiveMQ Exposure",
+      "category": "panel",
+      "path": "http/exposed-panels/activemq-panel.yaml"
+    },
+    {
+      "id": "adfs-detect",
+      "name": "ADFS Detect",
+      "category": "technology",
+      "path": "http/technologies/adfs-detect.yaml"
+    },
+    {
+      "id": "adguard-panel",
+      "name": "AdGuard Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/adguard-panel.yaml"
+    },
+    {
+      "id": "aem-cms",
+      "name": "AEM Finder",
+      "category": "technology",
+      "path": "http/technologies/aem-cms.yaml"
+    },
+    {
+      "id": "aem-crx-package-manager",
+      "name": "Adobe AEM CRX Package Manager - Panel Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/adobe/aem-crx-package-manager.yaml"
+    },
+    {
+      "id": "aem-detect",
+      "name": "Favicon based AEM Detection",
+      "category": "technology",
+      "path": "http/technologies/aem-detect.yaml"
+    },
+    {
+      "id": "aem-forms-panel",
+      "name": "Adobe Experience Manager Forms - Panel",
+      "category": "panel",
+      "path": "http/exposed-panels/adobe/aem-forms-panel.yaml"
+    },
+    {
+      "id": "aem-sling-login",
+      "name": "Adobe Experience Manager Sling User Login - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/adobe/aem-sling-login.yaml"
+    },
+    {
+      "id": "airflow-admin-login-panel",
+      "name": "Apache Airflow Admin Login Panel",
+      "category": "panel",
+      "path": "http/exposed-panels/airflow-panel.yaml"
+    },
+    {
+      "id": "ampguard-wifi-setup",
+      "name": "AmpGuard Wifi Setup",
+      "category": "iot",
+      "path": "http/iot/ampguard-wifi-setup.yaml"
+    },
+    {
+      "id": "angular-detect",
+      "name": "Angular detect",
+      "category": "technology",
+      "path": "http/technologies/angular-detect.yaml"
+    },
+    {
+      "id": "ansible-awx-detect",
+      "name": "Ansible AWX Detection",
+      "category": "technology",
+      "path": "http/technologies/ansible-awx-detect.yaml"
+    },
+    {
+      "id": "apache-activemq-artemis-detect",
+      "name": "Apache ActiveMQ Artemis - Detection",
+      "category": "technology",
+      "path": "http/technologies/apache/apache-activemq-artemis-detect.yaml"
+    },
+    {
+      "id": "apache-allura-detect",
+      "name": "Apache Allura - Detection",
+      "category": "technology",
+      "path": "http/technologies/apache/apache-allura-detect.yaml"
+    },
+    {
+      "id": "apache-answer-detect",
+      "name": "Apache Answer - Detection",
+      "category": "technology",
+      "path": "http/technologies/apache/apache-answer-detect.yaml"
+    },
+    {
+      "id": "apache-apisix-panel",
+      "name": "Apache APISIX Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/apache/apache-apisix-panel.yaml"
+    },
+    {
+      "id": "apache-apollo-panel",
+      "name": "Apache Apollo Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/apache/apache-apollo-panel.yaml"
+    },
+    {
+      "id": "apache-axis-detect",
+      "name": "apache-axis-detect",
+      "category": "technology",
+      "path": "http/technologies/apache/apache-axis-detect.yaml"
+    },
+    {
+      "id": "apache-casbin-mcp-gateway-detect",
+      "name": "Apache Casbin MCP Gateway - Detection",
+      "category": "technology",
+      "path": "http/technologies/apache/apache-casbin-mcp-gateway-detect.yaml"
+    },
+    {
+      "id": "apache-cloudstack-detect",
+      "name": "Apache CloudStack - Detect",
+      "category": "technology",
+      "path": "http/technologies/apache/apache-cloudstack-detect.yaml"
+    },
+    {
+      "id": "apache-cocoon-detect",
+      "name": "Apache Cocoon detect",
+      "category": "technology",
+      "path": "http/technologies/apache/apache-cocoon-detect.yaml"
+    },
+    {
+      "id": "apache-detect",
+      "name": "Apache Detection",
+      "category": "technology",
+      "path": "http/technologies/apache/apache-detect.yaml"
+    },
+    {
+      "id": "apache-dubbo-detect",
+      "name": "Apache dubbo detect",
+      "category": "technology",
+      "path": "http/technologies/apache/apache-dubbo-detect.yaml"
+    },
+    {
+      "id": "apache-gravitino-detect",
+      "name": "Apache Gravitino - Detect",
+      "category": "technology",
+      "path": "http/technologies/apache/apache-gravitino-detect.yaml"
+    },
+    {
+      "id": "apache-guacamole",
+      "name": "Apache Guacamole Login Page and version detection",
+      "category": "technology",
+      "path": "http/technologies/apache/apache-guacamole.yaml"
+    },
+    {
+      "id": "apache-hertzbeat-detect",
+      "name": "Apache Hertzbeat - Detect",
+      "category": "technology",
+      "path": "http/technologies/apache/apache-hertzbeat-detect.yaml"
+    },
+    {
+      "id": "apache-hive-detect",
+      "name": "Apache Hive - Detect",
+      "category": "technology",
+      "path": "http/technologies/apache/apache-hive-detect.yaml"
+    },
+    {
+      "id": "apache-inlong-detect",
+      "name": "Apache InLong - Detect",
+      "category": "technology",
+      "path": "http/technologies/apache/apache-inlong-detect.yaml"
+    },
+    {
+      "id": "apache-jmeter-dashboard",
+      "name": "Apache JMeter Dashboard Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/apache-jmeter-dashboard.yaml"
+    },
+    {
+      "id": "apache-jspwiki-detect",
+      "name": "Apache JSPWiki - Detect",
+      "category": "technology",
+      "path": "http/technologies/apache/apache-jspwiki-detect.yaml"
+    },
+    {
+      "id": "apache-karaf-panel",
+      "name": "Apache Karaf Detect",
+      "category": "technology",
+      "path": "http/technologies/apache/apache-karaf-panel.yaml"
+    },
+    {
+      "id": "apache-kyuubi-detect",
+      "name": "Apache Kyuubi - Detect",
+      "category": "technology",
+      "path": "http/technologies/apache/apache-kyuubi-detect.yaml"
+    },
+    {
+      "id": "apache-livy-detect",
+      "name": "Apache Livy - Detect",
+      "category": "technology",
+      "path": "http/technologies/apache/apache-livy-detect.yaml"
+    },
+    {
+      "id": "apache-mesos-panel",
+      "name": "Apache Mesos - Panel Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/apache/apache-mesos-panel.yaml"
+    },
+    {
+      "id": "apache-ofbiz-detect",
+      "name": "Apache OFBiz - Detect",
+      "category": "technology",
+      "path": "http/technologies/apache/apache-ofbiz-detect.yaml"
+    },
+    {
+      "id": "apache-ozone-detect",
+      "name": "Apache Ozone - Detect",
+      "category": "technology",
+      "path": "http/technologies/apache/apache-ozone-detect.yaml"
+    },
+    {
+      "id": "apache-pinot-detect",
+      "name": "Apache Pinot - Detect",
+      "category": "technology",
+      "path": "http/technologies/apache/apache-pinot-detect.yaml"
+    },
+    {
+      "id": "apache-shenyu-detect",
+      "name": "Apache Shenyu Gateway Management System - Detect",
+      "category": "technology",
+      "path": "http/technologies/apache/apache-shenyu-detect.yaml"
+    },
+    {
+      "id": "apache-skywalking-horizon-ui-detect",
+      "name": "Apache SkyWalking Horizon UI - Detect",
+      "category": "technology",
+      "path": "http/technologies/apache/apache-skywalking-horizon-ui-detect.yaml"
+    },
+    {
+      "id": "apache-sling-detect",
+      "name": "Apache Sling - Detect",
+      "category": "technology",
+      "path": "http/technologies/apache/apache-sling-detect.yaml"
+    },
+    {
+      "id": "apache-streampark-detect",
+      "name": "Apache Streampark - Detect",
+      "category": "technology",
+      "path": "http/technologies/apache/apache-streampark-detect.yaml"
+    },
+    {
+      "id": "apache-streampipes-detect",
+      "name": "Apache StreamPipes - Detect",
+      "category": "technology",
+      "path": "http/technologies/apache/apache-streampipes-detect.yaml"
+    },
+    {
+      "id": "apache-syncope-detect",
+      "name": "Apache Syncope - Detect",
+      "category": "technology",
+      "path": "http/technologies/apache/apache-syncope-detect.yaml"
+    },
+    {
+      "id": "apache-tapestry-detect",
+      "name": "Apache Tapestry Framework detect",
+      "category": "technology",
+      "path": "http/technologies/apache/apache-tapestry-detect.yaml"
+    },
+    {
+      "id": "apache-tika-detect",
+      "name": "Apache Tika - Detection",
+      "category": "technology",
+      "path": "http/technologies/apache/apache-tika-detect.yaml"
+    },
+    {
+      "id": "apache-zeppelin-detect",
+      "name": "Apache Zeppelin detect",
+      "category": "technology",
+      "path": "http/technologies/apache/apache-zeppelin-detect.yaml"
+    },
+    {
+      "id": "apc-ups-login",
+      "name": "APC UPS Login - Detect",
+      "category": "iot",
+      "path": "http/iot/apc-ups-login.yaml"
+    },
+    {
+      "id": "argocd-login",
+      "name": "Argo CD Login Panel",
+      "category": "panel",
+      "path": "http/exposed-panels/argocd-login.yaml"
+    },
+    {
+      "id": "aruba-airwave-panel",
+      "name": "Aruba AirWave Management Platform - Login Panel",
+      "category": "panel",
+      "path": "http/exposed-panels/aruba-airwave-panel.yaml"
+    },
+    {
+      "id": "aruba-via-vpn-panel",
+      "name": "Aruba VIA VPN - Login Panel",
+      "category": "panel",
+      "path": "http/exposed-panels/aruba-via-vpn-panel.yaml"
+    },
+    {
+      "id": "aspnet-version-detect",
+      "name": "AspNet Version Disclosure - Detect",
+      "category": "technology",
+      "path": "http/technologies/microsoft/aspnet-version-detect.yaml"
+    },
+    {
+      "id": "asus-router-panel",
+      "name": "Asus Router Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/asus-router-panel.yaml"
+    },
+    {
+      "id": "atlassian-bamboo-panel",
+      "name": "Atlassian Bamboo Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/atlassian-bamboo-panel.yaml"
+    },
+    {
+      "id": "authelia-panel",
+      "name": "Authelia Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/authelia-panel.yaml"
+    },
+    {
+      "id": "authentik-panel",
+      "name": "Authentik Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/authentik-panel.yaml"
+    },
+    {
+      "id": "automation-direct",
+      "name": "AutomationDirect Panel - Detect",
+      "category": "iot",
+      "path": "http/iot/automation-direct.yaml"
+    },
+    {
+      "id": "avtech-avn801-camera-panel",
+      "name": "Avtech AVN801 Network Camera Admin Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/avtech-avn801-camera-panel.yaml"
+    },
+    {
+      "id": "aws-opensearch-login",
+      "name": "AWS OpenSearch Login - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/aws-opensearch-login.yaml"
+    },
+    {
+      "id": "azure-kubernetes-service",
+      "name": "Detect Azure Kubernetes Service",
+      "category": "technology",
+      "path": "http/technologies/azure-kubernetes-service.yaml"
+    },
+    {
+      "id": "bamboo-detect",
+      "name": "Bamboo - Detection",
+      "category": "technology",
+      "path": "http/technologies/bamboo-detect.yaml"
+    },
+    {
+      "id": "barracuda-message-panel",
+      "name": "Barracuda Message Archiver - Panel Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/barracuda-message-panel.yaml"
+    },
+    {
+      "id": "barracuda-panel",
+      "name": "Barracuda SSL VPN Log In",
+      "category": "panel",
+      "path": "http/exposed-panels/barracuda-panel.yaml"
+    },
+    {
+      "id": "bigip-apm-detect",
+      "name": "BIGIP APM - Detect",
+      "category": "technology",
+      "path": "http/technologies/bigip-apm-detect.yaml"
+    },
+    {
+      "id": "bigip-config-utility",
+      "name": "BIG-IP Configuration Utility detected",
+      "category": "technology",
+      "path": "http/technologies/bigip-config-utility-detect.yaml"
+    },
+    {
+      "id": "bigip-detect",
+      "name": "BIGIP - Detection",
+      "category": "technology",
+      "path": "http/technologies/bigip-detect.yaml"
+    },
+    {
+      "id": "bigip-icontrol-rest",
+      "name": "F5 BIG-IP iControl REST Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/bigip-rest-panel.yaml"
+    },
+    {
+      "id": "bitbucket-panel",
+      "name": "Bitbucket Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/bitbucket-panel.yaml"
+    },
+    {
+      "id": "bitnami-apache-solr",
+      "name": "Bitnami Apache Solr Stack - Detection",
+      "category": "technology",
+      "path": "http/technologies/apache/bitnami-apache-solr.yaml"
+    },
+    {
+      "id": "bitrix-login",
+      "name": "Bitrix Login Panel",
+      "category": "panel",
+      "path": "http/exposed-panels/bitrix-panel.yaml"
+    },
+    {
+      "id": "bitwarden-vault-panel",
+      "name": "Bitwarden Web Vault Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/bitwarden-vault-panel.yaml"
+    },
+    {
+      "id": "bookstack-panel",
+      "name": "BookStack Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/bookstack-panel.yaml"
+    },
+    {
+      "id": "brother-printer-detect",
+      "name": "Brother Printer",
+      "category": "iot",
+      "path": "http/iot/brother-printer-detect.yaml"
+    },
+    {
+      "id": "brother-printer-panel",
+      "name": "Brother Printer Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/brother-printer-panel.yaml"
+    },
+    {
+      "id": "bugzilla-detect",
+      "name": "Bugzilla - Detect",
+      "category": "technology",
+      "path": "http/technologies/bugzilla-detect.yaml"
+    },
+    {
+      "id": "cacti-panel",
+      "name": "Cacti Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/cacti-panel.yaml"
+    },
+    {
+      "id": "cae-monitor-panel",
+      "name": "CAE Monitoring - Login Panel",
+      "category": "iot",
+      "path": "http/iot/cae-monitor-panel.yaml"
+    },
+    {
+      "id": "canon-ir-adv",
+      "name": "Canon iR-ADV Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/canon/canon-ir-adv.yaml"
+    },
+    {
+      "id": "carel-plantvisor-panel",
+      "name": "CAREL Pl@ntVisor Panel",
+      "category": "iot",
+      "path": "http/iot/carel-plantvisor-panel.yaml"
+    },
+    {
+      "id": "carestream-vue-detect",
+      "name": "CARESTREAM Vue Motion Detector",
+      "category": "technology",
+      "path": "http/technologies/carestream-vue-detect.yaml"
+    },
+    {
+      "id": "checkpoint-mobile-detect",
+      "name": "Check Point Mobile SSL VPN - Detect",
+      "category": "technology",
+      "path": "http/technologies/checkpoint-mobile-detect.yaml"
+    },
+    {
+      "id": "checkpoint-panel",
+      "name": "Checkpoint Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/checkpoint-panel.yaml"
+    },
+    {
+      "id": "cisco-ace-4710-device-manager",
+      "name": "Cisco ACE 4710 Device Manager Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/cisco/cisco-ace-4710-device-manager.yaml"
+    },
+    {
+      "id": "cisco-anyconnect-vpn",
+      "name": "Cisco AnyConnect VPN Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/cisco/cisco-anyconnect-vpn.yaml"
+    },
+    {
+      "id": "cisco-asa-detect",
+      "name": "Cisco ASA - Detect",
+      "category": "technology",
+      "path": "http/technologies/cisco-asa-detect.yaml"
+    },
+    {
+      "id": "cisco-asa-panel",
+      "name": "Cisco ASA VPN Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/cisco/cisco-asa-panel.yaml"
+    },
+    {
+      "id": "cisco-cm-panel",
+      "name": "Cisco Unified CM Console - Panel",
+      "category": "panel",
+      "path": "http/exposed-panels/cisco-cm-panel.yaml"
+    },
+    {
+      "id": "cisco-edge-340",
+      "name": "Cisco Edge 340 Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/cisco/cisco-edge-340.yaml"
+    },
+    {
+      "id": "cisco-esa-panel",
+      "name": "Cisco Email Security Appliance - Panel",
+      "category": "panel",
+      "path": "http/exposed-panels/cisco-esa-panel.yaml"
+    },
+    {
+      "id": "cisco-expressway-panel",
+      "name": "CISCO Expressway Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/cisco/cisco-expressway-panel.yaml"
+    },
+    {
+      "id": "cisco-finesse-detect",
+      "name": "Cisco Finesse - Detect",
+      "category": "technology",
+      "path": "http/technologies/cisco-finesse-detect.yaml"
+    },
+    {
+      "id": "cisco-finesse-login",
+      "name": "Cisco Finesse Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/cisco/cisco-finesse-login.yaml"
+    },
+    {
+      "id": "cisco-firepower-panel",
+      "name": "Cisco Secure Firewall Management Center - Panel",
+      "category": "panel",
+      "path": "http/exposed-panels/cisco-firepower-panel.yaml"
+    },
+    {
+      "id": "cisco-integrated-login",
+      "name": "Cisco Integrated Management Controller Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/cisco/cisco-integrated-login.yaml"
+    },
+    {
+      "id": "cisco-ise-admin-panel",
+      "name": "Cisco ISE Admin Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/cisco/cisco-ise-admin-panel.yaml"
+    },
+    {
+      "id": "cisco-onprem-panel",
+      "name": "Cisco Smart Software Manager On-Prem Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/cisco/cisco-onprem-panel.yaml"
+    },
+    {
+      "id": "cisco-prime-infrastructure",
+      "name": "Cisco Prime Infrastructure Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/cisco/cisco-prime-infrastructure.yaml"
+    },
+    {
+      "id": "cisco-prime-license-manager-panel",
+      "name": "Cisco Prime License Manager - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/cisco-prime-license-manager-panel.yaml"
+    },
+    {
+      "id": "cisco-sd-wan",
+      "name": "Cisco SD-WAN Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/cisco/cisco-sd-wan.yaml"
+    },
+    {
+      "id": "cisco-secure-cn",
+      "name": "Cisco Secure CN Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/cisco/cisco-secure-cn.yaml"
+    },
+    {
+      "id": "cisco-secure-desktop",
+      "name": "Cisco Secure Desktop Installation Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/cisco/cisco-secure-desktop.yaml"
+    },
+    {
+      "id": "cisco-servicegrid",
+      "name": "Cisco ServiceGrid Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/cisco/cisco-servicegrid.yaml"
+    },
+    {
+      "id": "cisco-systems-login",
+      "name": "Cisco Systems Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/cisco/cisco-systems-login.yaml"
+    },
+    {
+      "id": "cisco-telepresence-mcu-panel",
+      "name": "Cisco TelePresence MCU Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/cisco/cisco-telepresence-mcu-panel.yaml"
+    },
+    {
+      "id": "cisco-ucm-detect",
+      "name": "Cisco Unified Communications Manager - Detect",
+      "category": "technology",
+      "path": "http/technologies/cisco-ucm-version.yaml"
+    },
+    {
+      "id": "cisco-ucm-selfcare-portal",
+      "name": "Cisco Unified Communications Self-Service User Portal - Detection",
+      "category": "panel",
+      "path": "http/exposed-panels/cisco-ucm-selfcare-portal.yaml"
+    },
+    {
+      "id": "cisco-ucs-kvm-login",
+      "name": "Cisco UCS Manager KVM Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/cisco/cisco-ucs-kvm-login.yaml"
+    },
+    {
+      "id": "cisco-unity-panel",
+      "name": "Cisco Unity Connection Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/cisco-unity-panel.yaml"
+    },
+    {
+      "id": "cisco-vmanage-login",
+      "name": "Cisco vManage Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/cisco/cisco-vmanage-login.yaml"
+    },
+    {
+      "id": "cisco-webex-meetings-panel",
+      "name": "Cisco Webex Meetings - Panel",
+      "category": "panel",
+      "path": "http/exposed-panels/cisco/cisco-webex-meetings-detect.yaml"
+    },
+    {
+      "id": "cisco-webui-login",
+      "name": "Cisco Web UI Login - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/cisco-webui-login.yaml"
+    },
+    {
+      "id": "cisco-webvpn-detect",
+      "name": "Cisco WebVPN Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/cisco/cisco-webvpn-detect.yaml"
+    },
+    {
+      "id": "citrix-adc-gateway-panel",
+      "name": "Citrix ADC Gateway Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/citrix-adc-gateway-panel.yaml"
+    },
+    {
+      "id": "citrix-hypervisor-page",
+      "name": "Citrix Hypervisor Page Detection",
+      "category": "technology",
+      "path": "http/technologies/citrix-hypervisor-page.yaml"
+    },
+    {
+      "id": "citrix-vpn-detect",
+      "name": "Citrix VPN Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/citrix-vpn-detect.yaml"
+    },
+    {
+      "id": "cloudflare-nginx-detect",
+      "name": "Cloudflare Nginx Detect",
+      "category": "technology",
+      "path": "http/technologies/cloudflare-nginx-detect.yaml"
+    },
+    {
+      "id": "cockpit-detect",
+      "name": "Detect Agentejo Cockpit",
+      "category": "technology",
+      "path": "http/technologies/cockpit-detect.yaml"
+    },
+    {
+      "id": "cockpit-project-panel",
+      "name": "Cockpit Project Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/cockpit-project-panel.yaml"
+    },
+    {
+      "id": "codian-mcu-login",
+      "name": "Codian MCU Login Panel - Detect",
+      "category": "iot",
+      "path": "http/iot/codian-mcu-login.yaml"
+    },
+    {
+      "id": "concrete5-panel",
+      "name": "Concrete5 Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/concrete5/concrete5-panel.yaml"
+    },
+    {
+      "id": "confluence-detect",
+      "name": "Confluence Detection",
+      "category": "technology",
+      "path": "http/technologies/confluence-detect.yaml"
+    },
+    {
+      "id": "contao-login-panel",
+      "name": "Contao Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/contao-login-panel.yaml"
+    },
+    {
+      "id": "couchdb-detect",
+      "name": "CouchDB - Detect",
+      "category": "technology",
+      "path": "http/technologies/couchdb-detect.yaml"
+    },
+    {
+      "id": "couchdb-fauxton",
+      "name": "Apache CouchDB Fauxton Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/couchdb-fauxton.yaml"
+    },
+    {
+      "id": "cpanel-api-codes",
+      "name": "cPanel API Codes Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/cpanel-api-codes.yaml"
+    },
+    {
+      "id": "cpanel-login-detect",
+      "name": "cPanel Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/cpanel-login-detect.yaml"
+    },
+    {
+      "id": "craft-cms-detect",
+      "name": "Craft CMS Detect",
+      "category": "technology",
+      "path": "http/technologies/craft-cms-detect.yaml"
+    },
+    {
+      "id": "craftcms-admin-panel",
+      "name": "Craft CMS Admin Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/craftcms-admin-panel.yaml"
+    },
+    {
+      "id": "cups-detect",
+      "name": "CUPS - Detect",
+      "category": "technology",
+      "path": "http/technologies/cups-detect.yaml"
+    },
+    {
+      "id": "cyberpanel-panel",
+      "name": "Cyberpanel Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/cyberpanel-panel.yaml"
+    },
+    {
+      "id": "dahua-web-panel",
+      "name": "Dahua Web Service Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/dahua-web-panel.yaml"
+    },
+    {
+      "id": "ddwrt-panel",
+      "name": "DD-WRT - Router Panel",
+      "category": "panel",
+      "path": "http/exposed-panels/ddwrt-panel.yaml"
+    },
+    {
+      "id": "default-apache-miracle",
+      "name": "Default Apache Miracle Linux Web Server Page",
+      "category": "technology",
+      "path": "http/technologies/default-apache-miracle.yaml"
+    },
+    {
+      "id": "default-apache-shiro",
+      "name": "Apache Shiro Default Page",
+      "category": "technology",
+      "path": "http/technologies/default-apache-shiro.yaml"
+    },
+    {
+      "id": "default-apache-test-all",
+      "name": "Apache HTTP Server Test Page",
+      "category": "technology",
+      "path": "http/technologies/apache/default-apache-test-all.yaml"
+    },
+    {
+      "id": "default-apache-test-page",
+      "name": "Apache HTTP Server Test Page",
+      "category": "technology",
+      "path": "http/technologies/apache/default-apache-test-page.yaml"
+    },
+    {
+      "id": "default-asp-net-page",
+      "name": "ASP.Net Default Page",
+      "category": "technology",
+      "path": "http/technologies/default-asp-net-page.yaml"
+    },
+    {
+      "id": "default-cakephp-page",
+      "name": "CakePHP Default Page",
+      "category": "technology",
+      "path": "http/technologies/default-cakephp-page.yaml"
+    },
+    {
+      "id": "default-codeigniter-page",
+      "name": "Default CodeIgniter Page",
+      "category": "technology",
+      "path": "http/technologies/default-codeigniter-page.yaml"
+    },
+    {
+      "id": "default-django-page",
+      "name": "Django Default Page",
+      "category": "technology",
+      "path": "http/technologies/default-django-page.yaml"
+    },
+    {
+      "id": "default-glassfish-server-page",
+      "name": "GlassFish Server Default Page",
+      "category": "technology",
+      "path": "http/technologies/default-glassfish-server-page.yaml"
+    },
+    {
+      "id": "default-jetty-page",
+      "name": "Jetty Default Page",
+      "category": "technology",
+      "path": "http/technologies/default-jetty-page.yaml"
+    },
+    {
+      "id": "default-nginx-page",
+      "name": "Nginx Default Test Page",
+      "category": "technology",
+      "path": "http/technologies/nginx/default-nginx-page.yaml"
+    },
+    {
+      "id": "default-openresty",
+      "name": "OpenResty Default Page",
+      "category": "technology",
+      "path": "http/technologies/default-openresty.yaml"
+    },
+    {
+      "id": "default-parallels-plesk",
+      "name": "Default Parallels Plesk Panel Page",
+      "category": "technology",
+      "path": "http/technologies/default-parallels-plesk.yaml"
+    },
+    {
+      "id": "default-plesk-page",
+      "name": "Plesk Default Test Page",
+      "category": "technology",
+      "path": "http/technologies/default-plesk-page.yaml"
+    },
+    {
+      "id": "default-symfony-page",
+      "name": "Symfony Default Page",
+      "category": "technology",
+      "path": "http/technologies/default-symfony-page.yaml"
+    },
+    {
+      "id": "default-websphere-liberty",
+      "name": "WebSphere Liberty Default Page",
+      "category": "technology",
+      "path": "http/technologies/default-websphere-liberty.yaml"
+    },
+    {
+      "id": "dell-idrac",
+      "name": "Dell IDRAC Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/dell-idrac.yaml"
+    },
+    {
+      "id": "digi-router-panel",
+      "name": "Digi International Router - Login Panel",
+      "category": "panel",
+      "path": "http/exposed-panels/digi-router-panel.yaml"
+    },
+    {
+      "id": "directadmin-login-panel",
+      "name": "DirectAdmin Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/directadmin-login-panel.yaml"
+    },
+    {
+      "id": "directus-detect",
+      "name": "Directus - Detect",
+      "category": "technology",
+      "path": "http/technologies/directus-detect.yaml"
+    },
+    {
+      "id": "django-admin-panel",
+      "name": "Python Django Admin Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/django-admin-panel.yaml"
+    },
+    {
+      "id": "docker-registry-browser-detect",
+      "name": "Docker Registry Browser - Detect",
+      "category": "technology",
+      "path": "http/technologies/docker-registry-browser-detect.yaml"
+    },
+    {
+      "id": "docker-registry-ui-detect",
+      "name": "Docker Registry UI - Detect",
+      "category": "technology",
+      "path": "http/technologies/docker-registry-ui-detect.yaml"
+    },
+    {
+      "id": "dokuwiki-panel",
+      "name": "Dokuwiki Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/dokuwiki-panel.yaml"
+    },
+    {
+      "id": "dolibarr-panel",
+      "name": "Dolibarr Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/dolibarr-panel.yaml"
+    },
+    {
+      "id": "drone-ci-panel",
+      "name": "Drone CI Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/drone-ci-panel.yaml"
+    },
+    {
+      "id": "drupal-detect",
+      "name": "Drupal - Detect",
+      "category": "technology",
+      "path": "http/technologies/drupal-detect.yaml"
+    },
+    {
+      "id": "drupal-login",
+      "name": "Drupal Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/drupal-login.yaml"
+    },
+    {
+      "id": "elasticsearch-sql-client-detect",
+      "name": "Elasticsearch - SQL Client Detection",
+      "category": "technology",
+      "path": "http/technologies/elasticsearch-sql-client-detect.yaml"
+    },
+    {
+      "id": "envision-gateway",
+      "name": "EnvisionGateway Scheduler Panel - Detect",
+      "category": "iot",
+      "path": "http/iot/envision-gateway.yaml"
+    },
+    {
+      "id": "epmp-login",
+      "name": "ePMP 2000 Login Panel - Detect",
+      "category": "iot",
+      "path": "http/iot/epmp-login.yaml"
+    },
+    {
+      "id": "epson-wf-series",
+      "name": "Epson WF Series Detection",
+      "category": "iot",
+      "path": "http/iot/epson-wf-series.yaml"
+    },
+    {
+      "id": "esxi-system",
+      "name": "ESXi System Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/esxi-system.yaml"
+    },
+    {
+      "id": "etic-telecom-panel",
+      "name": "ETIC Telecom Device Login - Panel",
+      "category": "iot",
+      "path": "http/iot/etic-telecom-panel.yaml"
+    },
+    {
+      "id": "express-default-page",
+      "name": "Express Default Page",
+      "category": "technology",
+      "path": "http/technologies/express-default-page.yaml"
+    },
+    {
+      "id": "f5-admin-interface",
+      "name": "F5 Admin Interface - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/f5-admin-interface.yaml"
+    },
+    {
+      "id": "f5-next-central-manager",
+      "name": "F5 Next Central Manager Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/fortinet/f5-next-central-manager.yaml"
+    },
+    {
+      "id": "fiberhome-router-detect",
+      "name": "Fiberhome Router - Detect",
+      "category": "technology",
+      "path": "http/technologies/fiberhome-router-detect.yaml"
+    },
+    {
+      "id": "flock-safety-camera-panel",
+      "name": "Flock Safety Camera Admin Panel - Detect",
+      "category": "iot",
+      "path": "http/iot/flock-safety-camera-panel.yaml"
+    },
+    {
+      "id": "fortimail-login",
+      "name": "Fortinet FortiMail Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/fortinet/fortimail-panel.yaml"
+    },
+    {
+      "id": "fortinet-fortianalyzer-panel",
+      "name": "Fortinet FortiAnalyzer - Login Panel",
+      "category": "panel",
+      "path": "http/exposed-panels/fortinet-fortianalyzer-panel.yaml"
+    },
+    {
+      "id": "fortinet-fortiddos-panel",
+      "name": "Fortinet FortiDDoS Panel",
+      "category": "panel",
+      "path": "http/exposed-panels/fortinet/fortinet-fortiddos-panel.yaml"
+    },
+    {
+      "id": "fortinet-fortigate-panel",
+      "name": "Fortinet FortiGate SSL VPN Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/fortinet/fortinet-fortigate-panel.yaml"
+    },
+    {
+      "id": "fortinet-fortimanager-panel",
+      "name": "Fortinet FortiManager Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/fortinet/fortinet-fortimanager-panel.yaml"
+    },
+    {
+      "id": "fortinet-fortinac-panel",
+      "name": "Fortinet FortiNAC Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/fortinet/fortinet-fortinac-panel.yaml"
+    },
+    {
+      "id": "fortinet-panel",
+      "name": "Fortinet Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/fortinet/fortinet-panel.yaml"
+    },
+    {
+      "id": "fortiweb-login",
+      "name": "Fortinet FortiWeb Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/fortinet/fortiweb-panel.yaml"
+    },
+    {
+      "id": "freeipa-panel",
+      "name": "FreeIPA Identity Management Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/freeipa-panel.yaml"
+    },
+    {
+      "id": "froxlor-detect",
+      "name": "Froxlor Detect",
+      "category": "technology",
+      "path": "http/technologies/froxlor-detect.yaml"
+    },
+    {
+      "id": "froxlor-management-panel",
+      "name": "Froxlor Server Management Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/froxlor-management-panel.yaml"
+    },
+    {
+      "id": "fuji-xerox-internet-service",
+      "name": "Fuji Xerox Internet Services Panel - Detect",
+      "category": "iot",
+      "path": "http/iot/fuji-xerox-internet-service.yaml"
+    },
+    {
+      "id": "fuji-xerox-printer-detect",
+      "name": "Fuji Xerox Printer Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/fuji-xerox-printer-detect.yaml"
+    },
+    {
+      "id": "gargoyle-router",
+      "name": "Gargoyle Router Management Utility Admin Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/gargoyle-router.yaml"
+    },
+    {
+      "id": "gargoyle-router-detect",
+      "name": "Gargoyle Router Management Utility - Detect",
+      "category": "iot",
+      "path": "http/iot/gargoyle-router-detect.yaml"
+    },
+    {
+      "id": "ghost-panel",
+      "name": "Ghost Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/ghost-panel.yaml"
+    },
+    {
+      "id": "gitea-detect",
+      "name": "Gitea Detect",
+      "category": "technology",
+      "path": "http/technologies/gitea-detect.yaml"
+    },
+    {
+      "id": "gitea-login",
+      "name": "Gitea Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/gitea-login.yaml"
+    },
+    {
+      "id": "gitlab-detect",
+      "name": "Gitlab Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/gitlab-detect.yaml"
+    },
+    {
+      "id": "gitlab-explore",
+      "name": "GitLab Instance Explore - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/gitlab-explore.yaml"
+    },
+    {
+      "id": "gitlab-saml",
+      "name": "Gitlab SAML - Detection",
+      "category": "panel",
+      "path": "http/exposed-panels/gitlab-saml.yaml"
+    },
+    {
+      "id": "globalprotect-panel",
+      "name": "Palo Alto Networks GlobalProtect Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/globalprotect-panel.yaml"
+    },
+    {
+      "id": "glpi-project_glpi",
+      "name": "GLPI Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/glpi-panel.yaml"
+    },
+    {
+      "id": "glpi-status-page",
+      "name": "GLPI Status Page - Detect",
+      "category": "technology",
+      "path": "http/technologies/glpi-status-page.yaml"
+    },
+    {
+      "id": "gogs-panel",
+      "name": "Gogs Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/gogs-panel.yaml"
+    },
+    {
+      "id": "gpon-router-detect",
+      "name": "GPON Home Gateway - Detect",
+      "category": "iot",
+      "path": "http/iot/gpon-router-detect.yaml"
+    },
+    {
+      "id": "grafana-detect",
+      "name": "Grafana Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/grafana-detect.yaml"
+    },
+    {
+      "id": "grandstream-device-configuration",
+      "name": "Grandstream Device Configuration",
+      "category": "iot",
+      "path": "http/iot/grandstream-device-configuration.yaml"
+    },
+    {
+      "id": "grandstream-grp-panel",
+      "name": "Grandstream GRP Panel - Detect",
+      "category": "iot",
+      "path": "http/iot/grandstream-grp-panel.yaml"
+    },
+    {
+      "id": "graylog-api-browser",
+      "name": "Detect Graylog REST API",
+      "category": "technology",
+      "path": "http/technologies/graylog-api-browser.yaml"
+    },
+    {
+      "id": "graylog-panel",
+      "name": "Graylog Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/graylog-panel.yaml"
+    },
+    {
+      "id": "harbor-detect",
+      "name": "Harbor Detect",
+      "category": "technology",
+      "path": "http/technologies/harbor-detect.yaml"
+    },
+    {
+      "id": "harbor-panel",
+      "name": "Harbor Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/harbor-panel.yaml"
+    },
+    {
+      "id": "hashicorp-consul-agent",
+      "name": "Hashicorp Consul Agent - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/hashicorp-consul-agent.yaml"
+    },
+    {
+      "id": "hashicorp-consul-webgui",
+      "name": "HashiCorp Consul Web UI Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/hashicorp-consul-webgui.yaml"
+    },
+    {
+      "id": "hashicorp-vault-detect",
+      "name": "HashiCorp Vault Detect",
+      "category": "technology",
+      "path": "http/technologies/hashicorp-vault-detect.yaml"
+    },
+    {
+      "id": "heatmiser-wifi-thermostat",
+      "name": "Heatmiser Wifi Thermostat Panel - Detect",
+      "category": "iot",
+      "path": "http/iot/heatmiser-wifi-thermostat.yaml"
+    },
+    {
+      "id": "hestia-panel",
+      "name": "Hestia Control Panel Login - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/hestia-panel.yaml"
+    },
+    {
+      "id": "hikvision-detect",
+      "name": "Hikvision Panel",
+      "category": "technology",
+      "path": "http/technologies/hikvision-detect.yaml"
+    },
+    {
+      "id": "homeworks-illumination",
+      "name": "HomeWorks Illumination Web Keypad",
+      "category": "iot",
+      "path": "http/iot/homeworks-illumination.yaml"
+    },
+    {
+      "id": "honeywell-building-control",
+      "name": "Honeywell Building Control",
+      "category": "iot",
+      "path": "http/iot/honeywell-building-control.yaml"
+    },
+    {
+      "id": "horde-login-panel",
+      "name": "Horde Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/horde-login-panel.yaml"
+    },
+    {
+      "id": "horde-webmail-login",
+      "name": "Horde Webmail Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/horde-webmail-login.yaml"
+    },
+    {
+      "id": "hp-blade-system",
+      "name": "HP BladeSystem Onboard Administrator Panel - Detector",
+      "category": "technology",
+      "path": "http/technologies/hp-blade-admin-detect.yaml"
+    },
+    {
+      "id": "hp-color-laserjet-detect",
+      "name": "HP Color LaserJet Detection",
+      "category": "iot",
+      "path": "http/iot/hp-color-laserjet-detect.yaml"
+    },
+    {
+      "id": "hp-device-info-detect",
+      "name": "HP Device Info Detection",
+      "category": "iot",
+      "path": "http/iot/hp-device-info-detect.yaml"
+    },
+    {
+      "id": "hp-ilo-5",
+      "name": "Hewlett Packard Integrated Lights Out 5 Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/hp-ilo-5.yaml"
+    },
+    {
+      "id": "hp-laserjet-detect",
+      "name": "HP LaserJet Professional Panel - Detect",
+      "category": "iot",
+      "path": "http/iot/hp-laserjet-detect.yaml"
+    },
+    {
+      "id": "hp-media-vault-detect",
+      "name": "HP Media Vault Detect",
+      "category": "technology",
+      "path": "http/technologies/hp-media-vault-detect.yaml"
+    },
+    {
+      "id": "hp-service-manager",
+      "name": "HP Service Manager Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/hp-service-manager.yaml"
+    },
+    {
+      "id": "hp-virtual-connect-manager",
+      "name": "HP Virtual Connect Manager Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/hp-virtual-connect-manager.yaml"
+    },
+    {
+      "id": "huawei-hg532e-panel",
+      "name": "Huawei HG532e Router Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/huawei-hg532e-panel.yaml"
+    },
+    {
+      "id": "huawei-home-gateway",
+      "name": "HUAWEI Home Gateway HG658d",
+      "category": "iot",
+      "path": "http/iot/huawei-home-gateway.yaml"
+    },
+    {
+      "id": "hue-personal-wireless-panel",
+      "name": "HUE Personal Wireless Lighting Panel",
+      "category": "iot",
+      "path": "http/iot/hue-personal-wireless-panel.yaml"
+    },
+    {
+      "id": "ibm-websphere-admin-panel",
+      "name": "IBM WebSphere Application Server Community Edition Admin Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/ibm/ibm-websphere-admin-panel.yaml"
+    },
+    {
+      "id": "ibm-websphere-panel",
+      "name": "IBM WebSphere Portal Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/ibm/ibm-websphere-panel.yaml"
+    },
+    {
+      "id": "icinga-web-login",
+      "name": "Icinga Web 2 Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/icinga-web-login.yaml"
+    },
+    {
+      "id": "ilo-detect",
+      "name": "HP iLO",
+      "category": "technology",
+      "path": "http/technologies/ilo-detect.yaml"
+    },
+    {
+      "id": "influxdb-panel",
+      "name": "InfluxDB Admin Interface Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/influxdb-panel.yaml"
+    },
+    {
+      "id": "influxdb-version-detect",
+      "name": "InfluxDB Version Information - Detect",
+      "category": "technology",
+      "path": "http/technologies/influxdb-version-detect.yaml"
+    },
+    {
+      "id": "iobroker-detect",
+      "name": "ioBroker - Detect",
+      "category": "technology",
+      "path": "http/technologies/iobroker-detect.yaml"
+    },
+    {
+      "id": "ip-webcam",
+      "name": "IP Webcam Viewer Page - Detect",
+      "category": "iot",
+      "path": "http/iot/ip-webcam.yaml"
+    },
+    {
+      "id": "iptime-router",
+      "name": "ipTIME Router Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/iptime-router.yaml"
+    },
+    {
+      "id": "ivanti-connect-secure-panel",
+      "name": "Ivanti Connect Secure Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/ivanti-connect-secure-panel.yaml"
+    },
+    {
+      "id": "ivanti-csa-panel",
+      "name": "Ivanti(R) Cloud Services Appliance - Panel",
+      "category": "panel",
+      "path": "http/exposed-panels/ivanti-csa-panel.yaml"
+    },
+    {
+      "id": "ivanti-endpoint-manager",
+      "name": "Ivanti Endpoint Manager - Detect",
+      "category": "technology",
+      "path": "http/technologies/ivanti/ivanti-endpoint-manager.yaml"
+    },
+    {
+      "id": "ivanti-epm-detect",
+      "name": "Ivanti Endpoint Manager (EPM) - Detect",
+      "category": "technology",
+      "path": "http/technologies/ivanti-epm-detect.yaml"
+    },
+    {
+      "id": "ivanti-sentry-panel",
+      "name": "Ivanti Sentry Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/ivanti-sentry-panel.yaml"
+    },
+    {
+      "id": "ivanti-traffic-manager-panel",
+      "name": "Ivanti Traffic Manager Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/ivanti-traffic-manager-panel.yaml"
+    },
+    {
+      "id": "ivanti-xtraction-detect",
+      "name": "Ivanti Xtraction - Detect",
+      "category": "technology",
+      "path": "http/technologies/ivanti/ivanti-xtraction-detect.yaml"
+    },
+    {
+      "id": "jboss-admin-console-panel",
+      "name": "JBoss AS/EAP Admin Console - Panel",
+      "category": "panel",
+      "path": "http/exposed-panels/jboss/jboss-admin-console-panel.yaml"
+    },
+    {
+      "id": "jboss-detect",
+      "name": "JBoss detected",
+      "category": "technology",
+      "path": "http/technologies/jboss-detect.yaml"
+    },
+    {
+      "id": "jboss-jbpm-admin",
+      "name": "JBoss jBPM Administration Console Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/jboss/jboss-jbpm-admin.yaml"
+    },
+    {
+      "id": "jboss-juddi-panel",
+      "name": "JBoss WS JUDDI Console Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/jboss/jboss-juddi.yaml"
+    },
+    {
+      "id": "jboss-soa-platform",
+      "name": "JBoss SOA Platform Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/jboss/jboss-soa-platform.yaml"
+    },
+    {
+      "id": "jenkins-api-panel",
+      "name": "Jenkins API Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/jenkins-api-panel.yaml"
+    },
+    {
+      "id": "jenkins-detect",
+      "name": "Jenkins Detection",
+      "category": "technology",
+      "path": "http/technologies/jenkins-detect.yaml"
+    },
+    {
+      "id": "jenkins-login",
+      "name": "Jenkins Login Detected",
+      "category": "panel",
+      "path": "http/exposed-panels/jenkins-login.yaml"
+    },
+    {
+      "id": "jfrog-login",
+      "name": "JFrog Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/jfrog-login.yaml"
+    },
+    {
+      "id": "jira-detect",
+      "name": "Jira Detect",
+      "category": "technology",
+      "path": "http/technologies/jira-detect.yaml"
+    },
+    {
+      "id": "jira-serverinfo",
+      "name": "Jira Rest API Server Information",
+      "category": "technology",
+      "path": "http/technologies/jira-serverinfo.yaml"
+    },
+    {
+      "id": "joomla-detect",
+      "name": "Joomla! Detect",
+      "category": "technology",
+      "path": "http/technologies/joomla-detect.yaml"
+    },
+    {
+      "id": "joomla-panel",
+      "name": "Joomla! Panel",
+      "category": "panel",
+      "path": "http/exposed-panels/joomla-panel.yaml"
+    },
+    {
+      "id": "juniper-panel",
+      "name": "Juniper J-Web Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/juniper-panel.yaml"
+    },
+    {
+      "id": "kafka-center-login",
+      "name": "Apache Kafka Control Center Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/kafka-center-login.yaml"
+    },
+    {
+      "id": "kafka-connect-ui",
+      "name": "Apache Kafka Connect UI Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/kafka-connect-ui.yaml"
+    },
+    {
+      "id": "kafka-consumer-monitor",
+      "name": "Apache Kafka Consumer Offset Monitor Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/kafka-consumer-monitor.yaml"
+    },
+    {
+      "id": "kafka-manager-panel",
+      "name": "Kafka Manager Panel",
+      "category": "technology",
+      "path": "http/technologies/apache/kafka-manager-panel.yaml"
+    },
+    {
+      "id": "kafka-monitoring",
+      "name": "Apache Kafka Monitor Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/kafka-monitoring.yaml"
+    },
+    {
+      "id": "kafka-topics-ui",
+      "name": "Apache Kafka Topics Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/kafka-topics-ui.yaml"
+    },
+    {
+      "id": "kentico-login",
+      "name": "Kentico Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/kentico-login.yaml"
+    },
+    {
+      "id": "kevinlab-device-detect",
+      "name": "KevinLAB Devices Detection",
+      "category": "iot",
+      "path": "http/iot/kevinlab-device-detect.yaml"
+    },
+    {
+      "id": "keycloak-admin-panel",
+      "name": "Keycloak Admin Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/keycloak-admin-panel.yaml"
+    },
+    {
+      "id": "kibana-panel",
+      "name": "Kibana Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/kibana-panel.yaml"
+    },
+    {
+      "id": "kong-detect",
+      "name": "Detect Kong",
+      "category": "technology",
+      "path": "http/technologies/kong-detect.yaml"
+    },
+    {
+      "id": "kubernetes-dashboard",
+      "name": "Kubernetes Dashboard Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/kubernetes-dashboard.yaml"
+    },
+    {
+      "id": "kubernetes-enterprise-manager",
+      "name": "Kubernetes Enterprise Manager Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/kubernetes-enterprise-manager.yaml"
+    },
+    {
+      "id": "kubernetes-mirantis",
+      "name": "Mirantis Kubernetes Engine Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/kubernetes-mirantis.yaml"
+    },
+    {
+      "id": "kubernetes-operational-view-detect",
+      "name": "Kubernetes Operational View Detect",
+      "category": "technology",
+      "path": "http/technologies/kubernetes-operational-view-detect.yaml"
+    },
+    {
+      "id": "kubernetes-version",
+      "name": "Kubernetes Version Exposure",
+      "category": "technology",
+      "path": "http/technologies/kubernetes/kubernetes-version.yaml"
+    },
+    {
+      "id": "kyocera-printer-panel",
+      "name": "Kyocera Printer Panel - Detect",
+      "category": "iot",
+      "path": "http/iot/kyocera-printer-panel.yaml"
+    },
+    {
+      "id": "lancom-router-panel",
+      "name": "Lancom Router Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/lancom-router-panel.yaml"
+    },
+    {
+      "id": "laravel-login-panel",
+      "name": "Laravel Login - Panel Detection",
+      "category": "panel",
+      "path": "http/exposed-panels/laravel-login-panel.yaml"
+    },
+    {
+      "id": "lexmark-detect",
+      "name": "Lexmark Device Detect",
+      "category": "technology",
+      "path": "http/technologies/lexmark-detect.yaml"
+    },
+    {
+      "id": "librenms-login",
+      "name": "LibreNMS Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/librenms-login.yaml"
+    },
+    {
+      "id": "liferay-portal",
+      "name": "Liferay Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/liferay-portal.yaml"
+    },
+    {
+      "id": "lighttpd-default",
+      "name": "lighttpd Default Page",
+      "category": "technology",
+      "path": "http/technologies/default-lighttpd-page.yaml"
+    },
+    {
+      "id": "lighttpd-detect",
+      "name": "Lighttpd Web Server - Detect",
+      "category": "technology",
+      "path": "http/technologies/lighttpd-detect.yaml"
+    },
+    {
+      "id": "lighttpd-placeholder-page",
+      "name": "Lighttpd Placeholder Page",
+      "category": "technology",
+      "path": "http/technologies/default-lighttpd-placeholder-page.yaml"
+    },
+    {
+      "id": "linksys-wifi-login",
+      "name": "Linksys Smart Wi-Fi Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/linksys-wifi-login.yaml"
+    },
+    {
+      "id": "litellm-swagger-detect",
+      "name": "LiteLLM API - Swagger UI Detection",
+      "category": "technology",
+      "path": "http/technologies/litellm-swagger-detect.yaml"
+    },
+    {
+      "id": "liveview-axis-camera",
+      "name": "AXIS Network Camera Live View - Detect",
+      "category": "iot",
+      "path": "http/iot/liveview-axis-camera.yaml"
+    },
+    {
+      "id": "loytec-device",
+      "name": "Loytec Device Info Detection",
+      "category": "iot",
+      "path": "http/iot/loytec-device.yaml"
+    },
+    {
+      "id": "luci-login-detection",
+      "name": "LuCi Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/luci-login-detection.yaml"
+    },
+    {
+      "id": "magento-admin-panel",
+      "name": "Magento Admin Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/magento-admin-panel.yaml"
+    },
+    {
+      "id": "magento-detect",
+      "name": "Magento Detect",
+      "category": "technology",
+      "path": "http/technologies/magento-detect.yaml"
+    },
+    {
+      "id": "magento-version-detect",
+      "name": "Magento Version Detect",
+      "category": "technology",
+      "path": "http/technologies/magento-version-detect.yaml"
+    },
+    {
+      "id": "manageengine-adaudit",
+      "name": "ZOHO ManageEngine ADAudit/ADManager Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/zoho/manageengine-adaudit.yaml"
+    },
+    {
+      "id": "manageengine-adselfservice",
+      "name": "ZOHO ManageEngine ADSelfService Plus - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/zoho/manageengine-adselfservice.yaml"
+    },
+    {
+      "id": "manageengine-analytics",
+      "name": "ZOHO ManageEngine Analytics Plus Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/zoho/manageengine-analytics.yaml"
+    },
+    {
+      "id": "manageengine-apex-helpdesk",
+      "name": "ZOHO ManageEngine APEX IT Help-Desk Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/zoho/manageengine-apex-helpdesk.yaml"
+    },
+    {
+      "id": "manageengine-applications-manager",
+      "name": "ZOHO ManageEngine Applications Manager Panel - Detected",
+      "category": "panel",
+      "path": "http/exposed-panels/zoho/manageengine-applications-manager.yaml"
+    },
+    {
+      "id": "manageengine-assetexplorer",
+      "name": "ZOHO ManageEngine AssetExplorer Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/zoho/manageengine-assetexplorer.yaml"
+    },
+    {
+      "id": "manageengine-desktop",
+      "name": "ZOHO ManageEngine Desktop Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/zoho/manageengine-desktop.yaml"
+    },
+    {
+      "id": "manageengine-exchangereporter",
+      "name": "ZOHO ManageEngine Exchange Reporter Plus Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/zoho/manageengine-exchangereporter.yaml"
+    },
+    {
+      "id": "manageengine-keymanagerplus",
+      "name": "ZOHO ManageEngine KeyManagerPlus Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/zoho/manageengine-keymanagerplus.yaml"
+    },
+    {
+      "id": "manageengine-network-config",
+      "name": "Zoho ManageEngine Network Configuration Manager Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/zoho/manageengine-network-config.yaml"
+    },
+    {
+      "id": "manageengine-opmanager",
+      "name": "ZOHO ManageEngine OpManager Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/zoho/manageengine-opmanager.yaml"
+    },
+    {
+      "id": "manageengine-servicedesk",
+      "name": "ZOHO ManageEngine ServiceDesk Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/zoho/manageengine-servicedesk.yaml"
+    },
+    {
+      "id": "manageengine-supportcenter",
+      "name": "ZOHO ManageEngine SupportCenter Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/zoho/manageengine-supportcenter.yaml"
+    },
+    {
+      "id": "mattermost-panel",
+      "name": "Mattermost Login - Panel",
+      "category": "panel",
+      "path": "http/exposed-panels/mattermost-panel.yaml"
+    },
+    {
+      "id": "meshcentral-login",
+      "name": "MeshCentral Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/meshcentral-login.yaml"
+    },
+    {
+      "id": "metabase-panel",
+      "name": "Metabase Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/metabase-panel.yaml"
+    },
+    {
+      "id": "microsoft-exchange-panel",
+      "name": "Microsoft Exchange Admin Center Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/microsoft-exchange-panel.yaml"
+    },
+    {
+      "id": "microsoft-iis-8",
+      "name": "Microsoft Internet Information Services 8",
+      "category": "technology",
+      "path": "http/technologies/microsoft-iis-8.yaml"
+    },
+    {
+      "id": "microsoft-iis-version",
+      "name": "Microsoft IIS version detect",
+      "category": "technology",
+      "path": "http/technologies/microsoft/microsoft-iis-version.yaml"
+    },
+    {
+      "id": "microsoft-sharepoint-detect",
+      "name": "Microsoft SharePoint Detect",
+      "category": "technology",
+      "path": "http/technologies/microsoft/microsoft-sharepoint-detect.yaml"
+    },
+    {
+      "id": "mikrotik-httpproxy",
+      "name": "MikroTik httpproxy",
+      "category": "technology",
+      "path": "http/technologies/mikrotik-httpproxy.yaml"
+    },
+    {
+      "id": "mikrotik-routeros",
+      "name": "MikroTik Router OS Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/mikrotik/mikrotik-routeros.yaml"
+    },
+    {
+      "id": "minio-aistor-detect",
+      "name": "MinIO AIStor Console - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/minio-aistor-detect.yaml"
+    },
+    {
+      "id": "minio-browser",
+      "name": "MinIO Browser Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/minio-browser.yaml"
+    },
+    {
+      "id": "minio-console",
+      "name": "MinIO Console Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/minio-console.yaml"
+    },
+    {
+      "id": "mlflow-panel",
+      "name": "MLflow Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/mlflow-panel.yaml"
+    },
+    {
+      "id": "mobileiron-sentry",
+      "name": "MobileIron Sentry Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/mobileiron-sentry.yaml"
+    },
+    {
+      "id": "mobotix-guest-camera",
+      "name": "MOBOTIX Guest Camera Live View - Detect",
+      "category": "iot",
+      "path": "http/iot/mobotix-guest-camera.yaml"
+    },
+    {
+      "id": "moodle-workplace-panel",
+      "name": "Moodle Workplace Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/moodle-workplace-panel.yaml"
+    },
+    {
+      "id": "moxa-vpn-router-panel",
+      "name": "Moxa OnCell VPN - Login Panel",
+      "category": "iot",
+      "path": "http/iot/moxa-vpn-router-panel.yaml"
+    },
+    {
+      "id": "ms-exchange-server",
+      "name": "Microsoft Exchange Server Detect",
+      "category": "technology",
+      "path": "http/technologies/microsoft/ms-exchange-server.yaml"
+    },
+    {
+      "id": "ms-exchange-web-service",
+      "name": "Microsoft Exchange Web Service - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/ms-exchange-web-service.yaml"
+    },
+    {
+      "id": "mybb-forum-detect",
+      "name": "MyBB Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/mybb-forum-detect.yaml"
+    },
+    {
+      "id": "nagios-logserver-panel",
+      "name": "Nagios Log Server - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/nagios/nagios-logserver-panel.yaml"
+    },
+    {
+      "id": "nagios-panel",
+      "name": "Nagios Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/nagios-panel.yaml"
+    },
+    {
+      "id": "nagios-xi-panel",
+      "name": "Nagios XI Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/nagios-xi-panel.yaml"
+    },
+    {
+      "id": "neo4j-neodash-detect",
+      "name": "Neo4j Neodash - Detect",
+      "category": "technology",
+      "path": "http/technologies/neo4j-neodash-detect.yaml"
+    },
+    {
+      "id": "netdata-dashboard-detect",
+      "name": "Netdata Dashboard Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/netdata-dashboard-detected.yaml"
+    },
+    {
+      "id": "netdata-panel",
+      "name": "Netdata Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/netdata-panel.yaml"
+    },
+    {
+      "id": "netgear-version-detect",
+      "name": "NETGEAR Router Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/netgear-version-detect.yaml"
+    },
+    {
+      "id": "netis-router",
+      "name": "Netis Router Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/netis-router.yaml"
+    },
+    {
+      "id": "netscaler-aaa-login",
+      "name": "NetScaler AAA Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/netscaler-aaa-login.yaml"
+    },
+    {
+      "id": "netscaler-console-panel",
+      "name": "NetScaler Console - Panel",
+      "category": "panel",
+      "path": "http/exposed-panels/netscaler-console-panel.yaml"
+    },
+    {
+      "id": "netscaler-gateway",
+      "name": "Netscaler Gateway",
+      "category": "panel",
+      "path": "http/exposed-panels/netscaler-gateway.yaml"
+    },
+    {
+      "id": "netsurveillance-web",
+      "name": "NETSurveillance Web Panel - Detect",
+      "category": "iot",
+      "path": "http/iot/netsurveillance-web.yaml"
+    },
+    {
+      "id": "network-camera-detect",
+      "name": "Various Online Devices Detection (Network Camera)",
+      "category": "iot",
+      "path": "http/iot/network-camera-detect.yaml"
+    },
+    {
+      "id": "nextcloud-detect",
+      "name": "Nextcloud Detect",
+      "category": "technology",
+      "path": "http/technologies/nextcloud-detect.yaml"
+    },
+    {
+      "id": "nexus-detect",
+      "name": "Nexus Repository Manager (NRM) Instance Detection Template",
+      "category": "technology",
+      "path": "http/technologies/nexus-detect.yaml"
+    },
+    {
+      "id": "nexus-panel",
+      "name": "Nexus Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/nexus-panel.yaml"
+    },
+    {
+      "id": "nginx-admin-panel",
+      "name": "Nginx Admin Manager Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/nginx-admin-panel.yaml"
+    },
+    {
+      "id": "nginx-linux-page",
+      "name": "Nginx HTTP Server Amazon Linux",
+      "category": "technology",
+      "path": "http/technologies/nginx/nginx-linux-page.yaml"
+    },
+    {
+      "id": "nginx-opencloudos-test-page",
+      "name": "Nginx Test Page for OpenCloudOS",
+      "category": "technology",
+      "path": "http/technologies/nginx-opencloudos-test-page.yaml"
+    },
+    {
+      "id": "nginx-proxy-manager",
+      "name": "Nginx Proxy Manager Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/nginx-proxy-manager.yaml"
+    },
+    {
+      "id": "nginx-version",
+      "name": "Nginx version detect",
+      "category": "technology",
+      "path": "http/technologies/nginx/nginx-version.yaml"
+    },
+    {
+      "id": "novnc-login-panel",
+      "name": "noVNC Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/novnc-login-panel.yaml"
+    },
+    {
+      "id": "novus-ip-camera",
+      "name": "NoVus IP Login Panel - Detect",
+      "category": "iot",
+      "path": "http/iot/novus-ip-camera.yaml"
+    },
+    {
+      "id": "nuuo-network-login",
+      "name": "NUUO Network Video Recorder Login Panel - Detect",
+      "category": "iot",
+      "path": "http/iot/nuuo-network-login.yaml"
+    },
+    {
+      "id": "octoprint-3dprinter",
+      "name": "Octoprint 3D Printer Panel - Detect",
+      "category": "iot",
+      "path": "http/iot/octoprint-3dprinter-detect.yaml"
+    },
+    {
+      "id": "octoprint-panel",
+      "name": "OctoPrint Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/octoprint-login.yaml"
+    },
+    {
+      "id": "odoo-database-manager",
+      "name": "Odoo - Database Manager Discovery",
+      "category": "panel",
+      "path": "http/exposed-panels/odoo-database-manager.yaml"
+    },
+    {
+      "id": "odoo-panel",
+      "name": "Odoo - Panel Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/odoo-panel.yaml"
+    },
+    {
+      "id": "odoo-website-info-exposure",
+      "name": "Odoo Website - Information Disclosure",
+      "category": "panel",
+      "path": "http/exposed-panels/odoo-website-info.yaml"
+    },
+    {
+      "id": "opencart-panel",
+      "name": "OpenCart Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/opencart-panel.yaml"
+    },
+    {
+      "id": "openproject-detect",
+      "name": "OpenProject - Detect",
+      "category": "technology",
+      "path": "http/technologies/openproject-detect.yaml"
+    },
+    {
+      "id": "openremote-detect",
+      "name": "OpenRemote IoT Platform - Detection",
+      "category": "iot",
+      "path": "http/iot/openremote-detect.yaml"
+    },
+    {
+      "id": "openresty-detect",
+      "name": "OpenResty detection",
+      "category": "technology",
+      "path": "http/technologies/openresty-detect.yaml"
+    },
+    {
+      "id": "opensearch-dashboard-panel",
+      "name": "OpenSearch Dashboard Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/opensearch-dashboard-panel.yaml"
+    },
+    {
+      "id": "openshift-detect",
+      "name": "OpenShift Monitoring Plugin - Detect",
+      "category": "technology",
+      "path": "http/technologies/openshift-detect.yaml"
+    },
+    {
+      "id": "openshift-oauth-proxy-panel",
+      "name": "OpenShift OAuth Proxy - Panel Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/openshift-oauth-proxy-panel.yaml"
+    },
+    {
+      "id": "openvpn-admin",
+      "name": "OpenVPN Admin Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/openvpn-admin.yaml"
+    },
+    {
+      "id": "openvpn-connect",
+      "name": "OpenVPN Connect Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/openvpn-connect.yaml"
+    },
+    {
+      "id": "openvpn-router-management",
+      "name": "OpenVPN Server Router Management Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/openvpn-router-management.yaml"
+    },
+    {
+      "id": "openwrt-login",
+      "name": "Opentwrt Login / Configuration Interface",
+      "category": "panel",
+      "path": "http/exposed-panels/openwrt-login.yaml"
+    },
+    {
+      "id": "opnsense-panel",
+      "name": "OPNsense Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/opnsense-panel.yaml"
+    },
+    {
+      "id": "osticket-panel",
+      "name": "osTicket Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/osticket-panel.yaml"
+    },
+    {
+      "id": "owncloud-status-page",
+      "name": "Owncloud StatusPage detection",
+      "category": "technology",
+      "path": "http/technologies/nextcloud-owncloud-detect.yaml"
+    },
+    {
+      "id": "paloalto-expedition-panel",
+      "name": "Palo Alto Expedition Project Login - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/paloalto-expedition-panel.yaml"
+    },
+    {
+      "id": "panos-management-panel",
+      "name": "PAN-OS Management Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/panos-management-panel.yaml"
+    },
+    {
+      "id": "pfsense-login",
+      "name": "pfSense Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/pfsense-login.yaml"
+    },
+    {
+      "id": "phabricator-login",
+      "name": "Phabricator Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/phabricator-login.yaml"
+    },
+    {
+      "id": "php-detect",
+      "name": "PHP Detect",
+      "category": "technology",
+      "path": "http/technologies/php-detect.yaml"
+    },
+    {
+      "id": "php-fusion-detect",
+      "name": "PHP Fusion Detect",
+      "category": "technology",
+      "path": "http/technologies/php-fusion-detect.yaml"
+    },
+    {
+      "id": "php-mailer",
+      "name": "PHPMailer Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/php-mailer.yaml"
+    },
+    {
+      "id": "php-proxy-detect",
+      "name": "PHP Proxy Detect",
+      "category": "technology",
+      "path": "http/technologies/php-proxy-detect.yaml"
+    },
+    {
+      "id": "phppgadmin-panel",
+      "name": "phpPgAdmin Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/phppgadmin-panel.yaml"
+    },
+    {
+      "id": "phppgadmin-version",
+      "name": "PhpPgAdmin Version Information - Detect",
+      "category": "technology",
+      "path": "http/technologies/phppgadmin-version.yaml"
+    },
+    {
+      "id": "plesk-obsidian-login",
+      "name": "Plesk Obsidian Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/plesk-obsidian-login.yaml"
+    },
+    {
+      "id": "plesk-onyx-login",
+      "name": "Plesk Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/plesk-onyx-login.yaml"
+    },
+    {
+      "id": "plone-cms-detect",
+      "name": "Plone CMS detect",
+      "category": "technology",
+      "path": "http/technologies/plone-cms-detect.yaml"
+    },
+    {
+      "id": "portainer-panel",
+      "name": "Portainer Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/portainer-panel.yaml"
+    },
+    {
+      "id": "prestashop-detect",
+      "name": "PrestaShop Tech Detection",
+      "category": "technology",
+      "path": "http/technologies/prestashop-detect.yaml"
+    },
+    {
+      "id": "proxmox-backup-server-detect",
+      "name": "Proxmox Backup Server - Detect",
+      "category": "technology",
+      "path": "http/technologies/proxmox-backup-server-detect.yaml"
+    },
+    {
+      "id": "proxmox-panel",
+      "name": "Proxmox Virtual Environment Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/proxmox-panel.yaml"
+    },
+    {
+      "id": "prtg-detect",
+      "name": "Detect PRTG",
+      "category": "technology",
+      "path": "http/technologies/prtg-detect.yaml"
+    },
+    {
+      "id": "pulse-secure-panel",
+      "name": "Pulse Secure VPN Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/pulse-secure-panel.yaml"
+    },
+    {
+      "id": "pulse-secure-version",
+      "name": "Pulse Secure Version",
+      "category": "panel",
+      "path": "http/exposed-panels/pulse-secure-version.yaml"
+    },
+    {
+      "id": "qnap-photostation-panel",
+      "name": "QNAP Photo Station Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/qnap/qnap-photostation-panel.yaml"
+    },
+    {
+      "id": "qnap-qts-panel",
+      "name": "QNAP Turbo NAS Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/qnap/qnap-qts-panel.yaml"
+    },
+    {
+      "id": "qualcomm-voip-router",
+      "name": "Qualcomm 4G LTE WiFi VoIP Router Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/qualcomm-voip-router.yaml"
+    },
+    {
+      "id": "rancher-dashboard",
+      "name": "Rancher Dashboard Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/rancher-dashboard.yaml"
+    },
+    {
+      "id": "rancher-panel",
+      "name": "Rancher Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/rancher-panel.yaml"
+    },
+    {
+      "id": "redash-panel",
+      "name": "Redash Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/redash-panel.yaml"
+    },
+    {
+      "id": "redmine-cli-detect",
+      "name": "Detect Redmine CLI Configuration File",
+      "category": "technology",
+      "path": "http/technologies/redmine-cli-detect.yaml"
+    },
+    {
+      "id": "redmine-panel",
+      "name": "Redmine Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/redmine-panel.yaml"
+    },
+    {
+      "id": "remedy-axis-login",
+      "name": "Remedy Axis Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/remedy-axis-login.yaml"
+    },
+    {
+      "id": "reolink-panel",
+      "name": "Reolink Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/reolink-panel.yaml"
+    },
+    {
+      "id": "ricoh-webimagemonitor-panel",
+      "name": "Ricoh Web Image Monitor - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/ricoh-webimagemonitor-panel.yaml"
+    },
+    {
+      "id": "rocketchat-panel",
+      "name": "RocketChat Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/rocketchat-panel.yaml"
+    },
+    {
+      "id": "roundcube-webmail-portal",
+      "name": "Roundcube webmail",
+      "category": "technology",
+      "path": "http/technologies/roundcube-webmail-portal.yaml"
+    },
+    {
+      "id": "routeros-login",
+      "name": "RouterOS Router Login - Detect",
+      "category": "iot",
+      "path": "http/iot/routeros-login.yaml"
+    },
+    {
+      "id": "seafile-panel",
+      "name": "Seafile Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/seafile-panel.yaml"
+    },
+    {
+      "id": "selea-ip-camera",
+      "name": "Detect Selea Targa IP OCR-ANPR Camera",
+      "category": "iot",
+      "path": "http/iot/selea-ip-camera.yaml"
+    },
+    {
+      "id": "sentry-panel",
+      "name": "Sentry Login Panel",
+      "category": "panel",
+      "path": "http/exposed-panels/sentry-panel.yaml"
+    },
+    {
+      "id": "sharepoint-web-services-discovery",
+      "name": "Microsoft SharePoint - Web Services Discovery",
+      "category": "technology",
+      "path": "http/technologies/microsoft/sharepoint-web-services-discovery.yaml"
+    },
+    {
+      "id": "shopware-detect",
+      "name": "Shopware CMS detect",
+      "category": "technology",
+      "path": "http/technologies/shopware-detect.yaml"
+    },
+    {
+      "id": "siemens-logo8-panel",
+      "name": "Siemens Logo! 8 Web - Panel",
+      "category": "iot",
+      "path": "http/iot/siemens-logo8-panel.yaml"
+    },
+    {
+      "id": "siemens-simatic-panel",
+      "name": "Siemens SIMATIC HMI Miniweb - Login Panel",
+      "category": "iot",
+      "path": "http/iot/siemens-simatic-panel.yaml"
+    },
+    {
+      "id": "sitecore-cms",
+      "name": "Sitecore CMS - Detect",
+      "category": "technology",
+      "path": "http/technologies/sitecore-cms.yaml"
+    },
+    {
+      "id": "sitecore-default-page",
+      "name": "Sitecore Default Page - Detect",
+      "category": "technology",
+      "path": "http/technologies/default-sitecore-page.yaml"
+    },
+    {
+      "id": "sitecore-login",
+      "name": "Sitecore Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/sitecore-login.yaml"
+    },
+    {
+      "id": "sitecore-login-panel",
+      "name": "Sitecore Admin Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/sitecore-login-panel.yaml"
+    },
+    {
+      "id": "sitecore-version",
+      "name": "Sitecore version detection",
+      "category": "technology",
+      "path": "http/technologies/sitecore-version.yaml"
+    },
+    {
+      "id": "snapdrop-detect",
+      "name": "Snapdrop Detect",
+      "category": "iot",
+      "path": "http/iot/snapdrop-detect.yaml"
+    },
+    {
+      "id": "solarwinds-arm-panel",
+      "name": "SolarWinds ARM (Access Rights Manager) - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/solarwinds-arm-panel.yaml"
+    },
+    {
+      "id": "solarwinds-orion",
+      "name": "SolarWinds Orion Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/solarwinds-orion.yaml"
+    },
+    {
+      "id": "solarwinds-servuftp-detect",
+      "name": "SolarWinds Serv-U File Server Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/solarwinds-servuftp-detect.yaml"
+    },
+    {
+      "id": "sonarqube-login",
+      "name": "SonarQube Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/sonarqube-login.yaml"
+    },
+    {
+      "id": "sonicwall-analytics-panel",
+      "name": "SonicWall Analytics - Login Panel",
+      "category": "panel",
+      "path": "http/exposed-panels/sonicwall-analytics-panel.yaml"
+    },
+    {
+      "id": "sonicwall-analyzer-login",
+      "name": "SonicWall Analyzer Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/sonicwall-analyzer-login.yaml"
+    },
+    {
+      "id": "sonicwall-email-security-detect",
+      "name": "SonicWall Email Security Panel - Detect",
+      "category": "technology",
+      "path": "http/technologies/sonicwall-email-security-detect.yaml"
+    },
+    {
+      "id": "sonicwall-management-panel",
+      "name": "SonicWall Management Admin Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/sonicwall-management-panel.yaml"
+    },
+    {
+      "id": "sonicwall-sma-panel",
+      "name": "SonicWall Secure Mobile Access (SMA) Panel - Detection",
+      "category": "panel",
+      "path": "http/exposed-panels/sonicwall-sma-panel.yaml"
+    },
+    {
+      "id": "sonicwall-sslvpn-panel",
+      "name": "SonicWall Virtual Office SSL VPN Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/sonicwall-sslvpn-panel.yaml"
+    },
+    {
+      "id": "sophos-fw-version-detect",
+      "name": "Sophos Firewall Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/sophos-fw-version-detect.yaml"
+    },
+    {
+      "id": "sophos-mobile-panel",
+      "name": "Sophos Mobile Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/sophos-mobile-panel.yaml"
+    },
+    {
+      "id": "sophos-utm-panel",
+      "name": "Sophos UTM User Portal - Login Panel",
+      "category": "panel",
+      "path": "http/exposed-panels/sophos-utm-panel.yaml"
+    },
+    {
+      "id": "sophos-web-appliance",
+      "name": "Sophos Web Appliance",
+      "category": "panel",
+      "path": "http/exposed-panels/sophos-web-appliance.yaml"
+    },
+    {
+      "id": "spark-panel",
+      "name": "Apache Spark Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/spark-panel.yaml"
+    },
+    {
+      "id": "splunk-enterprise-panel",
+      "name": "Splunk Enterprise Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/splunk-enterprise-panel.yaml"
+    },
+    {
+      "id": "splunk-login",
+      "name": "Splunk SOAR Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/splunk-login.yaml"
+    },
+    {
+      "id": "splunk-mcp-server-ide-login",
+      "name": "Splunk MCP Server IDE Login - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/splunk-mcp-server-ide-login.yaml"
+    },
+    {
+      "id": "spring-detect",
+      "name": "Java Spring Detection",
+      "category": "technology",
+      "path": "http/technologies/spring-detect.yaml"
+    },
+    {
+      "id": "springboot-actuator",
+      "name": "Detect Springboot Actuators",
+      "category": "technology",
+      "path": "http/technologies/springboot-actuator.yaml"
+    },
+    {
+      "id": "springboot-whitelabel",
+      "name": "SpringBoot WhiteLabel Error Page - Detect",
+      "category": "technology",
+      "path": "http/technologies/springboot-whitelabel.yaml"
+    },
+    {
+      "id": "squirrelmail-login",
+      "name": "SquirrelMail Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/squirrelmail-login.yaml"
+    },
+    {
+      "id": "strapi-cms-detect",
+      "name": "Strapi CMS detect",
+      "category": "technology",
+      "path": "http/technologies/strapi-cms-detect.yaml"
+    },
+    {
+      "id": "strapi-documentation",
+      "name": "Strapi CMS Documentation Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/strapi-documentation.yaml"
+    },
+    {
+      "id": "strapi-panel",
+      "name": "Strapi Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/strapi-panel.yaml"
+    },
+    {
+      "id": "sugarcrm-panel",
+      "name": "SugarCRM Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/sugarcrm-panel.yaml"
+    },
+    {
+      "id": "supermicro-bmc-panel",
+      "name": "Supermicro BMC Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/supermicro-bmc-panel.yaml"
+    },
+    {
+      "id": "superset-login",
+      "name": "Apache Superset Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/superset-login.yaml"
+    },
+    {
+      "id": "synology-rackstation-login",
+      "name": "Synology RackStation Login Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/synology-rackstation-login.yaml"
+    },
+    {
+      "id": "synology-web-station",
+      "name": "Synology Web Station Page - Detect",
+      "category": "technology",
+      "path": "http/technologies/synology-web-station.yaml"
+    },
+    {
+      "id": "teamcity-login-panel",
+      "name": "TeamCity Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/teamcity-login-panel.yaml"
+    },
+    {
+      "id": "tenda-11n-wireless-router-panel",
+      "name": "Tenda 11n Wireless Router - Admin Panel",
+      "category": "panel",
+      "path": "http/exposed-panels/tenda-11n-wireless-router-login.yaml"
+    },
+    {
+      "id": "tplink-r470t-panel",
+      "name": "TP-LINK Router R470T - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/tplink/tplink-r470t-panel.yaml"
+    },
+    {
+      "id": "traefik-dashboard-detect",
+      "name": "Traefik Dashboard Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/traefik-dashboard.yaml"
+    },
+    {
+      "id": "truenas-panel",
+      "name": "TrueNAS Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/truenas-scale-panel.yaml"
+    },
+    {
+      "id": "turnkey-openvpn",
+      "name": "TurnKey OpenVPN Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/turnkey-openvpn.yaml"
+    },
+    {
+      "id": "typo3-detect",
+      "name": "TYPO3 Detection",
+      "category": "technology",
+      "path": "http/technologies/typo3-detect.yaml"
+    },
+    {
+      "id": "typo3-login",
+      "name": "TYPO3 Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/typo3-login.yaml"
+    },
+    {
+      "id": "ubiquiti-edgerouter-panel",
+      "name": "Ubiquiti EdgeRouter - Login Panel",
+      "category": "panel",
+      "path": "http/exposed-panels/ubiquiti-edgerouter-panel.yaml"
+    },
+    {
+      "id": "ulanzi-clock",
+      "name": "Ulanzi Clock Detect",
+      "category": "iot",
+      "path": "http/iot/ulanzi-clock.yaml"
+    },
+    {
+      "id": "umbraco-login",
+      "name": "Umbraco Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/umbraco-login.yaml"
+    },
+    {
+      "id": "unifi-os-panel",
+      "name": "UniFi OS - Panel",
+      "category": "panel",
+      "path": "http/exposed-panels/unifi-os-panel.yaml"
+    },
+    {
+      "id": "unifi-panel",
+      "name": "UniFi Network Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/unifi-panel.yaml"
+    },
+    {
+      "id": "unifi-securitygateway-panel",
+      "name": "Ubiquiti UniFi Security Gateway - Login Panel",
+      "category": "panel",
+      "path": "http/exposed-panels/unifi-securitygateway-panel.yaml"
+    },
+    {
+      "id": "upnp-device-detect",
+      "name": "Detect Basic uPNP Device",
+      "category": "iot",
+      "path": "http/iot/upnp-device.yaml"
+    },
+    {
+      "id": "uptime-kuma-panel",
+      "name": "Uptime Kuma - Panel",
+      "category": "panel",
+      "path": "http/exposed-panels/uptime-kuma-panel.yaml"
+    },
+    {
+      "id": "usermin-panel",
+      "name": "Usermin Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/usermin-panel.yaml"
+    },
+    {
+      "id": "vault-panel",
+      "name": "Vault Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/vault-panel.yaml"
+    },
+    {
+      "id": "vbulletin-detect",
+      "name": "vBulletin Detect",
+      "category": "technology",
+      "path": "http/technologies/vbulletin-detect.yaml"
+    },
+    {
+      "id": "veeam-backup-azure-panel",
+      "name": "Veeam Backup for Microsoft Azure Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/veeam-backup-azure-panel.yaml"
+    },
+    {
+      "id": "veeam-backup-gcp",
+      "name": "Veeam Backup for Google Cloud Platform Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/veeam-backup-gcp.yaml"
+    },
+    {
+      "id": "veeam-backup-manager-login",
+      "name": "Veeam Backup Enterprise Manager Login - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/veeam-backup-manager-login.yaml"
+    },
+    {
+      "id": "veeam-panel",
+      "name": "Veeam Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/veeam-panel.yaml"
+    },
+    {
+      "id": "verizon-router-panel",
+      "name": "Verizon Router Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/verizon-router-panel.yaml"
+    },
+    {
+      "id": "vmware-aria-panel",
+      "name": "VMware Aria Operations Login - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/vmware-aria-panel.yaml"
+    },
+    {
+      "id": "vmware-carbon-black-edr",
+      "name": "VMware Carbon Black EDR Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/vmware-carbon-black-edr.yaml"
+    },
+    {
+      "id": "vmware-cloud-availability",
+      "name": "VMware Cloud Director Availability Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/vmware-cloud-availability.yaml"
+    },
+    {
+      "id": "vmware-cloud-director",
+      "name": "VMware Cloud Director Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/vmware-cloud-director.yaml"
+    },
+    {
+      "id": "vmware-ftp-server",
+      "name": "VMware FTP Server Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/vmware-ftp-server.yaml"
+    },
+    {
+      "id": "vmware-hcx-login",
+      "name": "VMware HCX Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/vmware-hcx-login.yaml"
+    },
+    {
+      "id": "vmware-horizon-daas",
+      "name": "Desktop Portal VMware Horizon DaaS Trade Platform",
+      "category": "panel",
+      "path": "http/exposed-panels/vmware-horizon-daas.yaml"
+    },
+    {
+      "id": "vmware-horizon-panel",
+      "name": "VMware Horizon Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/vmware-horizon-panel.yaml"
+    },
+    {
+      "id": "vmware-horizon-version",
+      "name": "Vmware Horizon Version Detect",
+      "category": "technology",
+      "path": "http/technologies/vmware/vmware-horizon-version.yaml"
+    },
+    {
+      "id": "vmware-nsx-login",
+      "name": "VMware NSX Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/vmware-nsx-login.yaml"
+    },
+    {
+      "id": "vmware-site-recovery-manager",
+      "name": "VMware Site Recovery Manager Panel - Detect",
+      "category": "technology",
+      "path": "http/technologies/vmware/vmware-site-recovery-manager.yaml"
+    },
+    {
+      "id": "vmware-vcenter-converter-standalone",
+      "name": "VMware vCenter Converter Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/vmware-vcenter-converter-standalone.yaml"
+    },
+    {
+      "id": "vmware-vcloud-director",
+      "name": "VMware vCloud Director Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/vmware-vcloud-director.yaml"
+    },
+    {
+      "id": "vmware-vrealize",
+      "name": "VMware vRealize",
+      "category": "technology",
+      "path": "http/technologies/vmware/vmware-vrealize-detect.yaml"
+    },
+    {
+      "id": "vue-pacs-panel",
+      "name": "Vue PACS - Panel",
+      "category": "panel",
+      "path": "http/exposed-panels/vue-pacs-panel.yaml"
+    },
+    {
+      "id": "wago-webbased-panel",
+      "name": "WAGO WebBased Management - Panel",
+      "category": "iot",
+      "path": "http/iot/wago-webbased-panel.yaml"
+    },
+    {
+      "id": "wagtail-login",
+      "name": "Wagtail Login - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/wagtail-cms-detect.yaml"
+    },
+    {
+      "id": "watchguard-panel",
+      "name": "Watchguard Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/watchguard-panel.yaml"
+    },
+    {
+      "id": "webcamxp-5",
+      "name": "WebcamXP 5 Login Panel - Detect",
+      "category": "iot",
+      "path": "http/iot/webcamxp-5.yaml"
+    },
+    {
+      "id": "weblocal-craft-login",
+      "name": "Web Local Craft Terminal Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/web-local-craft.yaml"
+    },
+    {
+      "id": "weblogic-login",
+      "name": "Oracle WebLogic Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/weblogic-login.yaml"
+    },
+    {
+      "id": "weblogic-uddiexplorer",
+      "name": "Oracle WebLogic UDDI Explorer Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/weblogic-uddiexplorer.yaml"
+    },
+    {
+      "id": "webmin-panel",
+      "name": "Webmin Admin Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/webmin-panel.yaml"
+    },
+    {
+      "id": "websphere-detect",
+      "name": "IBM WebSphere Application Server",
+      "category": "technology",
+      "path": "http/technologies/websphere-detect.yaml"
+    },
+    {
+      "id": "webtools-home",
+      "name": "Webtools Home",
+      "category": "iot",
+      "path": "http/iot/webtools-home.yaml"
+    },
+    {
+      "id": "westermo-router-panel",
+      "name": "Westermo Industrial Router - Login Panel",
+      "category": "panel",
+      "path": "http/exposed-panels/westermo-router-panel.yaml"
+    },
+    {
+      "id": "whm-login-detect",
+      "name": "WHM Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/whm-login-detect.yaml"
+    },
+    {
+      "id": "wildfly-panel",
+      "name": "WildFly Welcome Page - Tech Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/jboss/wildfly-panel.yaml"
+    },
+    {
+      "id": "wordpress-detect",
+      "name": "WordPress Detect",
+      "category": "technology",
+      "path": "http/technologies/wordpress-detect.yaml"
+    },
+    {
+      "id": "wordpress-login",
+      "name": "WordPress Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/wordpress-login.yaml"
+    },
+    {
+      "id": "wordpress-passive-detection",
+      "name": "WordPress Passive Detection - Plugins \u0026 Themes",
+      "category": "technology",
+      "path": "http/technologies/wordpress/wordpress-passive-detection.yaml"
+    },
+    {
+      "id": "xenforo-detect",
+      "name": "XenForo Forum Detection",
+      "category": "technology",
+      "path": "http/technologies/xenforo-detect.yaml"
+    },
+    {
+      "id": "xerox-panel",
+      "name": "Xerox Fuji/VersaLink Login - Panel",
+      "category": "panel",
+      "path": "http/exposed-panels/xerox-panel.yaml"
+    },
+    {
+      "id": "xerox-workcentre-detect",
+      "name": "Xerox Workcentre Detect",
+      "category": "technology",
+      "path": "http/technologies/xerox-workcentre-detect.yaml"
+    },
+    {
+      "id": "xiaomi-wireless-router-login",
+      "name": "Xiaomi Wireless Router Admin Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/xiaomi-wireless-router-login.yaml"
+    },
+    {
+      "id": "zabbix-server-login",
+      "name": "Zabbix Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/zabbix-server-login.yaml"
+    },
+    {
+      "id": "zammad-helpdesk-panel",
+      "name": "Zammad Helpdesk Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/zammad-helpdesk-panel.yaml"
+    },
+    {
+      "id": "zebra-printer-detect",
+      "name": "Zebra Printer Detect",
+      "category": "iot",
+      "path": "http/iot/zebra-printer-detect.yaml"
+    },
+    {
+      "id": "zimbra-detect",
+      "name": "Zimbra Detect",
+      "category": "technology",
+      "path": "http/technologies/zimbra-detect.yaml"
+    },
+    {
+      "id": "zimbra-web-client",
+      "name": "Zimbra Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/zimbra-web-client.yaml"
+    },
+    {
+      "id": "zimbra-web-login",
+      "name": "Zimbra Collaboration Suite Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/zimbra-web-login.yaml"
+    },
+    {
+      "id": "zoneminder-login",
+      "name": "ZoneMinder Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/zoneminder-login.yaml"
+    },
+    {
+      "id": "zyxel-firewall-panel",
+      "name": "Zyxel Firewall Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/zyxel/zyxel-firewall-panel.yaml"
+    },
+    {
+      "id": "zyxel-router-panel",
+      "name": "ZyXel Router Login Panel - Detect",
+      "category": "panel",
+      "path": "http/exposed-panels/zyxel-router-panel.yaml"
+    },
+    {
+      "id": "zyxel-vmg1312b10d-login",
+      "name": "Zyxel VMG1312-B10D - Login Detection",
+      "category": "panel",
+      "path": "http/exposed-panels/zyxel/zyxel-vmg1312b10d-login.yaml"
+    },
+    {
+      "id": "zyxel-vsg1432b101-login",
+      "name": "Zyxel VSG1432-B101 - Login Detection",
+      "category": "panel",
+      "path": "http/exposed-panels/zyxel/zyxel-vsg1432b101-login.yaml"
+    }
+  ]
+}

@@ -806,7 +806,20 @@ export const CONDITION_FIELDS = [
   'signature.signatureId',
   'signature.severity',
   'confidence.score',
+  'service.banner',
+  'http.url',
+  'http.contentType',
+  'http.finalUrl',
+  'http.faviconHash',
+  'http.cookieNames',
+  'http.redirectChain',
+  'http.technologies',
+  'tls.subjectAlternativeNames',
 ] as const
+/** Dynamic field `http.header.<Name>` (response header, case-insensitive; Name = RFC 7230 token). */
+export const HTTP_HEADER_FIELD_PREFIX = 'http.header.'
+/** List fields: a rule matches when any element matches (NotEquals/NotIn: when no element matches). */
+export const CONDITION_LIST_FIELDS: readonly string[] = ['http.cookieNames', 'http.redirectChain', 'http.technologies', 'tls.subjectAlternativeNames']
 export const CONDITION_OPERATORS: ConditionOperator[] = ['Equals', 'NotEquals', 'In', 'NotIn', 'Contains', 'StartsWith', 'GreaterThan', 'LessThan', 'Exists', 'NotExists']
 /** Known values of enum-typed condition fields (ObservationKind, TransportProtocol), offered as suggestions. */
 export const CONDITION_FIELD_VALUES: Partial<Record<string, string[]>> = {

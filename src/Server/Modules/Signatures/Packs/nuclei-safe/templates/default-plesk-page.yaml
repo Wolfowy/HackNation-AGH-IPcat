@@ -1,0 +1,25 @@
+id: default-plesk-page
+
+info:
+  name: Plesk Default Test Page
+  author: dhiyaneshDk
+  severity: info
+  classification:
+    cpe: cpe:2.3:a:plesk:plesk:*:*:*:*:*:*:*:*
+  metadata:
+    max-request: 1
+    vendor: plesk
+    product: plesk
+    shodan-query: http.title:"Web Server's Default Page"
+  tags: tech,plesk,discovery,pack-nuclei-safe
+
+http:
+  - method: GET
+    path:
+      - '{{BaseURL}}'
+
+    matchers:
+      - type: word
+        words:
+          - "<title>Web Server's Default Page</title>"
+        part: body

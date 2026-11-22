@@ -1,0 +1,35 @@
+id: phabricator-login
+
+info:
+  name: Phabricator Login Panel - Detect
+  author: dhiyaneshDK
+  severity: info
+  description: Phabricator login panel was detected.
+  classification:
+    cvss-metrics: CVSS:3.0/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:N
+    cwe-id: CWE-200
+    cpe: cpe:2.3:a:phacility:phabricator:*:*:*:*:*:*:*:*
+  metadata:
+    max-request: 1
+    vendor: phacility
+    product: phabricator
+    shodan-query:
+      - html:"phabricator-standard-page"
+      - http.html:"phabricator-standard-page"
+    fofa-query: body="phabricator-standard-page"
+  tags: panel,phabricator,phacility,discovery,pack-nuclei-safe
+
+http:
+  - method: GET
+    path:
+      - '{{BaseURL}}/auth/login/'
+
+    matchers-condition: and
+    matchers:
+      - type: word
+        words:
+          - 'phabricator-standard-page'
+
+      - type: status
+        status:
+          - 200

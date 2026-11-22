@@ -1,5 +1,6 @@
 using System.Globalization;
 using WebScan.Contracts;
+using KernelConditions = WebScan.Server.Kernel.Discovery.ConditionEvaluator;
 
 namespace WebScan.Server.Modules.Workflows.Conditions;
 
@@ -16,7 +17,10 @@ public static class ConditionFieldTypes
     };
 }
 
-/// <summary>Typed evaluation of a <see cref="ConditionExpression"/> against one observation. Strings compare case-insensitively.</summary>
+/// <summary>
+/// Typed evaluation of a <see cref="ConditionExpression"/> against one observation. Strings compare case-insensitively.
+/// List fields (<see cref="ConditionFields.Lists"/>) match when any element matches; NotEquals/NotIn when no element matches.
+/// </summary>
 public static class ConditionEvaluator
 {
     public static bool Evaluate(ConditionExpression condition, DiscoveryObservation o)
@@ -26,28 +30,32 @@ public static class ConditionEvaluator
         if (condition.Not is { } not) return !Evaluate(not, o);
 
         var field = condition.Field ?? throw new InvalidOperationException("Condition has no field.");
-        var value = GetField(o, field);
+        var actual = GetValues(o, field);
         var values = condition.Values ?? [];
         var numeric = ConditionFieldTypes.Numeric.Contains(field);
-        bool Same(string candidate) => numeric
+        bool Same(string value, string candidate) => numeric
             ? TryNumber(value, out var a) && TryNumber(candidate, out var b) && a == b
             : string.Equals(value, candidate, StringComparison.OrdinalIgnoreCase);
 
         return condition.Operator switch
         {
-            ConditionOperator.Exists => value is not null,
-            ConditionOperator.NotExists => value is null,
-            ConditionOperator.Equals => value is not null && Same(values[0]),
-            ConditionOperator.NotEquals => value is null || !Same(values[0]),
-            ConditionOperator.In => value is not null && values.Any(Same),
-            ConditionOperator.NotIn => value is null || !values.Any(Same),
-            ConditionOperator.Contains => value?.Contains(values[0], StringComparison.OrdinalIgnoreCase) == true,
-            ConditionOperator.StartsWith => value?.StartsWith(values[0], StringComparison.OrdinalIgnoreCase) == true,
-            ConditionOperator.GreaterThan => TryNumber(value, out var g) && TryNumber(values[0], out var gv) && g > gv,
-            ConditionOperator.LessThan => TryNumber(value, out var l) && TryNumber(values[0], out var lv) && l < lv,
+            ConditionOperator.Exists => actual.Count > 0,
+            ConditionOperator.NotExists => actual.Count == 0,
+            ConditionOperator.Equals => actual.Any(v => Same(v, values[0])),
+            ConditionOperator.NotEquals => !actual.Any(v => Same(v, values[0])),
+            ConditionOperator.In => actual.Any(v => values.Any(c => Same(v, c))),
+            ConditionOperator.NotIn => !actual.Any(v => values.Any(c => Same(v, c))),
+            ConditionOperator.Contains => actual.Any(v => values.Any(c => v.Contains(c, StringComparison.OrdinalIgnoreCase))),
+            ConditionOperator.StartsWith => actual.Any(v => values.Any(c => v.StartsWith(c, StringComparison.OrdinalIgnoreCase))),
+            ConditionOperator.GreaterThan => actual.Any(v => TryNumber(v, out var g) && TryNumber(values[0], out var gv) && g > gv),
+            ConditionOperator.LessThan => actual.Any(v => TryNumber(v, out var l) && TryNumber(values[0], out var lv) && l < lv),
             _ => throw new InvalidOperationException($"Unsupported operator {condition.Operator}."),
         };
     }
+
+    /// <summary>Elements of a list field, else the scalar value (0 or 1 item).</summary>
+    public static IReadOnlyList<string> GetValues(DiscoveryObservation o, string field) =>
+        ConditionFields.Lists.Contains(field) ? KernelConditions.GetValues(o, field) : GetField(o, field) is { } v ? [v] : [];
 
     public static string? GetField(DiscoveryObservation o, string field) => field switch
     {
@@ -74,6 +82,8 @@ public static class ConditionEvaluator
         ConditionFields.SignatureId => o.Signature?.SignatureId,
         ConditionFields.SignatureSeverity => o.Signature?.Severity,
         ConditionFields.ConfidenceScore => o.Confidence?.Score.ToString("R", CultureInfo.InvariantCulture),
+        // Fields added after the original set (banner, content type, favicon hash, lists, http.header.<Name>) share the kernel mapping.
+        _ when ConditionFields.IsValid(field) => KernelConditions.GetField(o, field),
         _ => throw new ArgumentOutOfRangeException(nameof(field), field, "Unknown condition field."),
     };
 

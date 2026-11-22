@@ -180,10 +180,10 @@ public static partial class WorkflowValidator
         if (condition.Not is { } not) return ValidateCondition(not, $"{at}.not", depth + 1);
 
         var errors = new List<string>();
-        if (condition.Field is null || !ConditionFields.All.Contains(condition.Field)) { errors.Add($"{at}: unknown field '{condition.Field}'."); return errors; }
+        if (!ConditionFields.IsValid(condition.Field)) { errors.Add($"{at}: unknown field '{condition.Field}'."); return errors; }
         if (condition.Operator is not { } op || !Enum.IsDefined(op)) { errors.Add($"{at}: operator is required."); return errors; }
 
-        var field = condition.Field;
+        var field = condition.Field!;
         var numeric = ConditionFieldTypes.Numeric.Contains(field);
         var isEnum = ConditionFieldTypes.Enums.TryGetValue(field, out var enumValues);
         if (op is ConditionOperator.GreaterThan or ConditionOperator.LessThan && !numeric)
@@ -195,7 +195,8 @@ public static partial class WorkflowValidator
         var expected = op switch
         {
             ConditionOperator.Exists or ConditionOperator.NotExists => values.Count == 0 ? null : "takes no values",
-            ConditionOperator.In or ConditionOperator.NotIn => values.Count >= 1 ? null : "needs at least one value",
+            ConditionOperator.In or ConditionOperator.NotIn or ConditionOperator.Contains or ConditionOperator.StartsWith =>
+                values.Count >= 1 ? null : "needs at least one value",
             _ => values.Count == 1 ? null : "needs exactly one value",
         };
         if (expected is not null) errors.Add($"{at}: {op} {expected}.");

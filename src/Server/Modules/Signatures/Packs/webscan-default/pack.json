@@ -1,0 +1,517 @@
+{
+  "name": "webscan-default",
+  "version": "1",
+  "tag": "pack-webscan-default",
+  "description": "Passive classification rules evaluated over stored observations (no extra traffic). Seeded as approved at startup; retire a rule to disable it.",
+  "rules": [
+    {
+      "id": "webscan-staging-environment",
+      "name": "Staging / test environment (hostname, certificate)",
+      "rule": {
+        "description": "Host name, certificate CN or SAN has a dev/test/stage/staging/uat/qa/preprod/sandbox label.",
+        "when": { "any": [
+          { "field": "hostname", "operator": "StartsWith", "values": ["dev.", "dev-", "test.", "test-", "stage.", "stage-", "staging.", "staging-", "uat.", "uat-", "qa.", "qa-", "preprod.", "preprod-", "sandbox.", "sandbox-"] },
+          { "field": "hostname", "operator": "Contains", "values": [".dev.", "-dev.", ".test.", "-test.", ".stage.", "-stage.", ".staging.", "-staging.", ".uat.", "-uat.", ".qa.", "-qa.", ".preprod.", "-preprod.", ".sandbox.", "-sandbox."] },
+          { "field": "tls.subjectCommonName", "operator": "StartsWith", "values": ["dev.", "dev-", "test.", "test-", "stage.", "stage-", "staging.", "staging-", "uat.", "uat-", "qa.", "qa-", "preprod.", "preprod-", "sandbox.", "sandbox-"] },
+          { "field": "tls.subjectCommonName", "operator": "Contains", "values": [".dev.", "-dev.", ".test.", "-test.", ".stage.", "-stage.", ".staging.", "-staging.", ".uat.", "-uat.", ".qa.", "-qa.", ".preprod.", "-preprod.", ".sandbox.", "-sandbox."] },
+          { "field": "tls.subjectAlternativeNames", "operator": "StartsWith", "values": ["dev.", "dev-", "test.", "test-", "stage.", "stage-", "staging.", "staging-", "uat.", "uat-", "qa.", "qa-", "preprod.", "preprod-", "sandbox.", "sandbox-"] },
+          { "field": "tls.subjectAlternativeNames", "operator": "Contains", "values": [".dev.", "-dev.", ".test.", "-test.", ".stage.", "-stage.", ".staging.", "-staging.", ".uat.", "-uat.", ".qa.", "-qa.", ".preprod.", "-preprod.", ".sandbox.", "-sandbox."] }
+        ] },
+        "outcome": { "classificationTag": "staging-environment", "confidence": 0.8 },
+        "tags": ["pack-webscan-default", "environment"]
+      }
+    },
+    {
+      "id": "webscan-staging-environment-content",
+      "name": "Staging / test environment (title, headers)",
+      "rule": {
+        "description": "Page title or an environment header says the endpoint is a non-production environment.",
+        "when": { "any": [
+          { "field": "http.title", "operator": "Contains", "values": ["staging", "test environment", "test server", "testing environment", "development server", "dev environment", "UAT", "pre-production", "preprod", "sandbox"] },
+          { "field": "http.header.X-Environment", "operator": "In", "values": ["dev", "development", "test", "testing", "stage", "staging", "uat", "qa", "preprod", "sandbox"] },
+          { "field": "http.header.X-Env", "operator": "In", "values": ["dev", "development", "test", "testing", "stage", "staging", "uat", "qa", "preprod", "sandbox"] }
+        ] },
+        "outcome": { "classificationTag": "staging-environment", "confidence": 0.6 },
+        "tags": ["pack-webscan-default", "environment"]
+      }
+    },
+    {
+      "id": "webscan-debug-mode",
+      "name": "Framework debug mode / profiler",
+      "rule": {
+        "description": "Debug/profiler response headers (Symfony profiler, ASP.NET debug, Laravel Debugbar) indicate a development build.",
+        "when": { "any": [
+          { "field": "http.header.X-Debug-Token", "operator": "Exists" },
+          { "field": "http.header.X-Debug-Token-Link", "operator": "Exists" },
+          { "field": "http.header.phpdebugbar-id", "operator": "Exists" },
+          { "field": "http.header.X-SourceFiles", "operator": "Exists" }
+        ] },
+        "outcome": { "classificationTag": "debug-mode", "confidence": 0.85 },
+        "tags": ["pack-webscan-default", "environment"]
+      }
+    },
+    {
+      "id": "webscan-login-page",
+      "name": "Login page",
+      "rule": {
+        "description": "Login/sign-in page by title, probed URL or redirect target. Detected passively, no login attempts.",
+        "when": { "all": [
+          { "field": "kind", "operator": "Equals", "values": ["HttpResponse"] },
+          { "any": [
+            { "field": "http.title", "operator": "Contains", "values": ["login", "log in", "sign in", "signin", "anmelden", "connexion", "logowanie"] },
+            { "field": "http.url", "operator": "Contains", "values": ["/login", "/signin", "/sign-in", "/user/login", "/wp-login.php", "/auth/login"] },
+            { "field": "http.finalUrl", "operator": "Contains", "values": ["/login", "/signin", "/sign-in", "/user/login", "/wp-login.php", "/auth/login"] },
+            { "field": "http.redirectChain", "operator": "Contains", "values": ["/login", "/signin", "/sign-in", "/user/login", "/wp-login.php", "/auth/login"] }
+          ] }
+        ] },
+        "outcome": { "classificationTag": "login-page", "confidence": 0.6 },
+        "tags": ["pack-webscan-default", "panel"]
+      }
+    },
+    {
+      "id": "webscan-admin-path",
+      "name": "Administration path",
+      "rule": {
+        "description": "Probed URL or redirect target is a typical administration path (/admin, /administrator, /manager/html, /wp-admin, /phpmyadmin).",
+        "when": { "any": [
+          { "field": "http.url", "operator": "Contains", "values": ["/admin", "/administrator", "/manager/html", "/wp-admin", "/phpmyadmin", "/cpanel", "/webadmin"] },
+          { "field": "http.finalUrl", "operator": "Contains", "values": ["/admin", "/administrator", "/manager/html", "/wp-admin", "/phpmyadmin", "/cpanel", "/webadmin"] },
+          { "field": "http.redirectChain", "operator": "Contains", "values": ["/admin", "/administrator", "/manager/html", "/wp-admin", "/phpmyadmin", "/cpanel", "/webadmin"] }
+        ] },
+        "outcome": { "classificationTag": "admin-panel", "confidence": 0.6 },
+        "tags": ["pack-webscan-default", "panel"]
+      }
+    },
+    {
+      "id": "webscan-phpmyadmin",
+      "name": "phpMyAdmin",
+      "rule": {
+        "description": "phpMyAdmin database administration by title or its cookies.",
+        "when": { "any": [
+          { "field": "http.title", "operator": "Contains", "values": ["phpMyAdmin"] },
+          { "field": "http.cookieNames", "operator": "In", "values": ["phpMyAdmin", "phpMyAdmin_https", "pma_lang", "pma_collation_connection"] }
+        ] },
+        "outcome": { "technology": { "name": "phpMyAdmin", "category": "database-admin" }, "classificationTag": "admin-panel", "confidence": 0.9 },
+        "tags": ["pack-webscan-default", "panel"]
+      }
+    },
+    {
+      "id": "webscan-adminer",
+      "name": "Adminer",
+      "rule": {
+        "description": "Adminer database administration by title or its session cookies.",
+        "when": { "any": [
+          { "field": "http.title", "operator": "Contains", "values": ["- Adminer", "Login - Adminer"] },
+          { "field": "http.cookieNames", "operator": "In", "values": ["adminer_sid", "adminer_key", "adminer_version"] }
+        ] },
+        "outcome": { "technology": { "name": "Adminer", "category": "database-admin" }, "classificationTag": "admin-panel", "confidence": 0.85 },
+        "tags": ["pack-webscan-default", "panel"]
+      }
+    },
+    {
+      "id": "webscan-tomcat-manager",
+      "name": "Apache Tomcat Manager",
+      "rule": {
+        "description": "Tomcat Manager / Host Manager by its Basic auth realm or path (no credentials are tried).",
+        "when": { "any": [
+          { "field": "http.header.WWW-Authenticate", "operator": "Contains", "values": ["Tomcat Manager Application", "Tomcat Host Manager Application"] },
+          { "field": "http.url", "operator": "Contains", "values": ["/manager/html", "/host-manager/html"] }
+        ] },
+        "outcome": { "technology": { "name": "Apache Tomcat", "category": "app-server" }, "classificationTag": "admin-panel", "confidence": 0.9 },
+        "tags": ["pack-webscan-default", "panel"]
+      }
+    },
+    {
+      "id": "webscan-tomcat",
+      "name": "Apache Tomcat",
+      "rule": {
+        "description": "Apache Tomcat by its default page title or service product.",
+        "when": { "any": [
+          { "field": "http.title", "operator": "StartsWith", "values": ["Apache Tomcat"] },
+          { "field": "service.product", "operator": "Contains", "values": ["Tomcat"] }
+        ] },
+        "outcome": { "technology": { "name": "Apache Tomcat", "category": "app-server" }, "confidence": 0.85 },
+        "tags": ["pack-webscan-default", "tech"]
+      }
+    },
+    {
+      "id": "webscan-jenkins",
+      "name": "Jenkins",
+      "rule": {
+        "description": "Jenkins CI by its X-Jenkins header (value = version) or title.",
+        "when": { "any": [
+          { "field": "http.header.X-Jenkins", "operator": "Exists" },
+          { "field": "http.header.X-Hudson", "operator": "Exists" },
+          { "field": "http.title", "operator": "Contains", "values": ["[Jenkins]"] }
+        ] },
+        "outcome": { "technology": { "name": "Jenkins", "versionField": "http.header.X-Jenkins", "category": "ci-cd" }, "classificationTag": "admin-panel", "confidence": 0.95 },
+        "tags": ["pack-webscan-default", "panel", "devops"]
+      }
+    },
+    {
+      "id": "webscan-grafana",
+      "name": "Grafana",
+      "rule": {
+        "description": "Grafana by title or session cookie.",
+        "when": { "any": [
+          { "field": "http.title", "operator": "Contains", "values": ["Grafana"] },
+          { "field": "http.cookieNames", "operator": "In", "values": ["grafana_session", "grafana_session_expiry"] }
+        ] },
+        "outcome": { "technology": { "name": "Grafana", "category": "monitoring" }, "classificationTag": "admin-panel", "confidence": 0.9 },
+        "tags": ["pack-webscan-default", "panel", "devops"]
+      }
+    },
+    {
+      "id": "webscan-kibana",
+      "name": "Kibana",
+      "rule": {
+        "description": "Kibana by its kbn-name / kbn-version headers (version) or title.",
+        "when": { "any": [
+          { "field": "http.header.kbn-version", "operator": "Exists" },
+          { "field": "http.header.kbn-name", "operator": "Exists" },
+          { "field": "http.title", "operator": "Contains", "values": ["Kibana"] }
+        ] },
+        "outcome": { "technology": { "name": "Kibana", "versionField": "http.header.kbn-version", "category": "monitoring" }, "classificationTag": "admin-panel", "confidence": 0.9 },
+        "tags": ["pack-webscan-default", "panel", "devops"]
+      }
+    },
+    {
+      "id": "webscan-webmin",
+      "name": "Webmin",
+      "rule": {
+        "description": "Webmin/Usermin by its MiniServ web server or title.",
+        "when": { "any": [
+          { "field": "http.webServer", "operator": "StartsWith", "values": ["MiniServ"] },
+          { "field": "http.title", "operator": "Contains", "values": ["Webmin", "Usermin"] },
+          { "field": "service.product", "operator": "Contains", "values": ["MiniServ"] }
+        ] },
+        "outcome": { "technology": { "name": "Webmin", "category": "hosting-panel" }, "classificationTag": "admin-panel", "confidence": 0.9 },
+        "tags": ["pack-webscan-default", "panel"]
+      }
+    },
+    {
+      "id": "webscan-cpanel",
+      "name": "cPanel / WHM",
+      "rule": {
+        "description": "cPanel or WHM by the cpsrvd server header, title or login cookies.",
+        "when": { "any": [
+          { "field": "http.webServer", "operator": "StartsWith", "values": ["cpsrvd"] },
+          { "field": "http.title", "operator": "Contains", "values": ["cPanel", "WHM Login", "WebHost Manager"] },
+          { "field": "http.cookieNames", "operator": "In", "values": ["cprelogin", "cpsession", "whostmgrsession", "webmailsession"] }
+        ] },
+        "outcome": { "technology": { "name": "cPanel", "category": "hosting-panel" }, "classificationTag": "admin-panel", "confidence": 0.9 },
+        "tags": ["pack-webscan-default", "panel"]
+      }
+    },
+    {
+      "id": "webscan-plesk",
+      "name": "Plesk",
+      "rule": {
+        "description": "Plesk by title, X-Powered-By (PleskLin/PleskWin) or session cookie.",
+        "when": { "any": [
+          { "field": "http.title", "operator": "Contains", "values": ["Plesk"] },
+          { "field": "http.header.X-Powered-By", "operator": "Contains", "values": ["PleskLin", "PleskWin"] },
+          { "field": "http.header.X-Powered-By-Plesk", "operator": "Exists" },
+          { "field": "http.cookieNames", "operator": "In", "values": ["PLESKSESSID", "PLESKSESSID_ADMIN"] }
+        ] },
+        "outcome": { "technology": { "name": "Plesk", "category": "hosting-panel" }, "classificationTag": "admin-panel", "confidence": 0.9 },
+        "tags": ["pack-webscan-default", "panel"]
+      }
+    },
+    {
+      "id": "webscan-portainer",
+      "name": "Portainer",
+      "rule": {
+        "description": "Portainer container management by title.",
+        "when": { "field": "http.title", "operator": "Contains", "values": ["Portainer"] },
+        "outcome": { "technology": { "name": "Portainer", "category": "container-management" }, "classificationTag": "admin-panel", "confidence": 0.85 },
+        "tags": ["pack-webscan-default", "panel", "devops"]
+      }
+    },
+    {
+      "id": "webscan-router-admin",
+      "name": "Router / gateway admin interface",
+      "rule": {
+        "description": "Web administration of consumer and SOHO routers and firewalls by title or embedded web server.",
+        "when": { "any": [
+          { "field": "http.title", "operator": "Contains", "values": ["Router", "TP-LINK", "NETGEAR", "D-LINK", "Linksys", "DD-WRT", "OpenWrt", "LuCI", "FRITZ!Box", "pfSense", "OPNsense", "DrayTek", "Vigor", "ZyXEL", "Fortigate", "SonicWall"] },
+          { "field": "http.webServer", "operator": "StartsWith", "values": ["RomPager", "Allegro-Software-RomPager"] }
+        ] },
+        "outcome": { "classificationTag": "network-device", "confidence": 0.7 },
+        "tags": ["pack-webscan-default", "panel", "iot"]
+      }
+    },
+    {
+      "id": "webscan-mikrotik",
+      "name": "MikroTik RouterOS",
+      "rule": {
+        "description": "MikroTik RouterOS by title or service banner (FTP/SSH/HTTP).",
+        "when": { "any": [
+          { "field": "http.title", "operator": "Contains", "values": ["RouterOS", "MikroTik"] },
+          { "field": "service.banner", "operator": "Contains", "values": ["MikroTik"] },
+          { "field": "service.product", "operator": "Contains", "values": ["MikroTik"] }
+        ] },
+        "outcome": { "technology": { "name": "MikroTik RouterOS", "category": "network-device" }, "classificationTag": "network-device", "confidence": 0.9 },
+        "tags": ["pack-webscan-default", "iot"]
+      }
+    },
+    {
+      "id": "webscan-ubiquiti",
+      "name": "Ubiquiti UniFi / EdgeOS / airOS",
+      "rule": {
+        "description": "Ubiquiti controllers and devices by title or cookies.",
+        "when": { "any": [
+          { "field": "http.title", "operator": "Contains", "values": ["UniFi", "EdgeOS", "airOS", "Ubiquiti"] },
+          { "field": "http.cookieNames", "operator": "In", "values": ["unifises", "AIROS_SESSIONID"] }
+        ] },
+        "outcome": { "technology": { "name": "Ubiquiti", "category": "network-device" }, "classificationTag": "network-device", "confidence": 0.85 },
+        "tags": ["pack-webscan-default", "iot"]
+      }
+    },
+    {
+      "id": "webscan-embedded-web-server",
+      "name": "Embedded device web server",
+      "rule": {
+        "description": "Web servers typical for embedded devices (GoAhead, Boa, mini_httpd, thttpd, uc-httpd, Hydra).",
+        "when": { "field": "http.webServer", "operator": "StartsWith", "values": ["GoAhead", "Boa/", "mini_httpd", "thttpd", "uc-httpd", "Hydra/", "Mbedthis-Appweb", "Virata-EmWeb"] },
+        "outcome": { "classificationTag": "iot-device", "confidence": 0.6 },
+        "tags": ["pack-webscan-default", "iot"]
+      }
+    },
+    {
+      "id": "webscan-hikvision",
+      "name": "Hikvision camera / NVR",
+      "rule": {
+        "description": "Hikvision cameras and recorders by their web server header or title.",
+        "when": { "any": [
+          { "field": "http.webServer", "operator": "StartsWith", "values": ["Hikvision-Webs", "DNVRS-Webs", "DVRDVS-Webs", "App-webs"] },
+          { "field": "http.title", "operator": "Contains", "values": ["Hikvision"] }
+        ] },
+        "outcome": { "technology": { "name": "Hikvision", "category": "camera" }, "classificationTag": "iot-camera", "confidence": 0.85 },
+        "tags": ["pack-webscan-default", "iot"]
+      }
+    },
+    {
+      "id": "webscan-dahua",
+      "name": "Dahua camera / NVR",
+      "rule": {
+        "description": "Dahua cameras and recorders by title, web server or the DHLangCookie cookie.",
+        "when": { "any": [
+          { "field": "http.title", "operator": "Contains", "values": ["Dahua"] },
+          { "field": "http.webServer", "operator": "Contains", "values": ["Dahua"] },
+          { "field": "http.cookieNames", "operator": "In", "values": ["DHLangCookie30", "DhWebClientSessionID"] }
+        ] },
+        "outcome": { "technology": { "name": "Dahua", "category": "camera" }, "classificationTag": "iot-camera", "confidence": 0.8 },
+        "tags": ["pack-webscan-default", "iot"]
+      }
+    },
+    {
+      "id": "webscan-axis-camera",
+      "name": "Axis network camera",
+      "rule": {
+        "description": "Axis Communications cameras by title (AXIS + camera/video wording).",
+        "when": { "all": [
+          { "field": "http.title", "operator": "Contains", "values": ["AXIS"] },
+          { "field": "http.title", "operator": "Contains", "values": ["Camera", "Video", "Live View", "Axis Communications"] }
+        ] },
+        "outcome": { "technology": { "name": "Axis", "category": "camera" }, "classificationTag": "iot-camera", "confidence": 0.8 },
+        "tags": ["pack-webscan-default", "iot"]
+      }
+    },
+    {
+      "id": "webscan-ip-camera",
+      "name": "IP camera / video recorder (generic)",
+      "rule": {
+        "description": "Generic camera/NVR/DVR web interfaces by title.",
+        "when": { "field": "http.title", "operator": "Contains", "values": ["Network Camera", "IP Camera", "IPCam", "NetSurveillance", "Web Viewer", "NVR", "DVR Login", "Video Server"] },
+        "outcome": { "classificationTag": "iot-camera", "confidence": 0.6 },
+        "tags": ["pack-webscan-default", "iot"]
+      }
+    },
+    {
+      "id": "webscan-printer",
+      "name": "Network printer / MFP",
+      "rule": {
+        "description": "Printers by embedded web server, title (HP, Brother, Epson, Canon, Xerox, Kyocera, Ricoh, Lexmark) or printing services.",
+        "when": { "any": [
+          { "field": "http.webServer", "operator": "StartsWith", "values": ["HP HTTP Server", "HP-ChaiSOE", "HP-ChaiServer", "debut/", "EPSON_Linux", "EPSON-HTTP", "CANON HTTP Server", "Catwalk", "Xerox_MicroServer", "KM-MFP-http", "Web-Server/3.0", "Lexmark"] },
+          { "field": "http.title", "operator": "Contains", "values": ["LaserJet", "OfficeJet", "DesignJet", "PageWide", "Brother", "EPSON", "Remote UI", "Xerox", "Command Center", "Web Image Monitor", "Lexmark", "Printer"] },
+          { "field": "service.name", "operator": "In", "values": ["ipp", "printer", "jetdirect", "pdl-datastream"] }
+        ] },
+        "outcome": { "classificationTag": "iot-printer", "confidence": 0.75 },
+        "tags": ["pack-webscan-default", "iot"]
+      }
+    },
+    {
+      "id": "webscan-synology",
+      "name": "Synology DiskStation (DSM)",
+      "rule": {
+        "description": "Synology NAS by title.",
+        "when": { "field": "http.title", "operator": "Contains", "values": ["Synology", "DiskStation", "RackStation"] },
+        "outcome": { "technology": { "name": "Synology DSM", "category": "nas" }, "classificationTag": "nas", "confidence": 0.85 },
+        "tags": ["pack-webscan-default", "iot"]
+      }
+    },
+    {
+      "id": "webscan-qnap",
+      "name": "QNAP NAS (QTS)",
+      "rule": {
+        "description": "QNAP NAS by title or its QTS session cookie.",
+        "when": { "any": [
+          { "field": "http.title", "operator": "Contains", "values": ["QNAP", "QTS"] },
+          { "field": "http.cookieNames", "operator": "In", "values": ["QTS_SSID", "NAS_USER", "NAS_SID"] }
+        ] },
+        "outcome": { "technology": { "name": "QNAP QTS", "category": "nas" }, "classificationTag": "nas", "confidence": 0.85 },
+        "tags": ["pack-webscan-default", "iot"]
+      }
+    },
+    {
+      "id": "webscan-wordpress",
+      "name": "WordPress",
+      "rule": {
+        "description": "WordPress by cookies, REST API Link header, X-Pingback, wp-login/wp-admin redirects or probe-reported technology.",
+        "when": { "any": [
+          { "field": "http.cookieNames", "operator": "StartsWith", "values": ["wordpress_", "wp-settings-", "wp_woocommerce_session"] },
+          { "field": "http.header.Link", "operator": "Contains", "values": ["api.w.org"] },
+          { "field": "http.header.X-Pingback", "operator": "Contains", "values": ["xmlrpc.php"] },
+          { "field": "http.finalUrl", "operator": "Contains", "values": ["/wp-login.php", "/wp-admin/"] },
+          { "field": "http.technologies", "operator": "StartsWith", "values": ["WordPress"] }
+        ] },
+        "outcome": { "technology": { "name": "WordPress", "category": "cms" }, "classificationTag": "cms", "confidence": 0.9 },
+        "tags": ["pack-webscan-default", "cms"]
+      }
+    },
+    {
+      "id": "webscan-drupal",
+      "name": "Drupal",
+      "rule": {
+        "description": "Drupal by X-Generator / X-Drupal-* headers or probe-reported technology.",
+        "when": { "any": [
+          { "field": "http.header.X-Generator", "operator": "StartsWith", "values": ["Drupal"] },
+          { "field": "http.header.X-Drupal-Cache", "operator": "Exists" },
+          { "field": "http.header.X-Drupal-Dynamic-Cache", "operator": "Exists" },
+          { "field": "http.technologies", "operator": "StartsWith", "values": ["Drupal"] }
+        ] },
+        "outcome": { "technology": { "name": "Drupal", "category": "cms" }, "classificationTag": "cms", "confidence": 0.9 },
+        "tags": ["pack-webscan-default", "cms"]
+      }
+    },
+    {
+      "id": "webscan-joomla",
+      "name": "Joomla",
+      "rule": {
+        "description": "Joomla by X-Content-Encoded-By header, /administrator/ redirect or probe-reported technology.",
+        "when": { "any": [
+          { "field": "http.header.X-Content-Encoded-By", "operator": "Contains", "values": ["Joomla"] },
+          { "field": "http.finalUrl", "operator": "Contains", "values": ["/administrator/index.php"] },
+          { "field": "http.technologies", "operator": "StartsWith", "values": ["Joomla"] }
+        ] },
+        "outcome": { "technology": { "name": "Joomla", "category": "cms" }, "classificationTag": "cms", "confidence": 0.85 },
+        "tags": ["pack-webscan-default", "cms"]
+      }
+    },
+    {
+      "id": "webscan-magento",
+      "name": "Magento / Adobe Commerce",
+      "rule": {
+        "description": "Magento by its cache/session cookies, X-Magento-* headers or probe-reported technology.",
+        "when": { "any": [
+          { "field": "http.cookieNames", "operator": "In", "values": ["mage-cache-sessid", "mage-cache-storage", "mage-messages", "X-Magento-Vary", "mage-translation-storage"] },
+          { "field": "http.header.X-Magento-Cache-Debug", "operator": "Exists" },
+          { "field": "http.header.X-Magento-Tags", "operator": "Exists" },
+          { "field": "http.technologies", "operator": "StartsWith", "values": ["Magento"] }
+        ] },
+        "outcome": { "technology": { "name": "Magento", "category": "cms" }, "classificationTag": "cms", "confidence": 0.85 },
+        "tags": ["pack-webscan-default", "cms"]
+      }
+    },
+    {
+      "id": "webscan-php",
+      "name": "PHP",
+      "rule": {
+        "description": "PHP by X-Powered-By or the PHPSESSID cookie.",
+        "when": { "any": [
+          { "field": "http.header.X-Powered-By", "operator": "StartsWith", "values": ["PHP"] },
+          { "field": "http.cookieNames", "operator": "In", "values": ["PHPSESSID"] }
+        ] },
+        "outcome": { "technology": { "name": "PHP", "category": "language" }, "confidence": 0.8 },
+        "tags": ["pack-webscan-default", "tech"]
+      }
+    },
+    {
+      "id": "webscan-aspnet",
+      "name": "ASP.NET",
+      "rule": {
+        "description": "ASP.NET by X-AspNet-Version (value = version), X-Powered-By or its session cookies.",
+        "when": { "any": [
+          { "field": "http.header.X-AspNet-Version", "operator": "Exists" },
+          { "field": "http.header.X-Powered-By", "operator": "Equals", "values": ["ASP.NET"] },
+          { "field": "http.cookieNames", "operator": "In", "values": ["ASP.NET_SessionId", ".AspNetCore.Session", ".AspNetCore.Antiforgery"] }
+        ] },
+        "outcome": { "technology": { "name": "ASP.NET", "versionField": "http.header.X-AspNet-Version", "category": "framework" }, "confidence": 0.85 },
+        "tags": ["pack-webscan-default", "tech"]
+      }
+    },
+    {
+      "id": "webscan-java-servlet",
+      "name": "Java servlet container",
+      "rule": {
+        "description": "Java web applications by the JSESSIONID cookie.",
+        "when": { "field": "http.cookieNames", "operator": "StartsWith", "values": ["JSESSIONID"] },
+        "outcome": { "technology": { "name": "Java Servlet", "category": "language" }, "confidence": 0.7 },
+        "tags": ["pack-webscan-default", "tech"]
+      }
+    },
+    {
+      "id": "webscan-exchange-owa",
+      "name": "Microsoft Exchange / OWA",
+      "rule": {
+        "description": "Outlook Web App by X-OWA-Version (value = build), title or redirect to /owa/.",
+        "when": { "any": [
+          { "field": "http.header.X-OWA-Version", "operator": "Exists" },
+          { "field": "http.title", "operator": "Contains", "values": ["Outlook Web App", "Outlook Web Access"] },
+          { "field": "http.finalUrl", "operator": "Contains", "values": ["/owa/"] }
+        ] },
+        "outcome": { "technology": { "name": "Microsoft Exchange", "versionField": "http.header.X-OWA-Version", "category": "mail-server" }, "classificationTag": "login-page", "confidence": 0.85 },
+        "tags": ["pack-webscan-default", "tech", "panel"]
+      }
+    },
+    {
+      "id": "webscan-sharepoint",
+      "name": "Microsoft SharePoint",
+      "rule": {
+        "description": "SharePoint by MicrosoftSharePointTeamServices (value = version) or SPRequestGuid headers.",
+        "when": { "any": [
+          { "field": "http.header.MicrosoftSharePointTeamServices", "operator": "Exists" },
+          { "field": "http.header.SPRequestGuid", "operator": "Exists" }
+        ] },
+        "outcome": { "technology": { "name": "Microsoft SharePoint", "versionField": "http.header.MicrosoftSharePointTeamServices", "category": "collaboration" }, "confidence": 0.9 },
+        "tags": ["pack-webscan-default", "tech"]
+      }
+    },
+    {
+      "id": "webscan-atlassian",
+      "name": "Atlassian Jira / Confluence",
+      "rule": {
+        "description": "Jira or Confluence by their characteristic response headers and cookies.",
+        "when": { "any": [
+          { "field": "http.header.X-AREQUESTID", "operator": "Exists" },
+          { "field": "http.header.X-Confluence-Request-Time", "operator": "Exists" },
+          { "field": "http.cookieNames", "operator": "In", "values": ["atlassian.xsrf.token", "seraph.confluence"] }
+        ] },
+        "outcome": { "technology": { "name": "Atlassian", "category": "collaboration" }, "confidence": 0.85 },
+        "tags": ["pack-webscan-default", "tech"]
+      }
+    },
+    {
+      "id": "webscan-favicon-known-panels",
+      "name": "Known admin panel favicon",
+      "rule": {
+        "description": "Shodan-style mmh3 favicon hashes of default admin UIs: Jenkins (81586312), phpMyAdmin (-1010568750), Apache Tomcat (-297069493).",
+        "when": { "field": "http.faviconHash", "operator": "In", "values": ["81586312", "-1010568750", "-297069493"] },
+        "outcome": { "classificationTag": "admin-panel", "confidence": 0.75 },
+        "tags": ["pack-webscan-default", "panel"]
+      }
+    }
+  ]
+}

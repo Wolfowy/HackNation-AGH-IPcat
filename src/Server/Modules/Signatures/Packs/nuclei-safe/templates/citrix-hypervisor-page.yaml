@@ -1,0 +1,40 @@
+id: citrix-hypervisor-page
+
+info:
+  name: Citrix Hypervisor Page Detection
+  author: pussycat0x
+  severity: info
+  classification:
+    cpe: cpe:2.3:o:citrix:hypervisor:*:*:*:*:*:*:*:*
+  metadata:
+    verified: true
+    max-request: 1
+    vendor: citrix
+    product: hypervisor
+    shodan-query: http.title:"Welcome to Citrix Hypervisor"
+  tags: tech,citrix,default-page,discovery,pack-nuclei-safe
+
+http:
+  - method: GET
+    path:
+      - '{{BaseURL}}'
+
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'Welcome to Citrix Hypervisor'
+          - 'XenCenter'
+        condition: and
+
+      - type: status
+        status:
+          - 200
+
+    extractors:
+      - type: regex
+        part: body
+        group: 1
+        regex:
+          - "Welcome to Citrix Hypervisor ([0-9. ]+)"
