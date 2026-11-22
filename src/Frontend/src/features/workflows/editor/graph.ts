@@ -80,6 +80,55 @@ export function connectionError(edges: Edge[], source: string, target: string): 
   return null
 }
 
+/** Agent steps with targets and EvaluateCondition read observations of earlier steps (`input.fromSteps`). */
+export const takesInput = (op?: OperationDescriptor) => (op?.plane === 'Agent' && op.inputKind !== 'None') || op?.operation === 'EvaluateCondition'
+
+// Mirrors the server's WorkflowValidator data-flow rules, so the editor refuses what saving would reject.
+const ENDPOINT_PRODUCERS = new Set(['ScanPorts', 'DetectService', 'HttpProbe', 'TlsProbe', 'ExecuteSignatures'])
+const CLOSING_STEPS = new Set(['PersistObservations', 'ComparePreviousScan', 'PublishFinding'])
+
+/** Whether observations read from step `id` can carry ports (EvaluateCondition passes on what its own inputs produce). */
+function yieldsEndpoints(graph: Graph, id: string, seen = new Set<string>()): boolean {
+  const step = graph.nodes.find((n) => n.id === id)?.data.step
+  if (!step || seen.has(id)) return false
+  seen.add(id)
+  if (ENDPOINT_PRODUCERS.has(step.operation)) return true
+  return step.operation === 'EvaluateCondition' && (step.input?.fromSteps ?? []).some((s) => yieldsEndpoints(graph, s, seen))
+}
+
+/** Why step `source` cannot feed or precede step `inputOf` as an input source, or null when it can. */
+export function inputSourceError(graph: Graph, ops: ReadonlyMap<string, OperationDescriptor>, source: string, inputOf: string): string | null {
+  const s = graph.nodes.find((n) => n.id === source)?.data.step
+  const t = graph.nodes.find((n) => n.id === inputOf)?.data.step
+  if (!s || !t) return null
+  if (ops.get(s.operation)?.plane !== 'Agent' && s.operation !== 'EvaluateCondition')
+    return `${s.operation} '${source}' produces no observations, so '${inputOf}' cannot read its targets from it. Connect an agent step or EvaluateCondition.`
+  if (ops.get(t.operation)?.inputKind === 'Endpoints' && !yieldsEndpoints(graph, source))
+    return `${t.operation} needs host:port endpoints, but ${s.operation} '${source}' only finds hosts. Connect it after ScanPorts (or a later step).`
+  return null
+}
+
+/**
+ * Why `target` may not depend on `source`: structural problems (self-loop, duplicate, cycle) and data-flow incompatibility
+ * (closing steps after every agent step, RecheckMissing last, input sources that can feed the target). Null = allowed.
+ */
+export function compatibilityError(graph: Graph, ops: ReadonlyMap<string, OperationDescriptor>, source: string, target: string): string | null {
+  const structural = connectionError(graph.edges, source, target)
+  if (structural) return structural
+  const s = graph.nodes.find((n) => n.id === source)?.data.step
+  const t = graph.nodes.find((n) => n.id === target)?.data.step
+  if (!s || !t) return null
+  const targetOp = ops.get(t.operation)
+  const targetIsAgent = targetOp?.plane === 'Agent'
+  if (CLOSING_STEPS.has(s.operation) && targetIsAgent)
+    return `${t.operation} '${target}' cannot run after ${s.operation} '${source}': persist, compare and publish steps come after every agent step.`
+  if (s.operation === 'RecheckMissing' && targetIsAgent && t.operation !== 'RecheckMissing')
+    return `RecheckMissing re-checks after every other agent step, so ${t.operation} '${target}' cannot depend on it.`
+  // A target without input starts reading from the step it is connected to (see connect).
+  if (takesInput(targetOp) && !t.input) return inputSourceError(graph, ops, source, target)
+  return null
+}
+
 /** Adds the dependency source → target. With `feedsInput`, a target without input reads its targets from `source`. */
 export function connect(graph: Graph, source: string, target: string, feedsInput: boolean): Graph {
   if (connectionError(graph.edges, source, target)) return graph

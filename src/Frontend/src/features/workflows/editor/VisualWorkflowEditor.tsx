@@ -12,7 +12,9 @@ import {
   ReactFlowProvider,
   useReactFlow,
   type Connection,
+  type Edge,
   type EdgeChange,
+  type FinalConnectionState,
   type NodeChange,
   type NodeProps,
 } from '@xyflow/react'
@@ -27,8 +29,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { cn } from '@/lib/utils'
 import {
   addStep,
+  compatibilityError,
   connect,
-  connectionError,
   decorateEdges,
   definitionToGraph,
   describeCondition,
@@ -39,8 +41,9 @@ import {
   stepErrors,
   type Graph,
   type StepNode,
+  takesInput,
 } from './graph'
-import { StepInspector, takesInput, WorkflowSettings } from './Inspector'
+import { StepInspector, WorkflowSettings } from './Inspector'
 import { JsonWorkflowEditor } from './JsonWorkflowEditor'
 import { OperationIcon, planeAccent } from './operationStyle'
 import type { WorkflowEditorChange, WorkflowEditorProps } from './types'
@@ -213,8 +216,16 @@ function Editor({ initial, onChange, operations, errors, readOnly, keyEditable }
       }),
     [setGraph],
   )
+  // Incompatible pairs cannot even be connected (red line while dragging); dropping on one explains why.
+  const isValidConnection = (c: Connection | Edge) => !compatibilityError(graph, opsByName, c.source, c.target)
+  const onConnectEnd = (_: MouseEvent | TouchEvent, state: FinalConnectionState) => {
+    if (state.isValid !== false || !state.fromNode || !state.toNode) return
+    const [source, target] = state.fromHandle?.type === 'target' ? [state.toNode.id, state.fromNode.id] : [state.fromNode.id, state.toNode.id]
+    const problem = compatibilityError(graph, opsByName, source, target)
+    if (problem) toast.warning(problem)
+  }
   const onConnect = (c: Connection) => {
-    const problem = connectionError(graph.edges, c.source, c.target)
+    const problem = compatibilityError(graph, opsByName, c.source, c.target)
     if (problem) return void toast.error(problem)
     const target = graph.nodes.find((n) => n.id === c.target)
     setGraph((g) => connect(g, c.source, c.target, takesInput(opsByName.get(target?.data.step.operation ?? ''))))
@@ -267,6 +278,8 @@ function Editor({ initial, onChange, operations, errors, readOnly, keyEditable }
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onConnect={readOnly ? undefined : onConnect}
+            isValidConnection={isValidConnection}
+            onConnectEnd={readOnly ? undefined : onConnectEnd}
             nodesConnectable={!readOnly}
             deleteKeyCode={readOnly ? null : ['Backspace', 'Delete']}
             minZoom={0.2}

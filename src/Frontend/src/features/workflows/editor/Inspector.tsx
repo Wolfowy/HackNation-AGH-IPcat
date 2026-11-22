@@ -9,13 +9,15 @@ import { Input, NativeSelect, Textarea } from '@/components/ui/input'
 import { ConditionBuilder } from './ConditionBuilder'
 import {
   ancestorsOf,
+  compatibilityError,
   connect,
-  connectionError,
   disconnect,
+  inputSourceError,
   KEY_PATTERN,
   removeStep,
   renameStep,
   STEP_ID_PATTERN,
+  takesInput,
   updateStep,
   type Graph,
   type WorkflowMeta,
@@ -26,7 +28,6 @@ const num = (s: string) => (s.trim() === '' ? undefined : Number(s))
 /** Retry with both fields empty means "inherit the workflow default" (omit), not "{}" (= server defaults). */
 const retryOf = (r: RetryPolicy) => (r.maxAttempts === undefined && r.backoffSeconds === undefined ? undefined : r)
 /** Whether the step reads targets (input / when are allowed): agent steps with an input kind (not RecheckMissing) and EvaluateCondition. */
-export const takesInput = (op?: OperationDescriptor) => (op?.plane === 'Agent' && op.inputKind !== 'None') || op?.operation === 'EvaluateCondition'
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -109,6 +110,7 @@ export function StepInspector({
   if (!node) return null
   const step = node.data.step
   const op = operations.find((o) => o.operation === step.operation)
+  const opsByName = new Map(operations.map((o) => [o.operation as string, o]))
   const update = (patch: Partial<WorkflowStep>) => onChange(updateStep(graph, stepId, patch))
   const others = graph.nodes.filter((n) => n.id !== stepId).map((n) => n.id)
   const dependsOn = new Set(graph.edges.filter((e) => e.target === stepId).map((e) => e.source))
@@ -152,7 +154,7 @@ export function StepInspector({
         ) : (
           <div className="grid gap-1" role="group" aria-label="Depends on">
             {others.map((id) => {
-              const problem = dependsOn.has(id) ? null : connectionError(graph.edges, id, stepId)
+              const problem = dependsOn.has(id) ? null : compatibilityError(graph, opsByName, id, stepId)
               return (
                 <label key={id} className="flex items-center gap-2 text-sm" title={problem ?? undefined}>
                   <input
@@ -163,7 +165,7 @@ export function StepInspector({
                     onChange={(e) => onChange(e.target.checked ? connect(graph, id, stepId, takesInput(op)) : disconnect(graph, id, stepId))}
                   />
                   <span className="font-mono text-xs">{id}</span>
-                  {problem && <span className="text-muted-foreground text-xs">(would create a cycle)</span>}
+                  {problem && <span className="text-muted-foreground truncate text-xs">(not allowed: hover for why)</span>}
                 </label>
               )
             })}
@@ -177,18 +179,24 @@ export function StepInspector({
                 {op?.inputKind === 'Endpoints' ? 'Needs endpoints: add a dependency on a step that produces them.' : 'None: the scan run scope (networks) is used.'}
               </p>
             ) : (
-              sources.map((id) => (
-                <label key={id} className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    className="accent-primary size-4"
-                    checked={fromSteps.includes(id)}
-                    onChange={(e) => setFromSteps(e.target.checked ? [...fromSteps, id] : fromSteps.filter((s) => s !== id))}
-                  />
-                  <span className="font-mono text-xs">{id}</span>
-                  {!ancestors.has(id) && <span className="text-destructive text-xs">(not a dependency)</span>}
-                </label>
-              ))
+              sources.map((id) => {
+                // Already selected sources stay clickable so an invalid one (e.g. from JSON) can be removed.
+                const problem = fromSteps.includes(id) ? null : inputSourceError(graph, opsByName, id, stepId)
+                return (
+                  <label key={id} className="flex items-center gap-2 text-sm" title={problem ?? undefined}>
+                    <input
+                      type="checkbox"
+                      className="accent-primary size-4"
+                      checked={fromSteps.includes(id)}
+                      disabled={Boolean(problem)}
+                      onChange={(e) => setFromSteps(e.target.checked ? [...fromSteps, id] : fromSteps.filter((s) => s !== id))}
+                    />
+                    <span className="font-mono text-xs">{id}</span>
+                    {!ancestors.has(id) && <span className="text-destructive text-xs">(not a dependency)</span>}
+                    {problem && <span className="text-muted-foreground text-xs">(incompatible)</span>}
+                  </label>
+                )
+              })
             )}
           </div>
         )}

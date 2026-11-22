@@ -2,6 +2,7 @@ import type { ScanWorkflowDefinition } from '@/api/types'
 import { OPERATIONS } from '@/mocks/operations'
 import {
   addStep,
+  compatibilityError,
   connect,
   connectionError,
   decorateEdges,
@@ -126,5 +127,39 @@ describe('validation mapping and JSON checks', () => {
     expect(graphProblem(def)).toBeNull()
     expect(graphProblem({ key: 'k', name: 'n', steps: [{ id: 'a', operation: 'DiscoverHosts', dependsOn: ['zzz'] }] })).toMatch(/unknown step 'zzz'/)
     expect(graphProblem({ key: 'k', name: 'n', steps: [{ id: 'a', operation: 'DiscoverHosts' }, { id: 'a', operation: 'ScanPorts' }] })).toMatch(/Duplicate/)
+  })
+})
+
+describe('compatibility of connections (mirrors the server data-flow rules)', () => {
+  const ops = new Map(OPERATIONS.map((o) => [o.operation as string, o]))
+  const graphOf = (steps: ScanWorkflowDefinition['steps']) => definitionToGraph({ key: 'c', name: 'C', steps }).graph
+  const g = graphOf([
+    { id: 'discover', operation: 'DiscoverHosts' },
+    { id: 'ports', operation: 'ScanPorts', dependsOn: ['discover'], input: { fromSteps: ['discover'] }, parameters: { ports: '80' } },
+    { id: 'liveHosts', operation: 'EvaluateCondition', dependsOn: ['discover'], input: { fromSteps: ['discover'] } },
+    { id: 'web', operation: 'EvaluateCondition', dependsOn: ['ports'], input: { fromSteps: ['ports'] } },
+    { id: 'services', operation: 'DetectService' },
+    { id: 'http', operation: 'HttpProbe', dependsOn: ['ports'], input: { fromSteps: ['ports'] } },
+    { id: 'recheck', operation: 'RecheckMissing' },
+    { id: 'persist', operation: 'PersistObservations' },
+    { id: 'cond', operation: 'EvaluateCondition' },
+  ])
+
+  it('endpoint steps only accept sources with ports, also through conditions', () => {
+    expect(compatibilityError(g, ops, 'discover', 'services')).toMatch(/needs host:port endpoints/)
+    expect(compatibilityError(g, ops, 'liveHosts', 'services')).toMatch(/only finds hosts/)
+    expect(compatibilityError(g, ops, 'ports', 'services')).toBeNull()
+    expect(compatibilityError(g, ops, 'web', 'services')).toBeNull()
+    // A step that already has its input may get further plain dependencies.
+    expect(compatibilityError(g, ops, 'liveHosts', 'http')).toBeNull()
+  })
+
+  it('closing steps and RecheckMissing come after every agent step; server steps produce no observations', () => {
+    expect(compatibilityError(g, ops, 'persist', 'services')).toMatch(/after every agent step/)
+    expect(compatibilityError(g, ops, 'recheck', 'services')).toMatch(/RecheckMissing/)
+    expect(compatibilityError(g, ops, 'persist', 'cond')).toMatch(/produces no observations/)
+    expect(compatibilityError(g, ops, 'http', 'recheck')).toBeNull()
+    expect(compatibilityError(g, ops, 'recheck', 'persist')).toBeNull()
+    expect(compatibilityError(g, ops, 'services', 'services')).toMatch(/itself/)
   })
 })

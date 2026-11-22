@@ -17,11 +17,11 @@ const def: ScanWorkflowDefinition = {
 }
 
 /** Renders the inspector for `selected` and exposes the definition it produces. */
-function setup(selected = 'ports') {
-  let current: ScanWorkflowDefinition = def
+function setup(selected = 'ports', initial: ScanWorkflowDefinition = def) {
+  let current: ScanWorkflowDefinition = initial
   function Harness() {
     const [{ meta, graph }, setState] = useState<{ meta: WorkflowMeta; graph: Graph }>(() => {
-      const s = definitionToGraph(def)
+      const s = definitionToGraph(initial)
       return { ...s, graph: { ...s.graph, nodes: s.graph.nodes.map((n) => ({ ...n, selected: n.id === selected })) } }
     })
     current = graphToDefinition(meta, graph)
@@ -76,6 +76,24 @@ describe('step inspector', () => {
     expect(step('ports')?.input).toBeUndefined()
     await user.click(deps.getByRole('checkbox', { name: 'discover' }))
     expect(step('ports')).not.toHaveProperty('dependsOn')
+  })
+
+  it('disables dependencies and input sources the data-flow rules refuse, with the reason', async () => {
+    const { user, step } = setup('services', {
+      key: 'wf',
+      name: 'WF',
+      steps: [
+        { id: 'discover', operation: 'DiscoverHosts' },
+        { id: 'ports', operation: 'ScanPorts', dependsOn: ['discover'], input: { fromSteps: ['discover'] }, parameters: { ports: '80' } },
+        { id: 'services', operation: 'DetectService' },
+      ],
+    })
+    const deps = within(screen.getByRole('group', { name: 'Depends on' }))
+    const discover = deps.getByRole('checkbox', { name: /discover/ })
+    expect(discover).toBeDisabled()
+    expect(discover.closest('label')).toHaveAttribute('title', expect.stringMatching(/needs host:port endpoints/))
+    await user.click(deps.getByRole('checkbox', { name: /ports/ }))
+    expect(step('services')).toMatchObject({ dependsOn: ['ports'], input: { fromSteps: ['ports'] } })
   })
 
   it('hides input and conditions for server steps', () => {
