@@ -1,4 +1,4 @@
-# WebScan — dokumentacja techniczna
+# ip_cat — dokumentacja techniczna
 
 Rozproszony system inwentaryzacji infrastruktury i analizy powierzchni ataku
 
@@ -498,7 +498,7 @@ Pola używane do wyszukiwania, łączenia i agregacji pozostają jawne, m.in. ad
 
 Pierścień kluczy znajduje się w `infra.data_protection_keys`. Bez `DataProtection:CertificatePath` klucze są zapisane w bazie bez dodatkowego zaszyfrowania; osoba posiadająca dump z kluczami może odszyfrować chronione pola. W docelowym wdrożeniu należy skonfigurować certyfikat PKCS#12 RSA, przechowywany oddzielnie od bazy. W Compose służą do tego `DATA_PROTECTION_CERT_PATH` i `DATA_PROTECTION_CERT_PASSWORD`.
 
-Rotacja domyślnie tworzy nowy klucz co 90 dni i zachowuje stare do odczytu historii. Usunięcie lub unieważnienie kluczy może bezpowrotnie odciąć dostęp do danych. Włączenie ochrony certyfikatem po wcześniejszej pracy chroni nowo tworzone klucze; wymaga osobnego przeglądu zabezpieczenia już istniejącego pierścienia. Usługa startowa `FieldEncryptionBackfill` uzupełnia szyfrowanie starszych wartości tekstowych partiami.
+Rotacja domyślnie tworzy nowy klucz co 90 dni i zachowuje stare do odczytu historii. Usunięcie lub unieważnienie kluczy może bezpowrotnie odciąć dostęp do danych. Włączenie ochrony certyfikatem po wcześniejszej pracy chroni nowo tworzone klucze; wymaga osobnego przeglądu zabezpieczenia już istniejącego pierścienia. Usługa startowa `FieldEncryptionBackfill` uzupełnia wowanie starszych wartości tekstowych partiami.
 
 ### 9.4. Audyt i granice wdrożenia
 
