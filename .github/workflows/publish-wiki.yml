@@ -1,0 +1,74 @@
+name: Publish documentation to Wiki
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/**'
+      - 'scripts/build-wiki.mjs'
+      - 'scripts/tests/build-wiki.test.mjs'
+      - '.github/workflows/publish-wiki.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-wiki
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Test documentation generator
+        run: node --test scripts/tests/build-wiki.test.mjs
+
+      - name: Publish Wiki
+        env:
+          WIKI_TOKEN: ${{ secrets.WIKI_TOKEN }}
+          GH_REPOSITORY: ${{ github.repository }}
+          SOURCE_SHA: ${{ github.sha }}
+          GIT_TERMINAL_PROMPT: '0'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "$WIKI_TOKEN" ]]; then
+            echo '::error::Add the repository Actions secret WIKI_TOKEN with write access to the Wiki. See docs/WIKI.md.'
+            exit 1
+          fi
+
+          # Keep the token out of remote URLs, command arguments and Git config.
+          export GIT_ASKPASS="$RUNNER_TEMP/wiki-askpass.sh"
+          cat > "$GIT_ASKPASS" <<'SH'
+          #!/usr/bin/env bash
+          case "$1" in
+            *Username*) printf '%s\n' 'x-access-token' ;;
+            *Password*) printf '%s\n' "$WIKI_TOKEN" ;;
+          esac
+          SH
+          chmod 700 "$GIT_ASKPASS"
+          trap 'rm -f "$GIT_ASKPASS"' EXIT
+
+          wiki_dir="$RUNNER_TEMP/webscan-wiki"
+          if ! git clone "https://github.com/${GH_REPOSITORY}.wiki.git" "$wiki_dir"; then
+            echo '::error::Cannot clone Wiki. Enable Wiki, save its first page, and check WIKI_TOKEN. See docs/WIKI.md.'
+            exit 1
+          fi
+
+          node scripts/build-wiki.mjs --source docs --output "$wiki_dir" --repository "$GH_REPOSITORY" --ref "$SOURCE_SHA"
+          git -C "$wiki_dir" config user.name 'github-actions[bot]'
+          git -C "$wiki_dir" config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git -C "$wiki_dir" add --all
+          if git -C "$wiki_dir" diff --cached --quiet; then
+            echo 'Wiki is up to date.'
+            exit 0
+          fi
+          git -C "$wiki_dir" commit -m "docs: sync Wiki from ${SOURCE_SHA}"
+          git -C "$wiki_dir" push origin HEAD

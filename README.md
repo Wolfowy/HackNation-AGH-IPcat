@@ -13,6 +13,8 @@ Rozproszona platforma inwentaryzacji i obserwacji infrastruktury sieciowej (10 0
 
 | Dokument | Zawartość |
 |---|---|
+| [Publikacja Wiki](docs/WIKI.md) | automatyczna synchronizacja dokumentacji z GitHub Wiki i konfiguracja `WIKI_TOKEN` |
+| [Dokumentacja techniczna](docs/DOKUMENTACJA-TECHNICZNA.md) | pełny opis systemu: wdrożenie, działanie skanera, API, import/eksport, RBAC, szyfrowanie i procedura walidacji |
 | [docs/RUNNING.md](docs/RUNNING.md) | uruchomienie (Docker Compose, dev), testy, konfiguracja |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | architektura, kontrakty, API, bezpieczeństwo, decyzje |
 | [docs/LOCAL-NETWORK.md](docs/LOCAL-NETWORK.md) | skanowanie własnej sieci lokalnej (agent natywny) |
