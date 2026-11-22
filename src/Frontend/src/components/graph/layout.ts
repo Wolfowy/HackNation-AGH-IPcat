@@ -16,7 +16,11 @@ export function layoutGraph<N extends Node>(nodes: N[], edges: Edge[], sizeOf: (
   g.setDefaultEdgeLabel(() => ({}))
   // Copy: dagre writes x/y into the label object, and sizes are often shared constants.
   for (const n of nodes) g.setNode(n.id, { ...sizeOf(n) })
-  for (const e of edges) g.setEdge(e.source, e.target)
+  // `data.minlen` stretches an edge over more ranks (keeps a node type in a column of its own); text labels get room between ranks.
+  for (const e of edges) {
+    const label = typeof e.label === 'string' ? { width: e.label.length * 7 + 12, height: 18 } : {}
+    g.setEdge(e.source, e.target, { minlen: Number(e.data?.minlen ?? 1), ...label })
+  }
   layout(g)
   return nodes.map((n) => {
     const { x, y, width, height } = g.node(n.id)

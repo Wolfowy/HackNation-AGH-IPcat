@@ -219,9 +219,11 @@ Role shorthand: R=CanRead, E=CanEdit, M=CanManage, A=AdminOnly.
 
 **Discovery, analytics, signatures, integrations (D)**
 * `GET /api/dashboard/summary` (R) → {hostsTotal, hostsActive, servicesTotal, changesLast24h, findingsOpen, lastScanAt?}
-* `GET /api/assets/hosts?search&status&zone&page&pageSize` (R) → paged [{id, address, hostnames[], status: Active|Unreachable|Gone|Unknown, unstable,
-  firstSeenAt, lastSeenAt, lastScannedAt?, openPortCount, technologies[], zone?, annotation?:{description, classification, businessState, owner, tags[]}}]
-* `GET /api/assets/hosts/{id}` (R) → host + services[] + technologies[] + certificates[] + findings[] + recentChanges[]
+* `GET /api/assets/hosts?search&status&zone&networkDevice&page&pageSize` (R) → paged [{id, address, hostnames[], status: Active|Unreachable|Gone|Unknown, unstable,
+  firstSeenAt, lastSeenAt, lastScannedAt?, openPortCount, technologies[], zone?, macAddress?, macVendor?, networkDevice, networkDeviceConfidence?: high|low,
+  annotation?:{description, classification, businessState, owner, tags[]}}] (`networkDevice=true` → only network-device interfaces)
+* `GET /api/assets/hosts/{id}` (R) → host + services[] + technologies[] + certificates[] + findings[] + recentChanges[] +
+  deviceInterfaces:[{hostId, zone, address}] (the other zones' interfaces of the same network device)
 * `PUT /api/assets/hosts/{id}/annotation` (E) {description, classification, businessState, owner, tags[]}
 * `GET /api/assets/services?port&serviceName&search&page` (R) → paged [{id, hostId, address, port, transport, state: Open|Gone, serviceName, product, version,
   http?:{url, statusCode, title, webServer}, tls?:{subjectCommonName, issuer, notAfter, fingerprintSha256}, technologies[], confidence?, firstSeenAt, lastSeenAt}]
@@ -229,9 +231,11 @@ Role shorthand: R=CanRead, E=CanEdit, M=CanManage, A=AdminOnly.
 * `GET /api/observations?hostId&scanRunId&kind&page` (R) → paged raw observations
 * `GET /api/changes?since&type&hostId&scanRunId&page` (R) → paged [{id, detectedAt, scanRunId, type, hostId?, address, port?, summary, before?, after?, severity}]
 * `GET /api/scans/{runId}/diff?baseline={runId}` (R) → {added[], removed[], changed[]}
-* `GET /api/topology?zone&networkId&search` (R) → {perspectives:[{agentId, interfaceName?, zone?}], subnets:[{id, cidr, zone?, hostCount}],
-  hosts:[{id, address, hostnames[], status, unstable, subnet, zone?, lastSeenAt, macVendor?, openPortCount, services:[{port, transport, serviceName?,
-  product?, version?, url?, isWeb, tls}], technologies[], observedBy:[{agentId, interfaceName?}]}], truncated} (subnets: IPv4 /24, IPv6 /64; max 5000 hosts).
+* `GET /api/topology?zone&networkId&search` (R) → {perspectives:[{agentId, interfaceName?, zone?}], zones:[{name, subnetCount, hostCount}],
+  devices:[{id (= MAC), macAddress, macVendor?, confidence: high|low, zones[], interfaces:[{hostId, zone, address}]}], subnets:[{id, cidr, zone?, hostCount}],
+  hosts:[{id, address, hostnames[], status, unstable, subnet, zone?, lastSeenAt, macAddress?, macVendor?, deviceId?, sharedMac, openPortCount,
+  services:[{port, transport, serviceName?, product?, version?, url?, isWeb, tls}], technologies[], observedBy:[{agentId, interfaceName?}]}], truncated}
+  (subnets: IPv4 /24, IPv6 /64; max 5000 hosts; devices = those with an interface among the returned hosts, with all their zones/interfaces).
   Service DTOs carry `url` (best clickable URL: HTTP probe URL, else https/http by TLS/service name).
 * `GET /api/findings?severity&status&page` (R) → paged [{id, signatureId, signatureVersion, name, severity, hostId, address, port?, matchedAt, evidence?, status: Open|Resolved, firstSeenAt, lastSeenAt, externalRefs:[{system, externalId}]}]
 * `GET /api/export/{hosts|services|changes|findings}?format=json|csv` (R); `POST /api/import/assets?format=json|csv` (M) → {imported, updated, errors[]}
@@ -297,7 +301,7 @@ Deviations and clarifications agreed during integration (code is the source of t
 * Planner keeps **one interface per (agent, scan run, network)** across all workflow steps; a busy pinned interface means waiting,
   never switching perspective. Different networks of a run may still use different interfaces of one agent in parallel.
 * Admin panel: workflows are edited as a React Flow graph (palette, inspector, condition builder) with a synced JSON tab;
-  topology map (agent interface → subnet → host) and inventory graph (subnet → host → port cards); every `address:port` opens in a new tab.
+  topology map (network devices + agent interfaces → zones → subnets → hosts) and inventory graph (subnet → host → port cards); every `address:port` opens in a new tab.
 * **Asset identity is (zone, address)**: the same IP in two zones is two hosts (zone = the scanned network's zone, `""` = default).
   Services, findings, change events, annotations (import/export carry `zone`; a zone-less import row matches only an address
   that exists in exactly one zone, else it is reported as ambiguous) and run diff keys (`endpoint|{zone}|{addr}|…`) are zone-scoped;
@@ -306,10 +310,18 @@ Deviations and clarifications agreed during integration (code is the source of t
   observations) as an attribute only, never identity (randomized MACs; behind a router you see the router's MAC). The agent image
   sets `NMAP_PRIVILEGED=1` so non-root nmap uses its raw-socket capability: same-subnet discovery then uses ARP and reports MACs
   (natively on macOS without root nmap cannot see MACs).
+* **Zone = separate IP address space** (routed segment / VLAN / VRF) of the one organization network; a host record is one IP interface
+  in one zone. **Network devices** are inferred on read (no table): one MAC on current (not Gone) hosts of **two or more zones** = one
+  router / L3 switch / firewall / multi-homed box with an interface in each; VRRP `00:00:5E:00:01:xx` / HSRP `00:00:0C:07:AC:xx` MACs
+  are devices on their own. Broadcast, multicast and all-zero MACs are ignored; locally administered MACs (`02:42:…` Docker/VM) give
+  confidence **low** (they repeat by accident). A MAC on several IPs of **one** zone is only `sharedMac` (aliases, proxy-ARP). The
+  topology map is hierarchical: devices + agent interfaces → zones → subnets → host grids. Limits: a MAC is visible only to an agent on
+  the same L2 segment with ARP privileges, so devices are found only where agents sit; routers with a distinct MAC per interface are
+  not linked by this rule; one virtual-router MAC (same VRID/group) in two zones is linked as one device.
 * Agent tool manifest format and extensibility: [docs/TOOLS.md](docs/TOOLS.md). Additional placeholder `{ports}` (nmap groups hosts by
   identical port sets so it never scans endpoints outside the job).
 
 Known limitations (MVP): JWTs stay valid until expiry after user deactivation; forwarded headers not configured (audit IP = proxy);
 job rate fixed at lease time; PortGone does not know the exact port list of the previous ScanPorts step; HTTP change detection ignores
 body hashes; UDP endpoints not mapped to nmap `-sU`; Quartz uses an in-memory store (single active scheduler node — DB uniqueness on
-`(scheduleId, fireTime)` prevents duplicate runs); physical (L2/L3) topology is not modelled yet (the topology map shows scan perspectives and /24 subnets).
+`(scheduleId, fireTime)` prevents duplicate runs); physical L2 topology (switch ports, LLDP/CDP) is not modelled; L3 devices are inferred only from MACs shared across zones (see above).

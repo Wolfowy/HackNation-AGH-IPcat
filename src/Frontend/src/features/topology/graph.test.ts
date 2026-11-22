@@ -15,6 +15,7 @@ const host = (id: string, address: string, subnet: string, extra: Partial<Topolo
   services: [],
   technologies: [],
   observedBy: [],
+  sharedMac: false,
   ...extra,
 })
 
@@ -22,6 +23,8 @@ const web = { port: 443, transport: 'Tcp', serviceName: 'https', url: 'https://1
 const ssh = { port: 22, transport: 'Tcp', serviceName: 'ssh', isWeb: false, tls: false } as const
 
 const sample: Topology = {
+  zones: [],
+  devices: [],
   perspectives: [
     { agentId: 'a1', interfaceName: 'eth0', zone: 'dmz' },
     { agentId: 'a2', interfaceName: 'wg0', zone: 'lab' },
@@ -96,6 +99,8 @@ describe('buildTopologyGraph', () => {
 
   it('keeps the same cidr and IP in two zones apart (subnet ids are zone-qualified)', () => {
     const zoned: Topology = {
+      zones: [],
+      devices: [],
       perspectives: [
         { agentId: 'a1', interfaceName: 'eth0', zone: 'dc-warsaw' },
         { agentId: 'a2', interfaceName: 'wg0', zone: 'lab' },
@@ -115,6 +120,81 @@ describe('buildTopologyGraph', () => {
     expect(nodes.find((n) => n.id === 'h:l')?.parentId).toBe('g:lab|10.0.0.0/24')
     expect(ids(edges).filter((id) => id.startsWith('p:'))).toEqual(['p:a1/eth0->s:dc-warsaw|10.0.0.0/24', 'p:a2/wg0->s:lab|10.0.0.0/24'])
     expect(ids(buildInventoryGraph(zoned).nodes).filter((id) => id.startsWith('net:'))).toEqual(['net:dc-warsaw|10.0.0.0/24', 'net:lab|10.0.0.0/24'])
+  })
+})
+
+describe('buildTopologyGraph device and zone levels', () => {
+  const router = '00:1E:BD:4A:10:01'
+  const docker = '02:42:AC:11:00:02'
+  const hierarchy: Topology = {
+    perspectives: [{ agentId: 'a1', interfaceName: 'eth0', zone: 'office' }],
+    zones: [
+      { name: 'dmz', subnetCount: 1, hostCount: 1 },
+      { name: 'lab', subnetCount: 1, hostCount: 2 },
+      { name: 'office', subnetCount: 1, hostCount: 2 },
+    ],
+    devices: [
+      {
+        id: router,
+        macAddress: router,
+        macVendor: 'Cisco',
+        confidence: 'high',
+        zones: ['lab', 'office', 'remote'],
+        interfaces: [
+          { hostId: 'r-lab', zone: 'lab', address: '172.16.50.1' },
+          { hostId: 'r-office', zone: 'office', address: '192.168.10.1' },
+          { hostId: 'r-remote', zone: 'remote', address: '10.200.0.1' },
+        ],
+      },
+      {
+        id: docker,
+        macAddress: docker,
+        confidence: 'low',
+        zones: ['lab', 'office'],
+        interfaces: [
+          { hostId: 'd-lab', zone: 'lab', address: '172.16.50.251' },
+          { hostId: 'd-office', zone: 'office', address: '192.168.10.251' },
+        ],
+      },
+    ],
+    subnets: [
+      { id: 'dmz|10.10.0.0/24', cidr: '10.10.0.0/24', zone: 'dmz', hostCount: 1 },
+      { id: 'lab|172.16.50.0/24', cidr: '172.16.50.0/24', zone: 'lab', hostCount: 2 },
+      { id: 'office|192.168.10.0/24', cidr: '192.168.10.0/24', zone: 'office', hostCount: 2 },
+    ],
+    hosts: [
+      host('w', '10.10.0.5', 'dmz|10.10.0.0/24', { zone: 'dmz' }),
+      host('r-lab', '172.16.50.1', 'lab|172.16.50.0/24', { zone: 'lab', deviceId: router }),
+      host('d-lab', '172.16.50.251', 'lab|172.16.50.0/24', { zone: 'lab', deviceId: docker }),
+      host('r-office', '192.168.10.1', 'office|192.168.10.0/24', { zone: 'office', deviceId: router, observedBy: [{ agentId: 'a1', interfaceName: 'eth0' }] }),
+      host('d-office', '192.168.10.251', 'office|192.168.10.0/24', { zone: 'office', deviceId: docker }),
+    ],
+    truncated: false,
+  }
+
+  it('links devices to the zones they have interfaces in (labelled with their IPs), zones to subnets, subnets to host grids', () => {
+    const { nodes, edges } = buildTopologyGraph(hierarchy)
+    expect(ids(nodes).filter((id) => /^[dz]:/.test(id))).toEqual([`d:${router}`, `d:${docker}`, 'z:dmz', 'z:lab', 'z:office'])
+    const edge = (id: string) => edges.find((e) => e.id === id)
+    expect(edge(`d:${router}->z:lab`)?.label).toBe('172.16.50.1')
+    expect(edge(`d:${router}->z:office`)?.label).toBe('192.168.10.1')
+    expect(edge(`d:${router}->z:remote`)).toBeUndefined() // zone outside the view: no dangling edge
+    expect(edge(`d:${docker}->z:lab`)?.style).toMatchObject({ strokeDasharray: '6 4' }) // low confidence
+    expect(edge(`d:${router}->z:lab`)?.style).toBeUndefined()
+    // A zone without devices still appears with its subnets.
+    expect(edges.filter((e) => e.target === 'z:dmz')).toEqual([])
+    expect(edge('z:dmz->s:dmz|10.10.0.0/24')).toBeDefined()
+    expect(edge('s:office|192.168.10.0/24->g:office|192.168.10.0/24')).toBeDefined()
+    expect(edge('p:a1/eth0->s:office|192.168.10.0/24')).toMatchObject({ animated: true, style: { strokeDasharray: '4 3' } })
+  })
+
+  it('lays out devices, then zones, then subnets, then host grids', () => {
+    const { nodes } = buildTopologyGraph(hierarchy)
+    const x = (id: string) => nodes.find((n) => n.id === id)!.position.x
+    expect(x(`d:${router}`)).toBeLessThan(x('z:lab'))
+    expect(x('z:lab')).toBeLessThan(x('s:lab|172.16.50.0/24'))
+    expect(x('z:dmz')).toBe(x('z:lab'))
+    expect(x('s:lab|172.16.50.0/24')).toBeLessThan(x('g:lab|172.16.50.0/24'))
   })
 })
 

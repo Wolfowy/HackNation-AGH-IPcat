@@ -4,6 +4,7 @@ import type {
   Change,
   HostDetail,
   Network,
+  NetworkDevice,
   NetworkInput,
   ScanStartRequest,
   ScanWorkflowDefinition,
@@ -18,7 +19,7 @@ import type {
 import { hasPermission, type Permission } from '@/auth/roles'
 import { dagLevels } from '@/features/workflows/dag'
 import { validateTarget } from '@/lib/targets'
-import { buildRunPlan, createDb, mockId, randomGuid, requiresApprovalNote, type MockDb, type MockRun, type MockUser } from './data'
+import { buildRunPlan, createDb, mockId, randomGuid, requiresApprovalNote, type MockDb, type MockHost, type MockRun, type MockUser } from './data'
 import { OPERATIONS } from './operations'
 import { emit, progressOf, startRunSimulation, stopAllSimulations, stopRunSimulation } from './simulation'
 
@@ -65,6 +66,46 @@ const MOCK_PERSPECTIVES: Record<string, { agentId: string; interfaceName: string
   office: { agentId: 'scanner-office-01', interfaceName: 'ens18' },
   lab: { agentId: 'scanner-office-01', interfaceName: 'wg0' },
 }
+
+/**
+ * Server rule (Topology.InferDevices): a MAC on current hosts of 2+ zones (or a VRRP/HSRP MAC) is one network device; a locally
+ * administered MAC gives confidence 'low'; multicast/broadcast/zero MACs are ignored; a MAC on several IPs of one zone is only shared.
+ */
+function inferDevices(hosts: MockHost[]) {
+  const byMac = new Map<string, MockHost[]>()
+  for (const h of hosts) {
+    const first = parseInt(h.macAddress?.slice(0, 2) ?? '', 16)
+    if (!h.macAddress || h.status === 'Gone' || Number.isNaN(first) || first & 1 || h.macAddress === '00:00:00:00:00:00') continue
+    byMac.set(h.macAddress, [...(byMac.get(h.macAddress) ?? []), h])
+  }
+  const devices: NetworkDevice[] = []
+  const sharedMac = new Set<string>()
+  for (const [mac, nics] of byMac) {
+    const zones = [...new Set(nics.map((h) => h.zone))].sort()
+    for (const zone of zones) {
+      const inZone = nics.filter((h) => h.zone === zone)
+      if (inZone.length > 1) inZone.forEach((h) => sharedMac.add(h.id))
+    }
+    if (zones.length < 2 && !mac.startsWith('00:00:5E:00:01:') && !mac.startsWith('00:00:0C:07:AC:')) continue
+    devices.push({
+      id: mac,
+      macAddress: mac,
+      macVendor: nics.find((h) => h.macVendor)?.macVendor,
+      confidence: parseInt(mac.slice(0, 2), 16) & 2 ? 'low' : 'high',
+      zones,
+      interfaces: nics
+        .map((h) => ({ hostId: h.id, zone: h.zone, address: h.address }))
+        .sort((a, b) => a.zone.localeCompare(b.zone) || a.address.localeCompare(b.address)),
+    })
+  }
+  return { devices, sharedMac, deviceOf: new Map(devices.flatMap((d) => d.interfaces.map((i) => [i.hostId, d] as const))) }
+}
+
+const withDeviceFlags = (h: MockHost, deviceOf: Map<string, NetworkDevice>) => ({
+  ...h,
+  networkDevice: deviceOf.has(h.id),
+  networkDeviceConfidence: deviceOf.get(h.id)?.confidence,
+})
 
 function inIpv4Cidr(address: string, cidr: string) {
   const [base, bits = '32'] = cidr.split('/')
@@ -839,11 +880,14 @@ export const handlers = [
       const search = url.searchParams.get('search')?.toLowerCase()
       const status = url.searchParams.get('status')
       const zone = url.searchParams.get('zone')
+      const { deviceOf } = inferDevices(db.hosts)
       const items = db.hosts
+        .map((h) => withDeviceFlags(h, deviceOf))
         .filter(
           (h) =>
             (!status || h.status === status) &&
             (!zone || h.zone === zone) &&
+            (url.searchParams.get('networkDevice') !== 'true' || h.networkDevice) &&
             (!search || [h.address, ...h.hostnames, ...h.technologies.map(String)].some((v) => v.toLowerCase().includes(search))),
         )
         .sort((a, b) => a.zone.localeCompare(b.zone) || a.address.localeCompare(b.address)) // server order: zone, then address
@@ -855,8 +899,10 @@ export const handlers = [
     route('read', ({ params }) => {
       const host = db.hosts.find((h) => h.id === p(params, 'id'))
       if (!host) return notFound('Host')
+      const { deviceOf } = inferDevices(db.hosts)
       const detail: HostDetail = {
-        ...host,
+        ...withDeviceFlags(host, deviceOf),
+        deviceInterfaces: deviceOf.get(host.id)?.interfaces.filter((i) => i.hostId !== host.id) ?? [],
         services: db.services.filter((s) => s.hostId === host.id),
         technologies: db.hostTechnologies[host.id] ?? [],
         certificates: db.certificates[host.id] ?? [],
@@ -919,6 +965,7 @@ export const handlers = [
       const q = (k: string) => url.searchParams.get(k)
       const search = q('search')?.toLowerCase()
       const network = q('networkId') ? db.networks.find((n) => n.id === q('networkId')) : undefined
+      const { devices: allDevices, deviceOf, sharedMac } = inferDevices(db.hosts)
       const hosts: TopologyHost[] = db.hosts
         .filter(
           (h) =>
@@ -954,6 +1001,8 @@ export const handlers = [
             })),
             technologies: [...new Set(h.technologies.map((x) => (typeof x === 'string' ? x : x.name)))],
             observedBy: seenBy ? [{ agentId: seenBy.agentId, interfaceName: seenBy.interfaceName }] : [],
+            deviceId: deviceOf.get(h.id)?.id,
+            sharedMac: sharedMac.has(h.id),
           }
         })
       const subnets = [...new Set(hosts.map((h) => h.subnet))].sort().map((id) => {
@@ -963,7 +1012,13 @@ export const handlers = [
       const perspectives = Object.entries(MOCK_PERSPECTIVES)
         .filter(([zone]) => hosts.some((h) => h.zone === zone))
         .map(([zone, p]) => ({ ...p, zone }))
-      const topology: Topology = { perspectives, subnets, hosts, truncated: false }
+      const zones = [...new Set(hosts.map((h) => h.zone))].sort().map((name) => {
+        const members = hosts.filter((h) => h.zone === name)
+        return { name, subnetCount: new Set(members.map((h) => h.subnet)).size, hostCount: members.length }
+      })
+      // Devices with an interface in the view; their zones/interfaces stay complete.
+      const devices = allDevices.filter((d) => hosts.some((h) => h.deviceId === d.id))
+      const topology: Topology = { perspectives, zones, devices, subnets, hosts, truncated: false }
       return HttpResponse.json(topology)
     }),
   ),
@@ -999,7 +1054,10 @@ export const handlers = [
     route('read', ({ params, url }) => {
       const kind = p(params, 'kind')
       const exporters: Record<string, () => Record<string, unknown>[]> = {
-        hosts: () => db.hosts.map(({ annotation, ...h }) => ({ ...h, owner: annotation?.owner, classification: annotation?.classification })),
+        hosts: () => {
+          const { deviceOf } = inferDevices(db.hosts)
+          return db.hosts.map(({ annotation, ...h }) => ({ ...h, networkDevice: deviceOf.has(h.id), owner: annotation?.owner, classification: annotation?.classification }))
+        },
         services: () => db.services.map(({ http: h, tls, ...s }) => ({ ...s, httpTitle: h?.title, tlsSubject: tls?.subjectCommonName })),
         changes: () => db.changes.map((c) => ({ ...c })),
         findings: () => db.findings.map(({ externalRefs, ...f }) => ({ ...f, externalRefs: externalRefs.map((r) => `${r.system}:${r.externalId}`) })),

@@ -556,6 +556,10 @@ export interface Host {
   /** Latest MAC (AA:BB:CC:DD:EE:FF) — only visible on the scanner's L2 segment; never an identity. */
   macAddress?: string
   macVendor?: string
+  /** Interface of a network device: its MAC is on hosts of other zones too (or is a VRRP/HSRP virtual-router MAC). */
+  networkDevice: boolean
+  /** 'low' when the MAC is locally administered (e.g. Docker/VM 02:42:…) and may repeat by coincidence. */
+  networkDeviceConfidence?: DeviceConfidence
   annotation?: AssetAnnotation
 }
 
@@ -580,6 +584,8 @@ export interface Certificate {
 }
 
 export interface HostDetail extends Host {
+  /** The other zones' interfaces of the same network device. */
+  deviceInterfaces: DeviceInterface[]
   services: Service[]
   technologies: HostTechnology[]
   certificates: Certificate[]
@@ -819,10 +825,41 @@ export interface TopologyHost {
   services: TopologyService[]
   technologies: string[]
   observedBy: { agentId: string; interfaceName?: string }[]
+  /** Id (MAC) of the network device this host is an interface of. */
+  deviceId?: string
+  /** The MAC is on other IPs of the same zone too (aliases or proxy-ARP); not a device by itself. */
+  sharedMac: boolean
+}
+
+/** A zone is a separate IP address space (routed segment / VLAN / VRF). */
+export interface TopologyZone {
+  name: string
+  subnetCount: number
+  hostCount: number
+}
+
+export type DeviceConfidence = 'high' | 'low'
+
+export interface DeviceInterface {
+  hostId: Guid
+  zone: string
+  address: string
+}
+
+/** Physical device (router, L3 switch, firewall, multi-homed box) inferred from one MAC on hosts of several zones; id = MAC. */
+export interface NetworkDevice {
+  id: string
+  macAddress: string
+  macVendor?: string
+  confidence: DeviceConfidence
+  zones: string[]
+  interfaces: DeviceInterface[]
 }
 
 export interface Topology {
   perspectives: TopologyPerspective[]
+  zones: TopologyZone[]
+  devices: NetworkDevice[]
   subnets: TopologySubnet[]
   hosts: TopologyHost[]
   /** More hosts matched than the server cap (5000). */

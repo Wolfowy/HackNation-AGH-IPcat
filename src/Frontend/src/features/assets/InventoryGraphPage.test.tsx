@@ -12,8 +12,10 @@ describe('inventory graph', () => {
     expect(await screen.findByRole('heading', { name: 'Inventory graph' })).toBeInTheDocument()
     // One network per zone + cidr: the lab reuses the DMZ range, so 4 networks for 3 zones.
     expect(await screen.findAllByTestId('graph-network')).toHaveLength(4)
-    // 43 seeded hosts (<= 50): ports start expanded.
+    // 48 seeded hosts (<= 50): ports start expanded.
     expect(screen.getAllByTestId('graph-host')).toHaveLength(db.hosts.length)
+    // Interfaces of the seeded router and Docker-MAC devices (two zones each).
+    expect(screen.getAllByTestId('graph-host-device')).toHaveLength(4)
     expect(screen.getAllByTestId('graph-port')).toHaveLength(db.services.filter((s) => s.state === 'Open').length)
 
     // React Flow keeps nodes visibility:hidden until measured (never in jsdom), so query by test id rather than accessible name.

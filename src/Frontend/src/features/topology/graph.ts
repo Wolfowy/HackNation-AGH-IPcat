@@ -1,25 +1,38 @@
-// Pure builder of the logical topology graph: scan perspectives (agent + interface) → subnets → hosts.
-// A physical (L2/L3) view can get its own builder next to this one.
+// Pure builder of the hierarchical topology graph, left to right: network devices → zones (address spaces) → subnets → host grids,
+// plus dashed edges from the scan perspectives (agent + interface) to the subnets they observed.
 import type { Edge, Node } from '@xyflow/react'
-import type { Topology, TopologyHost, TopologyPerspective, TopologySubnet } from '@/api/types'
+import type { NetworkDevice, Topology, TopologyHost, TopologyPerspective, TopologySubnet, TopologyZone } from '@/api/types'
 import { layoutGraph } from '@/components/graph/layout'
 
+/** Router / L3 switch / firewall inferred from one MAC in several zones. */
+export type DeviceNode = Node<{ device: NetworkDevice }, 'device'>
+export type ZoneNode = Node<{ zone: TopologyZone }, 'zone'>
 export type PerspectiveNode = Node<{ perspective: TopologyPerspective }, 'perspective'>
 export type SubnetNode = Node<{ subnet: TopologySubnet; collapsed: boolean }, 'subnet'>
 export type HostNode = Node<{ host: TopologyHost }, 'host'>
 /** Frame holding a subnet's hosts as a grid (hosts are its children), so large subnets stay compact and readable. */
 export type HostGridNode = Node<{ subnet: TopologySubnet; count: number }, 'hostGrid'>
-export type TopologyNode = PerspectiveNode | SubnetNode | HostNode | HostGridNode
+export type TopologyNode = DeviceNode | ZoneNode | PerspectiveNode | SubnetNode | HostNode | HostGridNode
 
 /** Above this many hosts the subnets start collapsed (only subnet nodes are drawn until expanded). */
 export const SUBNET_COLLAPSE_THRESHOLD = 300
 
 export const perspectiveKey = (p: { agentId: string; interfaceName?: string }) => `p:${p.agentId}/${p.interfaceName ?? ''}`
+export const deviceKey = (id: string) => `d:${id}`
+export const zoneKey = (zone: string) => `z:${zone}`
 
 /** Host node size grows with the number of open ports (capped). */
 export const hostSize = (h: TopologyHost) => ({ width: 150, height: 40 + Math.min(h.openPortCount, 16) * 3 })
 
-const SIZES = { perspective: { width: 200, height: 56 }, subnet: { width: 240, height: 56 } }
+const SIZES = {
+  device: { width: 220, height: 64 },
+  zone: { width: 200, height: 56 },
+  perspective: { width: 200, height: 56 },
+  subnet: { width: 240, height: 56 },
+}
+// minlen 2: perspectives skip the zone column and sit leftmost, next to the devices.
+const PERSPECTIVE_EDGE: Partial<Edge> = { animated: true, style: { strokeDasharray: '4 3' }, data: { minlen: 2 } }
+const LOW_CONFIDENCE_EDGE: Partial<Edge> = { style: { stroke: '#f59e0b', strokeDasharray: '6 4' } }
 
 export interface TopologyGraphOptions {
   isCollapsed?: (subnetId: string) => boolean
@@ -36,13 +49,31 @@ export function buildTopologyGraph(topology: Topology, { isCollapsed = () => fal
   const nodes: TopologyNode[] = []
   const edges: Edge[] = []
   const edgeIds = new Set<string>()
-  const addEdge = (source: string, target: string, perspective = false) => {
+  const addEdge = (source: string, target: string, extra: Partial<Edge> = {}) => {
     const id = `${source}->${target}`
     if (edgeIds.has(id)) return
     edgeIds.add(id)
-    edges.push(perspective ? { id, source, target, animated: true, style: { strokeDasharray: '4 3' } } : { id, source, target })
+    edges.push({ id, source, target, ...extra })
   }
   const position = { x: 0, y: 0 }
+
+  // Zones without devices still appear (dagre places them next to their subnets).
+  const zones = new Set<string>()
+  for (const zone of topology.zones) {
+    zones.add(zone.name)
+    nodes.push({ id: zoneKey(zone.name), type: 'zone', position, data: { zone } })
+  }
+  for (const device of topology.devices) {
+    nodes.push({ id: deviceKey(device.id), type: 'device', position, data: { device } })
+    for (const zone of device.zones) {
+      if (!zones.has(zone)) continue // outside the filtered view
+      const label = device.interfaces
+        .filter((i) => i.zone === zone)
+        .map((i) => i.address)
+        .join(', ')
+      addEdge(deviceKey(device.id), zoneKey(zone), { label, ...(device.confidence === 'low' && LOW_CONFIDENCE_EDGE) })
+    }
+  }
 
   const perspectives = new Set<string>()
   for (const perspective of topology.perspectives) {
@@ -52,16 +83,17 @@ export function buildTopologyGraph(topology: Topology, { isCollapsed = () => fal
   }
   for (const subnet of topology.subnets) {
     nodes.push({ id: `s:${subnet.id}`, type: 'subnet', position, data: { subnet, collapsed: isCollapsed(subnet.id) } })
+    if (zones.has(subnet.zone)) addEdge(zoneKey(subnet.zone), `s:${subnet.id}`)
   }
 
   const hostsBySubnet = new Map<string, TopologyHost[]>()
   for (const host of topology.hosts) {
-    for (const seen of host.observedBy) if (perspectives.has(perspectiveKey(seen))) addEdge(perspectiveKey(seen), `s:${host.subnet}`, true)
+    for (const seen of host.observedBy) if (perspectives.has(perspectiveKey(seen))) addEdge(perspectiveKey(seen), `s:${host.subnet}`, PERSPECTIVE_EDGE)
     if (isCollapsed(host.subnet)) continue
     hostsBySubnet.set(host.subnet, [...(hostsBySubnet.get(host.subnet) ?? []), host])
   }
 
-  // One grid frame per expanded subnet; dagre lays out perspectives → subnets → frames, hosts sit inside their frame.
+  // One grid frame per expanded subnet; dagre lays out devices → zones → subnets → frames, hosts sit inside their frame.
   const frameSizes = new Map<string, { width: number; height: number }>()
   const children: HostNode[] = []
   for (const subnet of topology.subnets) {
@@ -92,9 +124,15 @@ export function buildTopologyGraph(topology: Topology, { isCollapsed = () => fal
     })
   }
 
+  // dagre ranks each connected part on its own, so a zone without devices would start a column of its own: a hidden root above
+  // every zone keeps all zones (and so subnets and grids) in one column each.
+  const root: ZoneNode = { id: 'root', type: 'zone', position, data: { zone: { name: '', subnetCount: 0, hostCount: 0 } } }
+  const rootEdges = topology.zones.map((z) => ({ id: `root->${zoneKey(z.name)}`, source: root.id, target: zoneKey(z.name) }))
   const sizeOf = (n: TopologyNode) =>
-    n.type === 'hostGrid' ? frameSizes.get(n.id)! : n.type === 'host' ? hostSize(n.data.host) : SIZES[n.type]
-  const laidOut = layoutGraph(nodes, edges, sizeOf).map((n) => (n.type === 'hostGrid' ? { ...n, style: frameSizes.get(n.id) } : n))
+    n === root ? { width: 0, height: 0 } : n.type === 'hostGrid' ? frameSizes.get(n.id)! : n.type === 'host' ? hostSize(n.data.host) : SIZES[n.type]
+  const laidOut = layoutGraph([...nodes, root], [...edges, ...rootEdges], sizeOf)
+    .filter((n) => n.id !== root.id)
+    .map((n) => (n.type === 'hostGrid' ? { ...n, style: frameSizes.get(n.id) } : n))
   // React Flow needs parents before their children.
   return { nodes: [...laidOut, ...children] as TopologyNode[], edges }
 }

@@ -27,10 +27,11 @@ internal static class DiscoveryEndpoints
         api.MapGet("/dashboard/summary", (AssetQueries q, TimeProvider time, CancellationToken ct) => q.DashboardAsync(time.GetUtcNow(), ct))
             .RequireAuthorization(Policies.CanRead);
 
-        api.MapGet("/assets/hosts", (AssetQueries q, string? search, HostStatus? status, string? zone, int? page, int? pageSize, CancellationToken ct) =>
+        api.MapGet("/assets/hosts", (AssetQueries q, string? search, HostStatus? status, string? zone, bool? networkDevice, int? page, int? pageSize,
+            CancellationToken ct) =>
         {
             var (p, size) = AssetQueries.Paging(page, pageSize);
-            return q.HostsAsync(new HostQuery(search, status, zone), p, size, ct);
+            return q.HostsAsync(new HostQuery(search, status, zone, networkDevice ?? false), p, size, ct);
         }).RequireAuthorization(Policies.CanRead);
 
         api.MapGet("/assets/hosts/{id:guid}", async (Guid id, AssetQueries q, CancellationToken ct) =>
@@ -223,11 +224,11 @@ internal static class DiscoveryEndpoints
     private static string? I(int? i) => i?.ToString(CultureInfo.InvariantCulture);
 
     private static (IReadOnlyList<string>, Func<IEnumerable<IReadOnlyList<string?>>>, object) HostsExport(IReadOnlyList<HostListItemDto> items) =>
-    (["id", "zone", "address", "macAddress", "macVendor", "hostnames", "status", "unstable", "firstSeenAt", "lastSeenAt", "lastScannedAt", "openPortCount",
+    (["id", "zone", "address", "macAddress", "macVendor", "networkDevice", "hostnames", "status", "unstable", "firstSeenAt", "lastSeenAt", "lastScannedAt", "openPortCount",
             "technologies", "classifications", "description", "classification", "businessState", "owner", "tags"],
         () => items.Select(h => (IReadOnlyList<string?>)
         [
-            h.Id.ToString(), h.Zone, h.Address, h.MacAddress, h.MacVendor, string.Join(';', h.Hostnames), h.Status.ToString(), h.Unstable ? "true" : "false",
+            h.Id.ToString(), h.Zone, h.Address, h.MacAddress, h.MacVendor, h.NetworkDevice ? "true" : "false", string.Join(';', h.Hostnames), h.Status.ToString(), h.Unstable ? "true" : "false",
             D(h.FirstSeenAt),
             D(h.LastSeenAt), D(h.LastScannedAt), I(h.OpenPortCount), string.Join(';', h.Technologies), string.Join(';', h.Classifications),
             h.Annotation?.Description, h.Annotation?.Classification, h.Annotation?.BusinessState, h.Annotation?.Owner,

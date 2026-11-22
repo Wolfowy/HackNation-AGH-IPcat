@@ -57,7 +57,7 @@ export interface MockDb {
   runs: MockRun[]
   jobs: ScanJob[]
   events: ScanExecutionEvent[]
-  hosts: Host[]
+  hosts: MockHost[]
   services: Service[]
   hostTechnologies: Record<string, HostTechnology[]>
   certificates: Record<string, Certificate[]>
@@ -69,6 +69,9 @@ export interface MockDb {
   audit: AuditEntry[]
   defectDojo: DefectDojoConfig & { apiKeyValue?: string }
 }
+
+/** Network-device flags are inferred per request (handlers), like the server does on read. */
+export type MockHost = Omit<Host, 'networkDevice' | 'networkDeviceConfidence'>
 
 // ---------- helpers ----------
 function mulberry32(seed: number) {
@@ -373,7 +376,7 @@ export function createDb(): MockDb {
   const workflows = defaultWorkflows()
 
   // ---------- hosts / services ----------
-  const hosts: Host[] = []
+  const hosts: MockHost[] = []
   const services: Service[] = []
   const hostTechnologies: Record<string, HostTechnology[]> = {}
   const certificates: Record<string, Certificate[]> = {}
@@ -574,7 +577,7 @@ export function createDb(): MockDb {
   )
 
   // ---------- changes / findings ----------
-  const changeTypes: [ChangeType, string, (h: Host) => Pick<Change, 'summary' | 'before' | 'after' | 'port'>][] = [
+  const changeTypes: [ChangeType, string, (h: MockHost) => Pick<Change, 'summary' | 'before' | 'after' | 'port'>][] = [
     ['NewHost', 'info', (h) => ({ summary: `New host ${h.address} discovered` })],
     ['HostGone', 'low', (h) => ({ summary: `Host ${h.address} not seen in 3 complete scans` })],
     ['HostReappeared', 'info', (h) => ({ summary: `Host ${h.address} is reachable again` })],
@@ -833,6 +836,32 @@ ${extra}    matchers:
     macAddress: '52:54:00:AB:CD:EF',
     macVendor: 'QEMU virtual NIC',
   })
+
+  // Network devices (server rule: one MAC on hosts of 2+ zones = interfaces of one physical device). Without rand(), like the twin;
+  // .1/.251/.252 are outside the generated 2–250 range.
+  const nic = (zone: string, address: string, macAddress: string, macVendor?: string, hostnames: string[] = []): MockHost => ({
+    id: mockId(4),
+    address,
+    hostnames,
+    status: 'Active',
+    unstable: false,
+    firstSeenAt: ago(60 * 24 * 20),
+    lastSeenAt: ago(15),
+    lastScannedAt: ago(15),
+    openPortCount: 0,
+    technologies: [],
+    zone,
+    macAddress,
+    macVendor,
+  })
+  const aliased = hosts.find((h) => h.zone === 'office' && h.status === 'Active' && h.macAddress)!
+  hosts.push(
+    nic('office', '192.168.10.1', '00:1E:BD:4A:10:01', 'Cisco Systems', ['core-rtr.office.example.internal']), // router office ↔ lab (high)
+    nic('lab', '172.16.50.1', '00:1E:BD:4A:10:01', 'Cisco Systems'),
+    nic('office', '192.168.10.251', '02:42:AC:11:00:02'), // Docker MAC repeated by accident (low)
+    nic('lab', '172.16.50.251', '02:42:AC:11:00:02'),
+    nic('office', '192.168.10.252', aliased.macAddress!, aliased.macVendor), // second IP of an office host: shared MAC only
+  )
 
   return {
     users,

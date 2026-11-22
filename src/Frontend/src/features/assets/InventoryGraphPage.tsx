@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { Handle, Position, type NodeProps } from '@xyflow/react'
-import { ChevronDown, ChevronRight, Globe, Network, Server } from 'lucide-react'
+import { ChevronDown, ChevronRight, Globe, Network, Router, Server } from 'lucide-react'
 import { useTopology } from '@/api/topology'
 import { EndpointLink } from '@/components/EndpointLink'
 import { EmptyState, Loadable } from '@/components/feedback'
@@ -52,6 +52,11 @@ function HostCard({ data: { host: h, collapsed } }: NodeProps<HostNode>) {
         <span className="flex min-w-0 items-center gap-1.5 font-mono text-sm font-semibold">
           <Server className="size-4 shrink-0 text-violet-600" />
           <span className="truncate">{h.address}</span>
+          {h.deviceId && (
+            <span title="Network device interface (same MAC in other zones)" data-testid="graph-host-device">
+              <Router className="size-3.5 shrink-0 text-violet-600" aria-label="network device" />
+            </span>
+          )}
         </span>
         <StatusBadge status={h.status} />
       </div>

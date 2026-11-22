@@ -9,7 +9,7 @@ using WebScan.Server.Modules.Discovery.Persistence;
 
 namespace WebScan.Server.Modules.Discovery.Api;
 
-public sealed record HostQuery(string? Search, HostStatus? Status, string? Zone);
+public sealed record HostQuery(string? Search, HostStatus? Status, string? Zone, bool NetworkDevice = false);
 public sealed record ServiceQuery(int? Port, string? ServiceName, string? Search, string? Zone = null);
 public sealed record ChangeQuery(DateTimeOffset? Since, AssetChangeType? Type, Guid? HostId, Guid? ScanRunId, string? Zone = null);
 public sealed record FindingQuery(string? Severity, FindingStatus? Status, string? Zone = null);
@@ -35,6 +35,11 @@ internal sealed class AssetQueries(DiscoveryDbContext db)
         }
         if (query.Status is not null) q = q.Where(h => h.Status == query.Status);
         if (!string.IsNullOrWhiteSpace(query.Zone)) q = q.Where(h => h.Zone == query.Zone);
+        if (query.NetworkDevice)
+        {
+            var deviceHosts = (await DevicesAsync(null, ct)).ByHost.Keys.ToList();
+            q = q.Where(h => deviceHosts.Contains(h.Id));
+        }
 
         var total = await q.CountAsync(ct);
         var hosts = await q.OrderBy(h => h.Zone).ThenBy(h => h.Address).Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(ct);
@@ -51,10 +56,12 @@ internal sealed class AssetQueries(DiscoveryDbContext db)
         var certificates = await db.Certificates.AsNoTracking().Where(c => c.HostId == id).OrderByDescending(c => c.LastSeenAt).ToListAsync(ct);
         var findings = await db.SignatureMatches.AsNoTracking().Where(m => m.HostId == id).OrderByDescending(m => m.MatchedAt).ToListAsync(ct);
         var changes = await db.Changes.AsNoTracking().Where(c => c.HostId == id).OrderByDescending(c => c.DetectedAt).Take(50).ToListAsync(ct);
+        var device = host.MacAddress is null ? null : (await DevicesAsync([host.MacAddress], ct)).ByHost.GetValueOrDefault(id);
         return new HostDetailDto(host.Id, host.Address, host.Hostnames, host.Status, host.Unstable, host.FirstSeenAt, host.LastSeenAt,
             host.LastScannedAt, item.OpenPortCount, host.Zone, item.Annotation, item.Classifications, host.MacAddress, host.MacVendor,
             host.OsGuess, host.ConsecutiveMisses, host.StateChangeCount, services, technologies.Select(t => t.ToDto()).ToList(),
-            certificates.Select(c => c.ToDto()).ToList(), findings.Select(f => f.ToDto()).ToList(), changes.Select(c => c.ToDto()).ToList());
+            certificates.Select(c => c.ToDto()).ToList(), findings.Select(f => f.ToDto()).ToList(), changes.Select(c => c.ToDto()).ToList(),
+            item.NetworkDevice, item.NetworkDeviceConfidence, device?.Interfaces.Where(i => i.HostId != id).ToList() ?? []);
     }
 
     public async Task<PagedResult<ServiceDto>> ServicesAsync(ServiceQuery query, int page, int pageSize, CancellationToken ct)
@@ -92,8 +99,8 @@ internal sealed class AssetQueries(DiscoveryDbContext db)
         if (network is not null)
         {
             // A network's ranges contain only machines of its own zone (the same IP elsewhere is another machine).
-            var zones = network.Segments.Select(s => Normalizer.CanonicalZone(s.Zone)).Distinct().ToList();
-            q = q.Where(h => zones.Contains(h.Zone));
+            var networkZones = network.Segments.Select(s => Normalizer.CanonicalZone(s.Zone)).Distinct().ToList();
+            q = q.Where(h => networkZones.Contains(h.Zone));
         }
         q = q.OrderBy(h => h.Zone).ThenBy(h => h.Address);
         // Network membership needs IP math, so a network filter loads the (projected) zone/search matches and filters in memory.
@@ -122,6 +129,7 @@ internal sealed class AssetQueries(DiscoveryDbContext db)
             .Select(o => new { o.Address, o.AgentId, o.InterfaceName, o.Zone }).Distinct().ToListAsync(ct);
         // Only observations of the host's own zone: the same IP in another zone is another machine (and another perspective edge).
         var observedBy = seen.ToLookup(o => (o.Zone, o.Address));
+        var inference = await DevicesAsync(rows.Select(h => h.MacAddress).OfType<string>().Distinct().ToList(), ct);
 
         var hosts = rows.Select(h => new TopologyHostDto(h.Id, h.Address, h.Hostnames, h.Status, h.Unstable,
             Topology.SubnetId(h.Zone, Topology.SubnetOf(h.Address)), h.Zone, h.LastSeenAt, h.MacAddress, h.MacVendor, services[h.Id].Count(),
@@ -130,14 +138,20 @@ internal sealed class AssetQueries(DiscoveryDbContext db)
                 s.HttpUrl is not null || Topology.IsWebName(s.ServiceName), Topology.IsTls(s.ServiceName, s.Tunnel, s.Cert))).ToList(),
             technologies[h.Id].Order(StringComparer.OrdinalIgnoreCase).ToList(),
             observedBy[(h.Zone, h.Address)].Select(o => new ObservedByDto(o.AgentId, o.InterfaceName)).Distinct()
-                .OrderBy(o => o.AgentId, StringComparer.Ordinal).ThenBy(o => o.InterfaceName, StringComparer.Ordinal).ToList())).ToList();
+                .OrderBy(o => o.AgentId, StringComparer.Ordinal).ThenBy(o => o.InterfaceName, StringComparer.Ordinal).ToList(),
+            inference.ByHost.GetValueOrDefault(h.Id)?.Id, inference.SharedMac.Contains(h.Id))).ToList();
         var subnets = hosts.GroupBy(h => (h.Zone, Cidr: Topology.SubnetOf(h.Address)))
             .OrderBy(g => g.Key.Zone, StringComparer.Ordinal).ThenBy(g => g.Key.Cidr, StringComparer.Ordinal)
             .Select(g => new TopologySubnetDto(Topology.SubnetId(g.Key.Zone, g.Key.Cidr), g.Key.Cidr, g.Key.Zone, g.Count())).ToList();
         var perspectives = seen.GroupBy(o => (o.AgentId, o.InterfaceName))
             .OrderBy(g => g.Key.AgentId, StringComparer.Ordinal).ThenBy(g => g.Key.InterfaceName, StringComparer.Ordinal)
             .Select(g => new TopologyPerspectiveDto(g.Key.AgentId, g.Key.InterfaceName, g.Select(o => o.Zone).FirstOrDefault(z => z.Length > 0))).ToList();
-        return new TopologyDto(perspectives, subnets, hosts, truncated);
+        var zones = hosts.GroupBy(h => h.Zone).OrderBy(g => g.Key, StringComparer.Ordinal)
+            .Select(g => new TopologyZoneDto(g.Key, g.Select(h => h.Subnet).Distinct().Count(), g.Count())).ToList();
+        // Devices with an interface among the returned hosts; their zones/interfaces stay complete (links leave the filtered view).
+        var shown = hosts.Select(h => h.DeviceId).OfType<string>().ToHashSet();
+        var devices = inference.Devices.Where(d => shown.Contains(d.Id)).ToList();
+        return new TopologyDto(perspectives, subnets, hosts, truncated, zones, devices);
     }
 
     public async Task<IReadOnlyList<TechnologySummaryDto>> TechnologiesAsync(CancellationToken ct)
@@ -226,11 +240,33 @@ internal sealed class AssetQueries(DiscoveryDbContext db)
                 .Select(m => new { m.HostId, m.ClassificationTag }).ToListAsync(ct))
             .ToLookup(m => m.HostId, m => m.ClassificationTag!);
         var annotations = await db.Annotations.AsNoTracking().Where(a => addresses.Contains(a.Address)).ToDictionaryAsync(a => (a.Zone, a.Address), ct);
+        var devices = (await DevicesAsync(hosts.Select(h => h.MacAddress).OfType<string>().Distinct().ToList(), ct)).ByHost;
 
         return hosts.Select(h => new HostListItemDto(h.Id, h.Address, h.Hostnames, h.Status, h.Unstable, h.FirstSeenAt, h.LastSeenAt,
             h.LastScannedAt, openPorts.GetValueOrDefault(h.Id), technologies[h.Id].Distinct().Order().ToList(), h.Zone,
-            annotations.GetValueOrDefault((h.Zone, h.Address)).ToDto(), classifications[h.Id].Distinct().Order().ToList(), h.MacAddress, h.MacVendor))
-            .ToList();
+            annotations.GetValueOrDefault((h.Zone, h.Address)).ToDto(), classifications[h.Id].Distinct().Order().ToList(), h.MacAddress, h.MacVendor,
+            devices.ContainsKey(h.Id), devices.GetValueOrDefault(h.Id)?.Confidence)).ToList();
+    }
+
+    /// <summary>
+    /// Network devices among the current (not Gone) hosts, see <see cref="Topology.InferDevices"/>; <paramref name="macs"/> limits the
+    /// MACs considered. Gone hosts are left out so a machine that moved to another zone is not linked to its old record.
+    /// shortcut: computed on every read (GROUP BY over hosts, no MAC index); add an index on mac_address or a cache if hosts grow large.
+    /// </summary>
+    private async Task<DeviceInference> DevicesAsync(List<string>? macs, CancellationToken ct)
+    {
+        var current = db.Hosts.AsNoTracking().Where(h => h.MacAddress != null && h.Status != HostStatus.Gone);
+        if (macs is not null)
+        {
+            if (macs.Count == 0) return new DeviceInference([], new HashSet<Guid>());
+            current = current.Where(h => macs.Contains(h.MacAddress!));
+        }
+        // Only a MAC on several hosts can link interfaces; a virtual-router MAC is a device even on one host.
+        var shared = current.GroupBy(h => h.MacAddress).Where(g => g.Count() > 1).Select(g => g.Key);
+        var rows = await current
+            .Where(h => shared.Contains(h.MacAddress) || h.MacAddress!.StartsWith(Topology.VrrpMacPrefix) || h.MacAddress.StartsWith(Topology.HsrpMacPrefix))
+            .Select(h => new MacInterface(h.Id, h.Zone, h.Address, h.MacAddress!, h.MacVendor)).ToListAsync(ct);
+        return Topology.InferDevices(rows);
     }
 
     private async Task<List<ServiceDto>> ToServiceDtosAsync(List<Service> services, CancellationToken ct)

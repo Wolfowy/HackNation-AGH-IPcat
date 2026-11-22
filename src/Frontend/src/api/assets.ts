@@ -28,6 +28,7 @@ export interface HostListParams {
   search?: string
   status?: HostStatus | ''
   zone?: string
+  networkDevice?: boolean
   page: number
   pageSize: number
 }

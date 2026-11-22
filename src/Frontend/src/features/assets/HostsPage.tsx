@@ -1,10 +1,11 @@
 import { Fragment, useState } from 'react'
 import { Link } from 'react-router'
+import { Router } from 'lucide-react'
 import { toast } from 'sonner'
 import { formatValidationMessage } from '@/api/client'
 import { useHosts, useImportAssets } from '@/api/assets'
 import { useZones } from '@/api/networks'
-import { HOST_STATUSES, type HostStatus } from '@/api/types'
+import { HOST_STATUSES, type DeviceConfidence, type HostStatus } from '@/api/types'
 import { Can } from '@/auth/AuthProvider'
 import { ExportButtons, FileImportButton } from '@/components/actions'
 import { EmptyState, Loadable } from '@/components/feedback'
@@ -25,15 +26,30 @@ export function UnstableBadge() {
   )
 }
 
+/** Interface of a router / L3 switch / firewall: the same MAC is on hosts of other zones. Amber when the MAC is locally administered. */
+export function NetworkDeviceBadge({ confidence }: { confidence?: DeviceConfidence }) {
+  const low = confidence === 'low'
+  return (
+    <Badge
+      variant={low ? 'warning' : 'secondary'}
+      title={low ? 'Same locally administered MAC in other zones — may be a coincidence' : 'Same MAC in other zones: interface of one network device'}
+      data-testid="network-device-badge"
+    >
+      <Router /> Network device
+    </Badge>
+  )
+}
+
 export function HostsPage() {
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState<HostStatus | ''>('')
   const [zone, setZone] = useState('')
   const [groupByZone, setGroupByZone] = useState(false)
+  const [onlyDevices, setOnlyDevices] = useState(false)
   const [page, setPage] = useState(1)
   const pageSize = 50
   const debouncedSearch = useDebounced(search)
-  const hosts = useHosts({ search: debouncedSearch, status, zone, page, pageSize })
+  const hosts = useHosts({ search: debouncedSearch, status, zone, networkDevice: onlyDevices || undefined, page, pageSize })
   const zones = useZones()
   const importAssets = useImportAssets()
 
@@ -105,6 +121,18 @@ export function HostsPage() {
           <input type="checkbox" className="accent-primary size-4" checked={groupByZone} onChange={(e) => setGroupByZone(e.target.checked)} />
           Group by zone
         </label>
+        <label className="flex h-9 items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            className="accent-primary size-4"
+            checked={onlyDevices}
+            onChange={(e) => {
+              setOnlyDevices(e.target.checked)
+              setPage(1)
+            }}
+          />
+          Only network devices
+        </label>
       </Filters>
       <Loadable query={hosts}>
         {(data) =>
@@ -147,6 +175,7 @@ export function HostsPage() {
                         <TableCell className="text-xs">
                           <span className="font-mono">{h.macAddress ?? '—'}</span>
                           {h.macVendor && <div className="text-muted-foreground">{h.macVendor}</div>}
+                          {h.networkDevice && <NetworkDeviceBadge confidence={h.networkDeviceConfidence} />}
                         </TableCell>
                         <TableCell className="space-x-1 whitespace-nowrap">
                           <StatusBadge status={h.status} />

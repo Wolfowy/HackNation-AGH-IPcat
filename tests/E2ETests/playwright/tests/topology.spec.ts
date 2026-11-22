@@ -1,7 +1,7 @@
 import { expect, login, mainNav, test } from './fixtures'
 
 test.describe('topology map', () => {
-  test('maps agent interfaces → subnets → hosts; a host opens its services panel', async ({ page, admin, mocked }) => {
+  test('maps devices → zones → subnets → hosts with agent interfaces; devices and hosts open panels', async ({ page, admin, mocked }) => {
     await login(page, admin)
     await mainNav(page).getByRole('link', { name: 'Topology' }).click()
     await expect(page.getByRole('heading', { name: 'Topology map' })).toBeVisible()
@@ -14,6 +14,22 @@ test.describe('topology map', () => {
 
     await expect(page.getByTestId('topology-perspective')).toHaveCount(3)
     await expect(page.getByTestId('topology-subnet')).toHaveCount(4) // per zone: the lab reuses the DMZ range
+    await expect(page.getByTestId('topology-zone')).toHaveCount(3)
+
+    // The seeded router MAC answers in office and lab: one device linked to both zones, each edge labelled with its IP there.
+    const router = page.getByTestId('topology-device').filter({ hasText: '00:1E:BD:4A:10:01' })
+    await expect(router).toContainText('2 zones')
+    for (const [zone, ip] of [
+      ['lab', '172.16.50.1'],
+      ['office', '192.168.10.1'],
+    ]) {
+      await expect(page.getByTestId(`rf__edge-d:00:1E:BD:4A:10:01->z:${zone}`)).toContainText(ip)
+    }
+    await expect(page.getByTestId('topology-device').filter({ hasText: 'low confidence' })).toHaveCount(1) // Docker MAC
+    await router.click()
+    const devicePanel = page.getByTestId('topology-device-panel')
+    await expect(devicePanel.getByRole('link', { name: '172.16.50.1' })).toHaveAttribute('href', /\/assets\/hosts\//)
+    await devicePanel.getByRole('button', { name: 'Close device panel' }).click()
 
     // A host with open ports (its label reads "N ports", N > 0).
     const host = page.getByTestId('topology-host').filter({ has: page.locator('div', { hasText: /^[1-9]\d* ports?/ }) }).first()
@@ -28,5 +44,6 @@ test.describe('topology map', () => {
     await page.getByLabel('Zone').selectOption('dmz')
     await expect(page.getByTestId('topology-perspective')).toHaveCount(1)
     await expect(page.getByTestId('topology-subnet')).toHaveCount(1)
+    await expect(page.getByTestId('topology-device')).toHaveCount(0) // no device has an interface in the DMZ
   })
 })

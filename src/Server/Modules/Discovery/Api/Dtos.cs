@@ -13,14 +13,17 @@ public sealed record AnnotationDto(string? Description, string? Classification, 
 public sealed record HostListItemDto(
     Guid Id, string Address, IReadOnlyList<string> Hostnames, HostStatus Status, bool Unstable, DateTimeOffset FirstSeenAt,
     DateTimeOffset LastSeenAt, DateTimeOffset? LastScannedAt, int OpenPortCount, IReadOnlyList<string> Technologies, string Zone,
-    AnnotationDto? Annotation, IReadOnlyList<string> Classifications, string? MacAddress, string? MacVendor);
+    AnnotationDto? Annotation, IReadOnlyList<string> Classifications, string? MacAddress, string? MacVendor, bool NetworkDevice,
+    string? NetworkDeviceConfidence);
 
+/// <param name="DeviceInterfaces">The other zones' interfaces of the same network device (same MAC).</param>
 public sealed record HostDetailDto(
     Guid Id, string Address, IReadOnlyList<string> Hostnames, HostStatus Status, bool Unstable, DateTimeOffset FirstSeenAt,
     DateTimeOffset LastSeenAt, DateTimeOffset? LastScannedAt, int OpenPortCount, string Zone, AnnotationDto? Annotation,
     IReadOnlyList<string> Classifications, string? MacAddress, string? MacVendor, string? OsGuess, int ConsecutiveMisses, int StateChangeCount,
     IReadOnlyList<ServiceDto> Services, IReadOnlyList<TechnologyDto> Technologies, IReadOnlyList<CertificateDto> Certificates,
-    IReadOnlyList<FindingDto> Findings, IReadOnlyList<ChangeDto> RecentChanges);
+    IReadOnlyList<FindingDto> Findings, IReadOnlyList<ChangeDto> RecentChanges, bool NetworkDevice, string? NetworkDeviceConfidence,
+    IReadOnlyList<DeviceInterfaceDto> DeviceInterfaces);
 
 public sealed record HttpInfoDto(string Url, int? StatusCode, string? Title, string? WebServer);
 
@@ -32,10 +35,23 @@ public sealed record ServiceDto(
     double? Confidence, string? ConfidenceMethod, bool TimeOfDayVariance, DateTimeOffset FirstSeenAt, DateTimeOffset LastSeenAt,
     string? Url, string Zone);
 
-/// <summary>Graph read model of <c>GET /api/topology</c>: scan perspectives → subnets → hosts (current state).</summary>
+/// <summary>
+/// Graph read model of <c>GET /api/topology</c> (current state): network devices → zones → subnets → hosts, plus the scan perspectives
+/// that observed each subnet.
+/// </summary>
 public sealed record TopologyDto(
     IReadOnlyList<TopologyPerspectiveDto> Perspectives, IReadOnlyList<TopologySubnetDto> Subnets, IReadOnlyList<TopologyHostDto> Hosts,
-    bool Truncated);
+    bool Truncated, IReadOnlyList<TopologyZoneDto> Zones, IReadOnlyList<NetworkDeviceDto> Devices);
+
+/// <summary>Zone (separate IP address space) of the returned hosts.</summary>
+public sealed record TopologyZoneDto(string Name, int SubnetCount, int HostCount);
+
+/// <summary>Physical device inferred from one MAC on hosts of several zones (or a virtual-router MAC); <c>id</c> = the MAC.</summary>
+/// <param name="Confidence">"high", or "low" for a locally administered MAC (may be a coincidence).</param>
+public sealed record NetworkDeviceDto(
+    string Id, string MacAddress, string? MacVendor, string Confidence, IReadOnlyList<string> Zones, IReadOnlyList<DeviceInterfaceDto> Interfaces);
+
+public sealed record DeviceInterfaceDto(Guid HostId, string Zone, string Address);
 
 /// <summary>Agent interface that delivered observations (zone of its observations).</summary>
 public sealed record TopologyPerspectiveDto(string AgentId, string? InterfaceName, string? Zone);
@@ -44,10 +60,12 @@ public sealed record TopologyPerspectiveDto(string AgentId, string? InterfaceNam
 public sealed record TopologySubnetDto(string Id, string Cidr, string Zone, int HostCount);
 
 /// <param name="Subnet">Id of the host's <see cref="TopologySubnetDto"/>.</param>
+/// <param name="DeviceId">Id of the <see cref="NetworkDeviceDto"/> this host is an interface of.</param>
+/// <param name="SharedMac">The host's MAC is on other IPs of its zone too (aliases or proxy-ARP), not a device by itself.</param>
 public sealed record TopologyHostDto(
     Guid Id, string Address, IReadOnlyList<string> Hostnames, HostStatus Status, bool Unstable, string Subnet, string Zone,
     DateTimeOffset LastSeenAt, string? MacAddress, string? MacVendor, int OpenPortCount, IReadOnlyList<TopologyServiceDto> Services, IReadOnlyList<string> Technologies,
-    IReadOnlyList<ObservedByDto> ObservedBy);
+    IReadOnlyList<ObservedByDto> ObservedBy, string? DeviceId, bool SharedMac);
 
 public sealed record TopologyServiceDto(
     int Port, TransportProtocol Transport, string? ServiceName, string? Product, string? Version, string? Url, bool IsWeb, bool Tls);

@@ -19,7 +19,7 @@ import { formatDateTime, formatRelative, splitList, zoneLabel } from '@/lib/form
 import { ChangesTable } from '../changes/ChangesTable'
 import { FindingsTable } from '../findings/FindingsTable'
 import { ConfidenceBar } from './ConfidenceBar'
-import { UnstableBadge } from './HostsPage'
+import { NetworkDeviceBadge, UnstableBadge } from './HostsPage'
 import { ServicesTable } from './ServicesTable'
 
 interface AnnotationValues {
@@ -104,6 +104,7 @@ export function HostDetailPage() {
               <span className="flex items-center gap-3 font-mono">
                 {h.address} <StatusBadge status={h.status} />
                 {h.unstable && <UnstableBadge />}
+                {h.networkDevice && <NetworkDeviceBadge confidence={h.networkDeviceConfidence} />}
               </span>
             }
             description={
@@ -137,6 +138,29 @@ export function HostDetailPage() {
             </Card>
             <AnnotationEditor host={h} />
           </div>
+          {h.deviceInterfaces.length > 0 && (
+            <Card className="mt-6" data-testid="device-interfaces">
+              <CardHeader>
+                <CardTitle>Same device in other zones</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2 text-sm">
+                <p className="text-muted-foreground">
+                  MAC <span className="font-mono">{h.macAddress}</span> also answers at these addresses, so they are interfaces of one router, L3
+                  switch or firewall{h.networkDeviceConfidence === 'low' && ' (locally administered MAC — may be a coincidence)'}.
+                </p>
+                <ul className="space-y-1">
+                  {h.deviceInterfaces.map((i) => (
+                    <li key={i.hostId}>
+                      <Link to={`/assets/hosts/${i.hostId}`} className="text-primary font-mono hover:underline">
+                        {i.address}
+                      </Link>
+                      <span className="text-muted-foreground"> · zone {zoneLabel(i.zone)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </CardContent>
+            </Card>
+          )}
           <Tabs defaultValue="services" className="mt-6">
             <TabsList>
               <TabsTrigger value="services">Services ({h.services.length})</TabsTrigger>

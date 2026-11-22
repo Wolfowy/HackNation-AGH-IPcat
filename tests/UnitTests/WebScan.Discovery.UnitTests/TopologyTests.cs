@@ -46,6 +46,116 @@ public class TopologyTests(TestApp app) : IAsyncLifetime
         bool cert, string? expected) =>
         Assert.Equal(expected, Topology.ServiceUrl(address, port, name, tunnel, httpUrl, cert));
 
+    [Theory]
+    [InlineData("00:1E:BD:4A:10:01", MacKind.Universal)]
+    [InlineData("02:42:AC:11:00:02", MacKind.LocallyAdministered)]
+    [InlineData("00:00:5E:00:01:0A", MacKind.VirtualRouter)]
+    [InlineData("00:00:0C:07:AC:01", MacKind.VirtualRouter)]
+    [InlineData("FF:FF:FF:FF:FF:FF", MacKind.Ignored)]
+    [InlineData("01:00:5E:00:00:FB", MacKind.Ignored)]
+    [InlineData("00:00:00:00:00:00", MacKind.Ignored)]
+    [InlineData(null, MacKind.Ignored)]
+    public void Classifies_macs(string? mac, MacKind expected) => Assert.Equal(expected, Topology.ClassifyMac(mac));
+
+    private static MacInterface Nic(string zone, string address, string mac) => new(Guid.NewGuid(), zone, address, mac, null);
+
+    [Fact]
+    public void Mac_in_two_zones_is_a_device_locally_administered_is_low_confidence_multicast_is_ignored()
+    {
+        var router = new[] { Nic("lab", "10.1.0.1", "00:1E:BD:4A:10:01") with { MacVendor = "Cisco" }, Nic("dmz", "10.2.0.1", "00:1E:BD:4A:10:01") };
+        var inference = Topology.InferDevices([
+            ..router,
+            Nic("lab", "10.1.0.20", "02:42:AC:11:00:02"), Nic("dmz", "10.2.0.20", "02:42:AC:11:00:02"),
+            Nic("lab", "10.1.0.40", "01:00:5E:00:00:FB"), Nic("dmz", "10.2.0.40", "01:00:5E:00:00:FB"),
+            Nic("lab", "10.1.0.41", "FF:FF:FF:FF:FF:FF"), Nic("dmz", "10.2.0.41", "FF:FF:FF:FF:FF:FF"),
+            Nic("lab", "10.1.0.50", "00:AA:BB:CC:DD:EE"),
+        ]);
+
+        Assert.Equal([("00:1E:BD:4A:10:01", "high"), ("02:42:AC:11:00:02", "low")], inference.Devices.Select(d => (d.Id, d.Confidence)));
+        var device = inference.Devices[0];
+        Assert.Equal("Cisco", device.MacVendor);
+        Assert.Equal(["dmz", "lab"], device.Zones);
+        Assert.Equal([("dmz", "10.2.0.1"), ("lab", "10.1.0.1")], device.Interfaces.Select(i => (i.Zone, i.Address)));
+        Assert.Same(device, inference.ByHost[router[1].HostId]);
+        Assert.Empty(inference.SharedMac);
+    }
+
+    [Fact]
+    public void Mac_on_several_ips_of_one_zone_is_shared_not_a_device_but_a_virtual_router_mac_is()
+    {
+        var alias = new[] { Nic("lab", "10.1.0.30", "00:11:22:33:44:55"), Nic("lab", "10.1.0.31", "00:11:22:33:44:55") };
+        var inference = Topology.InferDevices([..alias, Nic("lab", "10.1.0.254", "00:00:5E:00:01:0A")]);
+
+        Assert.Equal(alias.Select(a => a.HostId).Order(), inference.SharedMac.Order());
+        var vrrp = Assert.Single(inference.Devices);
+        Assert.Equal(("00:00:5E:00:01:0A", "high", "lab"), (vrrp.Id, vrrp.Confidence, Assert.Single(vrrp.Zones)));
+    }
+
+    /// <summary>Router 00:1E:BD:4A:10:01 in lab + dmz, a Docker MAC in both zones, an aliased MAC on two lab IPs.</summary>
+    private async Task SeedDevicesAsync()
+    {
+        _s.Perspective = ("agent-lab", "eth0", "lab");
+        await _s.RunAsync(Scenario.ZoneCoverage("lab", "10.1.0.0/24"), 3,
+            _s.HostUpWithMac("10.1.0.1", "00:1e:bd:4a:10:01", "Cisco Systems"), _s.HostUpWithMac("10.1.0.20", "02:42:ac:11:00:02"),
+            _s.HostUpWithMac("10.1.0.30", "00:11:22:33:44:55"), _s.HostUpWithMac("10.1.0.31", "00:11:22:33:44:55"), _s.HostUp("10.1.0.99"));
+        _s.NextRun().Perspective = ("agent-dmz", "eth0", "dmz");
+        await _s.RunAsync(Scenario.ZoneCoverage("dmz", "10.2.0.0/24"), 3,
+            _s.HostUpWithMac("10.2.0.1", "00:1e:bd:4a:10:01"), _s.HostUpWithMac("10.2.0.20", "02:42:ac:11:00:02"));
+    }
+
+    [Fact]
+    public async Task Topology_lists_zones_devices_and_marks_device_interfaces_and_shared_macs()
+    {
+        await SeedDevicesAsync();
+
+        var topology = await GetAsync();
+        Assert.Equal([("dmz", 1, 2), ("lab", 1, 5)], topology.Zones.Select(z => (z.Name, z.SubnetCount, z.HostCount)));
+        Assert.Equal([("00:1E:BD:4A:10:01", "high", "Cisco Systems"), ("02:42:AC:11:00:02", "low", (string?)null)],
+            topology.Devices.Select(d => (d.Id, d.Confidence, d.MacVendor)));
+        Assert.All(topology.Devices, d => Assert.Equal(["dmz", "lab"], d.Zones));
+        var hosts = topology.Hosts.ToDictionary(h => h.Address);
+        Assert.Equal("00:1E:BD:4A:10:01", hosts["10.1.0.1"].DeviceId);
+        Assert.Equal("00:1E:BD:4A:10:01", hosts["10.2.0.1"].DeviceId);
+        Assert.Equal([hosts["10.2.0.1"].Id, hosts["10.1.0.1"].Id], topology.Devices[0].Interfaces.Select(i => i.HostId));
+        Assert.Null(hosts["10.1.0.30"].DeviceId);
+        Assert.Equal(["10.1.0.30", "10.1.0.31"], topology.Hosts.Where(h => h.SharedMac).Select(h => h.Address));
+
+        // A zone filter keeps the devices touching it, with their complete zone list.
+        var dmz = await GetAsync("?zone=dmz");
+        Assert.Equal(["dmz"], dmz.Zones.Select(z => z.Name));
+        Assert.Equal(["dmz", "lab"], dmz.Devices[0].Zones);
+
+        // A Gone interface no longer links the zones.
+        await _s.QueryAsync(db => db.Hosts.Where(h => h.Address == "10.2.0.1").ExecuteUpdateAsync(u => u.SetProperty(h => h.Status, HostStatus.Gone)));
+        Assert.DoesNotContain((await GetAsync()).Devices, d => d.Id == "00:1E:BD:4A:10:01");
+    }
+
+    [Fact]
+    public async Task Hosts_list_flags_and_filters_network_devices_and_detail_lists_the_other_zones_interfaces()
+    {
+        await SeedDevicesAsync();
+        var client = app.Client(Roles.Viewer);
+
+        var all = (await client.GetFromJsonAsync<PagedResult<HostListItemDto>>("/api/assets/hosts", Json))!.Items;
+        Assert.Equal([("dmz", "10.2.0.1", "high"), ("dmz", "10.2.0.20", "low"), ("lab", "10.1.0.1", "high"), ("lab", "10.1.0.20", "low")],
+            all.Where(h => h.NetworkDevice).Select(h => (h.Zone, h.Address, h.NetworkDeviceConfidence)));
+        Assert.Null(all.Single(h => h.Address == "10.1.0.30").NetworkDeviceConfidence);
+        var devices = (await client.GetFromJsonAsync<PagedResult<HostListItemDto>>("/api/assets/hosts?networkDevice=true&zone=lab", Json))!;
+        Assert.Equal(2, devices.Total);
+        Assert.Equal(["10.1.0.1", "10.1.0.20"], devices.Items.Select(h => h.Address));
+
+        var lab = all.Single(h => h.Address == "10.1.0.1");
+        var detail = (await client.GetFromJsonAsync<HostDetailDto>($"/api/assets/hosts/{lab.Id}", Json))!;
+        Assert.True(detail.NetworkDevice);
+        Assert.Equal([("dmz", "10.2.0.1")], detail.DeviceInterfaces.Select(i => (i.Zone, i.Address)));
+        var plain = (await client.GetFromJsonAsync<HostDetailDto>($"/api/assets/hosts/{all.Single(h => h.Address == "10.1.0.99").Id}", Json))!;
+        Assert.Equal((false, 0), (plain.NetworkDevice, plain.DeviceInterfaces.Count));
+
+        var csv = await client.GetStringAsync("/api/export/hosts?format=csv");
+        Assert.Contains("macVendor,networkDevice,", csv);
+        Assert.Contains("10.1.0.1,00:1E:BD:4A:10:01,Cisco Systems,true,", csv);
+    }
+
     [Fact]
     public async Task Groups_hosts_into_ipv4_24_and_ipv6_64_subnets()
     {
