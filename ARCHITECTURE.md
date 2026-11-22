@@ -94,6 +94,30 @@ Times are `DateTimeOffset` UTC. Use `TimeProvider` (injectable) instead of `Date
   (`ParameterValidator`, unknown parameters rejected). Agents build argv (no shell) from local manifests.
 * Audit log (`IAuditLog`) for every mutating admin action. Secrets at rest encrypted with `ISecretProtector` (Data Protection, keys in DB,
   key ring protected by a certificate when configured). Cookie values/tokens masked with `SensitiveDataMasker` on agent **and** server.
+* **Encryption at rest of sensitive columns** (PostgreSQL OSS has no TDE → application-level field encryption,
+  `Infrastructure/Persistence/FieldEncryption.cs`). Mark a string property with `e.Property(x => x.Notes).HasEncryptedConversion()`
+  (EF value converter, `text` column, nulls stay null).
+  * Algorithm: ASP.NET Data Protection, purpose `WebScan.FieldEncryption.v1`, **AES-256-GCM** (authenticated: tampering → `CryptographicException`;
+    keys created before this setting keep AES-256-CBC + HMAC-SHA256 until they roll over). Stored form `enc:v1:` + payload (key id, nonce,
+    ciphertext, tag); a fresh nonce per value. Values without the prefix are legacy plaintext and are read as-is.
+  * Keys: the Data Protection key ring in `infra.data_protection_keys` (shared by all nodes). New key every `DataProtection:KeyLifetimeDays`
+    (default 90); retired keys are kept, so old values still decrypt and new values use the current key (running nodes switch at their next
+    key-ring refresh, ≤ 24 h, or restart). **Never revoke or delete keys** — values encrypted with them become unreadable. Without
+    `DataProtection:CertificatePath` (PKCS#12, RSA) the key ring itself is stored unencrypted, so a database dump contains the keys too:
+    always configure it in production (the server logs a warning at startup in `Production` otherwise). Enabling it later protects new keys
+    only. Back up the certificate separately from the database; losing it or the key table loses the encrypted data.
+  * Backfill: `FieldEncryptionBackfill` (hosted service) re-encrypts legacy plaintext of every encrypted column at startup, keyset-paged in
+    batches of 500, idempotent, safe on several nodes (an update applies only while the row still holds the plaintext it read); progress is logged.
+  * Encrypted: `discovery.observations.Payload` (raw observation JSON: headers, banners, evidence), `discovery.services.Banner`,
+    `discovery.signature_matches.Evidence`/`MatchedUrl`, `discovery.asset_annotations` and `asset_annotation_revisions` `Description`/`Owner`,
+    `scanning.result_batches.payload_json` (raw accepted results), `infra.audit_entries.Details` (may carry annotation text, names),
+    `identity.users.DisplayName`. Passwords and agent secrets are hashed; the DefectDojo API key uses `ISecretProtector`.
+  * Not encrypted, by design: columns used to filter, join, sort, group or deduplicate (addresses, zones, ports, ids, statuses, timestamps,
+    hostnames, service name/product/version, HTTP title, technology names, signature ids/severity, user names) — random-nonce ciphertext cannot
+    be compared in SQL. Change summaries (`change_events.Before/After`), certificate fields and HTTP snapshots repeat only such attributes. Hence
+    the service search no longer matches banners. Scan job payloads/events hold targets and progress only.
+  * Defense in depth: also encrypt the PostgreSQL volume/disk (LUKS, encrypted EBS, …), require TLS to PostgreSQL (`SSL Mode=VerifyFull` in the
+    connection string) and encrypt backups.
 
 ## 7. Extensible scanning tools (no hardcoded tool list)
 

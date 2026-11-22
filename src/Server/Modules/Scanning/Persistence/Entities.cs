@@ -128,7 +128,7 @@ public sealed class ResultBatchRecord
     public int ObservationCount { get; set; }
     public DateTimeOffset ReceivedAt { get; set; }
 
-    /// <summary>Accepted (scope-checked, re-masked) observations as a JSON array.</summary>
+    /// <summary>Accepted (scope-checked, re-masked) observations as a JSON array; encrypted at rest.</summary>
     public required string PayloadJson { get; set; }
 }
 

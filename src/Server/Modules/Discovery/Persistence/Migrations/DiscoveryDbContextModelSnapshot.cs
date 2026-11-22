@@ -416,7 +416,7 @@ namespace WebScan.Server.Modules.Discovery.Persistence.Migrations
 
                     b.Property<string>("Payload")
                         .IsRequired()
-                        .HasColumnType("jsonb");
+                        .HasColumnType("text");
 
                     b.Property<int?>("Port")
                         .HasColumnType("integer");
@@ -738,8 +738,7 @@ namespace WebScan.Server.Modules.Discovery.Persistence.Migrations
                         .HasColumnType("text");
 
                     b.Property<string>("Notes")
-                        .HasMaxLength(4000)
-                        .HasColumnType("character varying(4000)");
+                        .HasColumnType("text");
 
                     b.Property<int?>("Port")
                         .HasColumnType("integer");

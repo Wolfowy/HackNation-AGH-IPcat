@@ -78,6 +78,8 @@ services:
       Agents__BootstrapEnrollmentZones: lab
       Networks__SeedScopePolicy__Allowed: 172.30.0.0/24
       OpenTelemetry__OtlpEndpoint: ${OTLP_ENDPOINT:-}
+      DataProtection__CertificatePath: ${DATA_PROTECTION_CERT_PATH:-}
+      DataProtection__CertificatePassword: ${DATA_PROTECTION_CERT_PASSWORD:-}
       Kestrel__Endpoints__Http__Url: http://+:8080
       Kestrel__Endpoints__Https__Url: https://+:8443
       Kestrel__Endpoints__Https__Certificate__Path: /certs/server.crt

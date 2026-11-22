@@ -26,7 +26,7 @@ public sealed class ScanningDbContext(DbContextOptions<ScanningDbContext> option
             e.Property(x => x.Name).HasMaxLength(200);
             e.Property(x => x.WorkflowKey).HasMaxLength(64);
             e.Property(x => x.TriggeredBy).HasMaxLength(200);
-            e.Property(x => x.Notes).HasMaxLength(4000);
+            e.Property(x => x.Notes).HasEncryptedConversion(); // length (≤4000) is validated by the API
             e.HasIndex(x => new { x.ScheduleId, x.ScheduledFireTime }).IsUnique();
             e.HasIndex(x => new { x.Status, x.CreatedAt });
         });
@@ -55,7 +55,7 @@ public sealed class ScanningDbContext(DbContextOptions<ScanningDbContext> option
             e.ToTable("result_batches");
             e.HasKey(x => x.BatchId);
             e.Property(x => x.BatchId).ValueGeneratedNever();
-            e.Property(x => x.PayloadJson).HasColumnType("jsonb");
+            e.Property(x => x.PayloadJson).HasEncryptedConversion(); // raw scan results
             e.HasIndex(x => new { x.JobId, x.LeaseId });
             e.HasIndex(x => new { x.ScanRunId, x.StepId });
         });

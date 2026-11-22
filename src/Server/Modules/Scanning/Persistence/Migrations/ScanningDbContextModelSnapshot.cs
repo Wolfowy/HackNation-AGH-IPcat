@@ -80,7 +80,7 @@ namespace WebScan.Server.Modules.Scanning.Persistence.Migrations
 
                     b.Property<string>("PayloadJson")
                         .IsRequired()
-                        .HasColumnType("jsonb")
+                        .HasColumnType("text")
                         .HasColumnName("payload_json");
 
                     b.Property<DateTimeOffset>("ReceivedAt")
@@ -459,8 +459,7 @@ namespace WebScan.Server.Modules.Scanning.Persistence.Migrations
                         .HasColumnName("not_after");
 
                     b.Property<string>("Notes")
-                        .HasMaxLength(4000)
-                        .HasColumnType("character varying(4000)")
+                        .HasColumnType("text")
                         .HasColumnName("notes");
 
                     b.Property<int>("Priority")

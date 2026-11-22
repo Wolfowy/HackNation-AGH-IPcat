@@ -26,7 +26,7 @@ public sealed class InfraDbContext(DbContextOptions<InfraDbContext> options) : D
             e.Property(x => x.UserId).HasMaxLength(128);
             e.Property(x => x.UserName).HasMaxLength(256);
             e.Property(x => x.IpAddress).HasMaxLength(64);
-            e.Property(x => x.Details).HasColumnType("jsonb");
+            e.Property(x => x.Details).HasEncryptedConversion();
             e.HasIndex(x => x.OccurredAt);
             e.HasIndex(x => new { x.EntityType, x.EntityId });
         });
@@ -53,7 +53,7 @@ public sealed class AuditRecord
     public required string EntityType { get; set; }
     public string? EntityId { get; set; }
 
-    /// <summary>JSON document (jsonb).</summary>
+    /// <summary>JSON document, encrypted at rest (may carry annotation text, names).</summary>
     public string? Details { get; set; }
 
     public string? IpAddress { get; set; }

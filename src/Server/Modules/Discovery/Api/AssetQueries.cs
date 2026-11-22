@@ -77,8 +77,8 @@ internal sealed class AssetQueries(DiscoveryDbContext db)
         if (!string.IsNullOrWhiteSpace(query.Search))
         {
             var like = Like(query.Search);
-            q = q.Where(s => EF.Functions.ILike(s.Address, like) || EF.Functions.ILike(s.Product ?? "", like)
-                || EF.Functions.ILike(s.Banner ?? "", like) || EF.Functions.ILike(s.HttpTitle ?? "", like));
+            // Banner is encrypted at rest (random-nonce ciphertext), so it is not searchable in SQL.
+            q = q.Where(s => EF.Functions.ILike(s.Address, like) || EF.Functions.ILike(s.Product ?? "", like) || EF.Functions.ILike(s.HttpTitle ?? "", like));
         }
         if (!string.IsNullOrWhiteSpace(query.Zone)) q = q.Where(s => s.Zone == query.Zone);
 

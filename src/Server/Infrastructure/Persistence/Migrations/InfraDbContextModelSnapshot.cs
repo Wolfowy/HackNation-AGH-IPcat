@@ -54,7 +54,7 @@ namespace WebScan.Server.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(128)");
 
                     b.Property<string>("Details")
-                        .HasColumnType("jsonb");
+                        .HasColumnType("text");
 
                     b.Property<string>("EntityId")
                         .HasMaxLength(256)

@@ -35,8 +35,7 @@ namespace WebScan.Server.Modules.Identity.Persistence.Migrations
 
                     b.Property<string>("DisplayName")
                         .IsRequired()
-                        .HasMaxLength(256)
-                        .HasColumnType("character varying(256)");
+                        .HasColumnType("text");
 
                     b.Property<int>("FailedLoginCount")
                         .HasColumnType("integer");

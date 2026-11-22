@@ -3,6 +3,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using Microsoft.AspNetCore.DataProtection.KeyManagement;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
@@ -10,6 +11,7 @@ using WebScan.Server.Infrastructure;
 using WebScan.Server.Infrastructure.Http;
 using WebScan.Server.Infrastructure.Persistence;
 using WebScan.Server.Kernel.Security;
+using WebScan.Server.Modules.Identity;
 
 namespace WebScan.Server.UnitTests.Integration;
 
@@ -98,6 +100,36 @@ public sealed class InfrastructureTests(WebScanFactory factory)
         await using var scope = factory.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<InfraDbContext>();
         Assert.True(await db.DataProtectionKeys.AnyAsync());
+    }
+
+    [Fact]
+    public async Task Display_names_and_audit_details_are_encrypted_at_rest_with_aes_gcm_but_returned_in_plaintext()
+    {
+        var admin = await factory.AdminAsync();
+        var userName = $"enc-{Guid.NewGuid():N}"[..20];
+        var created = await (await admin.PostJsonAsync("/api/users",
+            new { userName, displayName = "Jane Confidential", password = "Initial-Password-1", roles = new[] { Roles.Viewer } })).ReadAsync<UserDto>();
+        (await admin.PutJsonAsync($"/api/users/{created.Id}", new { displayName = "Jane Renamed" })).EnsureSuccessStatusCode();
+
+        await using var connection = new NpgsqlConnection(factory.ConnectionString);
+        await connection.OpenAsync();
+        async Task<string> RawAsync(string sql)
+        {
+            await using var cmd = new NpgsqlCommand(sql, connection) { Parameters = { new() { Value = created.Id.ToString() } } };
+            return (string)(await cmd.ExecuteScalarAsync())!;
+        }
+        var displayName = await RawAsync("""SELECT "DisplayName" FROM identity.users WHERE "Id"::text = $1""");
+        var details = await RawAsync("""SELECT "Details" FROM infra.audit_entries WHERE "EntityId" = $1 AND "Action" = 'user.updated'""");
+        Assert.All(new[] { displayName, details }, v => Assert.StartsWith(FieldEncryptor.Prefix, v));
+        Assert.All(new[] { displayName, details }, v => Assert.DoesNotContain("Jane", v));
+
+        Assert.Contains((await (await admin.GetAsync("/api/users")).ReadAsync<List<UserDto>>()), u => u.DisplayName == "Jane Renamed");
+        var audit = await (await admin.GetAsync("/api/audit?action=user.updated&pageSize=100")).ReadAsync<PagedResult<AuditEntryDto>>();
+        Assert.Equal("Jane Renamed", audit.Items.Single(e => e.EntityId == created.Id.ToString()).Details!.Value.GetProperty("displayName").GetString());
+
+        // Keys of a fresh key ring are AES-256-GCM.
+        var key = factory.Services.GetRequiredService<IKeyManager>().GetAllKeys().MaxBy(k => k.ActivationDate)!;
+        Assert.Equal("AES_256_GCM", key.Descriptor.ExportToXml().SerializedDescriptorElement.Element("encryption")?.Attribute("algorithm")?.Value);
     }
 
     [Fact]

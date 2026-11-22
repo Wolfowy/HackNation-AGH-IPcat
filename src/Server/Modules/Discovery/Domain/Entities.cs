@@ -60,7 +60,7 @@ public sealed class ObservationRecord
     public DateTimeOffset ObservedAt { get; set; }
     public DateTimeOffset ReceivedAt { get; set; }
 
-    /// <summary><see cref="DiscoveryObservation"/> JSON (wire format).</summary>
+    /// <summary><see cref="DiscoveryObservation"/> JSON (wire format); encrypted at rest, so never query inside it in SQL.</summary>
     public required string Payload { get; set; }
 }
 
