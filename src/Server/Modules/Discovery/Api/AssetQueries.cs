@@ -86,6 +86,23 @@ internal sealed class AssetQueries(DiscoveryDbContext db)
         return new PagedResult<ServiceDto>(await ToServiceDtosAsync(services, ct), total, page, pageSize);
     }
 
+    public async Task<ServiceDetailDto?> ServiceAsync(Guid id, CancellationToken ct)
+    {
+        var service = await db.Services.AsNoTracking().FirstOrDefaultAsync(s => s.Id == id, ct);
+        if (service is null) return null;
+        var technologies = await db.Technologies.AsNoTracking().Where(t => t.ServiceId == id).OrderByDescending(t => t.Confidence).ThenBy(t => t.Name)
+            .ToListAsync(ct);
+        var certificate = service.CurrentCertFingerprint is { } fp
+            ? await db.Certificates.AsNoTracking().FirstOrDefaultAsync(c => c.ServiceId == id && c.FingerprintSha256 == fp, ct)
+            : null;
+        var findings = await db.SignatureMatches.AsNoTracking().Where(m => m.ServiceId == id).OrderByDescending(m => m.MatchedAt).ToListAsync(ct);
+        return new ServiceDetailDto((await ToServiceDtosAsync([service], ct))[0],
+            service.HttpDetailsJson is null ? null : JsonSerializer.Deserialize<HttpDetails>(service.HttpDetailsJson, ContractJson.Options),
+            service.Artifacts.Select(a => a.ToDto()).ToList(),
+            service.DeviceType is null ? null : new DeviceDto(service.DeviceType, service.DeviceVendor, service.DeviceProduct),
+            technologies.Select(t => t.ToDto()).ToList(), certificate?.ToDto(), findings.Select(f => f.ToDto()).ToList());
+    }
+
     /// <summary>Current-state graph (Gone hosts included with their status, Gone services excluded), capped at <see cref="Topology.MaxHosts"/>.</summary>
     public async Task<TopologyDto> TopologyAsync(TopologyQuery query, ResolvedScope? network, CancellationToken ct)
     {
@@ -239,12 +256,15 @@ internal sealed class AssetQueries(DiscoveryDbContext db)
                 .Where(m => ids.Contains(m.HostId) && m.Status == FindingStatus.Open && m.ClassificationTag != null)
                 .Select(m => new { m.HostId, m.ClassificationTag }).ToListAsync(ct))
             .ToLookup(m => m.HostId, m => m.ClassificationTag!);
+        // Device types recognized on open services (IoT detection) classify the host as well.
+        var deviceTypes = (await db.Services.Where(s => ids.Contains(s.HostId) && s.State == ServiceState.Open && s.DeviceType != null)
+            .Select(s => new { s.HostId, s.DeviceType }).ToListAsync(ct)).ToLookup(s => s.HostId, s => s.DeviceType!);
         var annotations = await db.Annotations.AsNoTracking().Where(a => addresses.Contains(a.Address)).ToDictionaryAsync(a => (a.Zone, a.Address), ct);
         var devices = (await DevicesAsync(hosts.Select(h => h.MacAddress).OfType<string>().Distinct().ToList(), ct)).ByHost;
 
         return hosts.Select(h => new HostListItemDto(h.Id, h.Address, h.Hostnames, h.Status, h.Unstable, h.FirstSeenAt, h.LastSeenAt,
             h.LastScannedAt, openPorts.GetValueOrDefault(h.Id), technologies[h.Id].Distinct().Order().ToList(), h.Zone,
-            annotations.GetValueOrDefault((h.Zone, h.Address)).ToDto(), classifications[h.Id].Distinct().Order().ToList(), h.MacAddress, h.MacVendor,
+            annotations.GetValueOrDefault((h.Zone, h.Address)).ToDto(), classifications[h.Id].Concat(deviceTypes[h.Id]).Distinct().Order().ToList(), h.MacAddress, h.MacVendor,
             devices.ContainsKey(h.Id), devices.GetValueOrDefault(h.Id)?.Confidence)).ToList();
     }
 
@@ -285,7 +305,8 @@ internal sealed class AssetQueries(DiscoveryDbContext db)
                 s.HttpUrl is null ? null : new HttpInfoDto(s.HttpUrl, s.HttpStatusCode, s.HttpTitle, s.HttpWebServer),
                 cert is null ? null : new TlsInfoDto(cert.SubjectCommonName, cert.Issuer, cert.NotAfter, cert.FingerprintSha256),
                 technologies[s.Id].Distinct().Order().ToList(), s.Confidence, s.ConfidenceMethod, s.TimeOfDayVariance, s.FirstSeenAt, s.LastSeenAt,
-                Topology.ServiceUrl(s.Address, s.Port, s.ServiceName, s.Tunnel, s.HttpUrl, s.CurrentCertFingerprint is not null), s.Zone);
+                Topology.ServiceUrl(s.Address, s.Port, s.ServiceName, s.Tunnel, s.HttpUrl, s.CurrentCertFingerprint is not null), s.Zone,
+                s.Artifacts.Count, s.Artifacts.SelectMany(a => a.Tags).Distinct().Order(StringComparer.Ordinal).ToList(), s.DeviceType);
         }).ToList();
     }
 

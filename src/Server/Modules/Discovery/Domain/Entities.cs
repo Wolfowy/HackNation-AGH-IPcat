@@ -155,8 +155,22 @@ public sealed class Service
     public string? HttpWebServer { get; set; }
     public DateTimeOffset? HttpObservedAt { get; set; }
 
+    /// <summary>Latest <see cref="Contracts.HttpDetails"/> as JSON (headers masked, cookies without values).</summary>
+    public string? HttpDetailsJson { get; set; }
+
     public string? CurrentCertFingerprint { get; set; }
     public DateTimeOffset? TlsObservedAt { get; set; }
+
+    /// <summary>Device classification from recog fingerprints, e.g. "IP Camera", "Printer", "Router".</summary>
+    public string? DeviceType { get; set; }
+
+    public string? DeviceVendor { get; set; }
+    public string? DeviceProduct { get; set; }
+
+    /// <summary>Interesting headers, cookies, pages... of the latest run that fingerprinted the service (<see cref="FingerprintRunId"/>).</summary>
+    public List<ServiceArtifact> Artifacts { get; set; } = [];
+
+    public Guid? FingerprintRunId { get; set; }
 
     /// <summary>Responses of this endpoint differ consistently by hour of day.</summary>
     public bool TimeOfDayVariance { get; set; }
@@ -172,6 +186,26 @@ public sealed class Service
     public string? ComparedServiceName { get; set; }
     public string? ComparedSummary { get; set; }
     public string? ComparedCertFingerprint { get; set; }
+}
+
+/// <summary>Interesting HTTP artifact of a service (see <c>HttpArtifacts</c>).</summary>
+public sealed class ServiceArtifact
+{
+    /// <summary>"header", "cookie", "page", "favicon" or "cert".</summary>
+    public required string Kind { get; set; }
+
+    public required string Name { get; set; }
+
+    /// <summary>Short, masked and truncated value.</summary>
+    public string? Value { get; set; }
+
+    public required string Reason { get; set; }
+
+    /// <summary>e.g. "tech-hint", "version-leak", "internal-ip-leak", "debug", "insecure-cookie", "login-page".</summary>
+    public List<string> Tags { get; set; } = [];
+
+    /// <summary>"info" or "low".</summary>
+    public string Severity { get; set; } = "info";
 }
 
 public sealed class TechnologyEvidence
@@ -273,6 +307,9 @@ public sealed class ExternalRefEntry
 public sealed class SignatureMatch
 {
     public const string ClassificationSource = "classification-rule";
+
+    /// <summary>High-signal HTTP artifact (debug header, internal IP leak, login/admin page) raised as an info/low finding.</summary>
+    public const string ArtifactSource = "artifact";
 
     public Guid Id { get; set; }
     public Guid HostId { get; set; }

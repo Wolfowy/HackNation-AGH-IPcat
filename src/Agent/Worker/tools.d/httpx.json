@@ -1,4 +1,5 @@
 // httpx (ProjectDiscovery): HTTP probing, JSONL output. Response headers are masked by the parser; bodies are never stored (hash only).
+// -kb classifies the page (login/error/parked...) and -cdn names the CDN/WAF, both locally from the same response (no extra probes).
 {
   "id": "httpx",
   "displayName": "httpx",
@@ -15,7 +16,7 @@
       "arguments": ["-l", "{input}", "-json", "-o", "{output}", "-silent", "-no-color", "-disable-update-check",
                     "-rate-limit", "{rate}", "-threads", "{parallelism}", "-timeout", "10",
                     "-status-code", "-title", "-web-server", "-content-type", "-content-length", "-ip",
-                    "-hash", "sha256", "-include-response-header", "-tls-grab"],
+                    "-hash", "sha256", "-include-response-header", "-tls-grab", "-kb", "-cdn=true"],
       "parameterArguments": {
         "followRedirects": { "true": ["-follow-redirects"], "false": [] },
         "maxRedirects": ["-max-redirects", "{value}"],

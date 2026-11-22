@@ -33,7 +33,18 @@ public sealed record ServiceDto(
     Guid Id, Guid HostId, string Address, int Port, TransportProtocol Transport, ServiceState State, string? ServiceName, string? Product,
     string? Version, string? Banner, IReadOnlyList<string> Cpe, HttpInfoDto? Http, TlsInfoDto? Tls, IReadOnlyList<string> Technologies,
     double? Confidence, string? ConfidenceMethod, bool TimeOfDayVariance, DateTimeOffset FirstSeenAt, DateTimeOffset LastSeenAt,
-    string? Url, string Zone);
+    string? Url, string Zone, int ArtifactCount, IReadOnlyList<string> ArtifactTags, string? DeviceType);
+
+/// <summary><c>GET /api/assets/services/{id}</c>: the service with its latest HTTP response, artifacts, device, technologies, certificate and findings.</summary>
+public sealed record ServiceDetailDto(
+    ServiceDto Service, HttpDetails? Http, IReadOnlyList<ArtifactDto> Artifacts, DeviceDto? Device, IReadOnlyList<TechnologyDto> Technologies,
+    CertificateDto? Certificate, IReadOnlyList<FindingDto> Findings);
+
+/// <param name="Kind">"header", "cookie", "page", "favicon" or "cert".</param>
+public sealed record ArtifactDto(string Kind, string Name, string? Value, string Reason, IReadOnlyList<string> Tags, string Severity);
+
+/// <param name="Type">recog device type, e.g. "IP Camera", "Printer", "Router", "NAS".</param>
+public sealed record DeviceDto(string Type, string? Vendor, string? Product);
 
 /// <summary>
 /// Graph read model of <c>GET /api/topology</c> (current state): network devices → zones → subnets → hosts, plus the scan perspectives
@@ -121,6 +132,8 @@ internal static class DtoMapping
 
     public static TechnologyDto ToDto(this Technology t) =>
         new(t.Id, t.Name, t.Version, t.Category, t.Port, t.Confidence, t.ConfidenceMethod, t.Sources, t.FirstSeenAt, t.LastSeenAt);
+
+    public static ArtifactDto ToDto(this ServiceArtifact a) => new(a.Kind, a.Name, a.Value, a.Reason, a.Tags, a.Severity);
 
     public static CertificateDto ToDto(this Certificate c) =>
         new(c.Id, c.Port, c.FingerprintSha256, c.SubjectCommonName, c.SubjectAlternativeNames, c.Issuer, c.NotBefore, c.NotAfter, c.SelfSigned,

@@ -8,6 +8,7 @@ using WebScan.Discovery.UnitTests.Infrastructure;
 using WebScan.Server.Kernel.Security;
 using WebScan.Server.Modules.Analytics;
 using WebScan.Server.Modules.Discovery.Api;
+using WebScan.Server.Modules.Discovery.Domain;
 
 namespace WebScan.Discovery.UnitTests;
 
@@ -168,5 +169,48 @@ public class ApiTests(TestApp app) : IAsyncLifetime
         Assert.Equal(["endpoint|lab|10.4.0.1|8443|tcp"], diff!.Added.Select(a => a.Key));
         Assert.Empty(diff.Removed);
         Assert.Equal(HttpStatusCode.UnprocessableEntity, (await viewer.GetAsync($"/api/scans/{_s.RunId}/diff")).StatusCode);
+    }
+
+    [Fact]
+    public async Task Service_detail_returns_http_details_artifacts_recog_device_and_artifact_findings()
+    {
+        var coverage = Scenario.Coverage(["10.4.0.0/24"]);
+        var probe = _s.Http("10.4.0.9", 80, 200, "Login", "Microsoft-IIS/10.0");
+        probe = probe with
+        {
+            Http = probe.Http! with
+            {
+                Headers = new Dictionary<string, string> { ["server"] = "Microsoft-IIS/10.0", ["x-debug-token"] = "a1b2c3", ["set-cookie"] = "ASP.NET_SessionId=***; path=/" },
+                Cookies = HttpCookies.Parse("BIGipServerweb=1677787402.36895.0000; path=/, ASP.NET_SessionId=abc; path=/"),
+                FaviconMd5 = "842c79ab11f38323fc554afbea5c990a", PageType = "login", Cdn = "cloudflare", CdnType = "waf",
+            },
+        };
+        await _s.RunAsync(coverage, 1, _s.HostUp("10.4.0.9"), probe);
+        var viewer = app.Client(Roles.Viewer);
+
+        var listed = Assert.Single((await viewer.GetFromJsonAsync<PagedResult<ServiceDto>>("/api/assets/services", Json))!.Items);
+        Assert.Equal("IP Camera", listed.DeviceType);
+        Assert.Contains("debug", listed.ArtifactTags);
+        Assert.Contains("IP Camera", (await viewer.GetFromJsonAsync<HostDetailDto>($"/api/assets/hosts/{listed.HostId}", Json))!.Classifications);
+
+        var detail = (await viewer.GetFromJsonAsync<ServiceDetailDto>($"/api/assets/services/{listed.Id}", Json))!;
+        Assert.Equal(("login", "cloudflare", "842c79ab11f38323fc554afbea5c990a"), (detail.Http!.PageType, detail.Http.Cdn, detail.Http.FaviconMd5));
+        Assert.Equal(["BIGipServerweb", "ASP.NET_SessionId"], detail.Http.Cookies.Select(c => c.Name));
+        Assert.Equal(new DeviceDto("IP Camera", "D-Link", "DCS-932"), detail.Device);
+        Assert.Contains(detail.Technologies, t => t is { Name: "Microsoft IIS", Version: "10.0" } && t.ConfidenceMethod.Contains("recog"));
+        Assert.Contains(detail.Artifacts, a => a.Name == "BIGipServerweb" && a.Value == "10.1.1.100:8080" && a.Tags.Contains("internal-ip-leak"));
+        Assert.Contains(detail.Artifacts, a => a.Name == "x-debug-token" && a.Severity == "low");
+        Assert.Equal(["artifact-debug", "artifact-internal-ip-leak", "artifact-login-page"],
+            detail.Findings.Where(f => f.Source == "artifact").Select(f => f.SignatureId).Order());
+        Assert.Equal(HttpStatusCode.NotFound, (await viewer.GetAsync($"/api/assets/services/{Guid.NewGuid()}")).StatusCode);
+
+        // The next HTTP probe without the debug header replaces the artifacts and resolves the artifact finding.
+        _s.NextRun();
+        await _s.RunAsync(coverage, 1, _s.HostUp("10.4.0.9"), _s.Http("10.4.0.9", 80, 200, "Login", "Microsoft-IIS/10.0"));
+        detail = (await viewer.GetFromJsonAsync<ServiceDetailDto>($"/api/assets/services/{listed.Id}", Json))!;
+        Assert.DoesNotContain(detail.Artifacts, a => a.Name == "x-debug-token");
+        Assert.Null(detail.Device);
+        Assert.Equal(FindingStatus.Resolved, detail.Findings.Single(f => f.SignatureId == "artifact-debug").Status);
+        Assert.Equal(FindingStatus.Open, detail.Findings.Single(f => f.SignatureId == "artifact-login-page").Status);
     }
 }

@@ -566,8 +566,20 @@ namespace WebScan.Server.Modules.Discovery.Persistence.Migrations
                     b.Property<string>("CurrentCertFingerprint")
                         .HasColumnType("text");
 
+                    b.Property<string>("DeviceProduct")
+                        .HasColumnType("text");
+
+                    b.Property<string>("DeviceType")
+                        .HasColumnType("text");
+
+                    b.Property<string>("DeviceVendor")
+                        .HasColumnType("text");
+
                     b.Property<string>("ExtraInfo")
                         .HasColumnType("text");
+
+                    b.Property<Guid?>("FingerprintRunId")
+                        .HasColumnType("uuid");
 
                     b.Property<DateTimeOffset>("FirstSeenAt")
                         .HasColumnType("timestamp with time zone");
@@ -577,6 +589,9 @@ namespace WebScan.Server.Modules.Discovery.Persistence.Migrations
 
                     b.Property<Guid>("HostId")
                         .HasColumnType("uuid");
+
+                    b.Property<string>("HttpDetailsJson")
+                        .HasColumnType("jsonb");
 
                     b.Property<DateTimeOffset?>("HttpObservedAt")
                         .HasColumnType("timestamp with time zone");
@@ -828,6 +843,47 @@ namespace WebScan.Server.Modules.Discovery.Persistence.Migrations
                     NpgsqlIndexBuilderExtensions.AreNullsDistinct(b.HasIndex("HostId", "Port", "NameKey"), false);
 
                     b.ToTable("technologies", "discovery");
+                });
+
+            modelBuilder.Entity("WebScan.Server.Modules.Discovery.Domain.Service", b =>
+                {
+                    b.OwnsMany("WebScan.Server.Modules.Discovery.Domain.ServiceArtifact", "Artifacts", b1 =>
+                        {
+                            b1.Property<Guid>("ServiceId");
+
+                            b1.Property<int>("__synthesizedOrdinal")
+                                .ValueGeneratedOnAdd();
+
+                            b1.Property<string>("Kind")
+                                .IsRequired();
+
+                            b1.Property<string>("Name")
+                                .IsRequired();
+
+                            b1.Property<string>("Reason")
+                                .IsRequired();
+
+                            b1.Property<string>("Severity")
+                                .IsRequired();
+
+                            b1.PrimitiveCollection<string>("Tags")
+                                .IsRequired();
+
+                            b1.Property<string>("Value");
+
+                            b1.HasKey("ServiceId", "__synthesizedOrdinal");
+
+                            b1.ToTable("services", "discovery");
+
+                            b1
+                                .ToJson("Artifacts")
+                                .HasColumnType("jsonb");
+
+                            b1.WithOwner()
+                                .HasForeignKey("ServiceId");
+                        });
+
+                    b.Navigation("Artifacts");
                 });
 
             modelBuilder.Entity("WebScan.Server.Modules.Discovery.Domain.SignatureMatch", b =>

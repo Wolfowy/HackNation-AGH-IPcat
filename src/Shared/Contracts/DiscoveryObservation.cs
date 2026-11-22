@@ -120,11 +120,31 @@ public sealed record HttpDetails
     /// <summary>Names only, never values.</summary>
     public IReadOnlyList<string> CookieNames { get; init; } = [];
 
+    /// <summary>Parsed <c>Set-Cookie</c> headers: name and attributes, never values (see <see cref="HttpCookies"/>).</summary>
+    public IReadOnlyList<HttpCookie> Cookies { get; init; } = [];
+
+    /// <summary>Requested URL, intermediate <c>Location</c> and final URL (when the response redirected).</summary>
     public IReadOnlyList<string> RedirectChain { get; init; } = [];
+
+    /// <summary>Status codes of the followed redirect chain, e.g. [301, 200].</summary>
+    public IReadOnlyList<int> RedirectStatusCodes { get; init; } = [];
+
     public string? FinalUrl { get; init; }
 
     /// <summary>Shodan-style mmh3 hash of the favicon (as string).</summary>
     public string? FaviconHash { get; init; }
+
+    /// <summary>Lowercase hex MD5 of the favicon (matches Rapid7 recog favicon fingerprints).</summary>
+    public string? FaviconMd5 { get; init; }
+
+    /// <summary>Page classification of the probe tool (httpx <c>-kb</c>), e.g. "login", "error", "parked".</summary>
+    public string? PageType { get; init; }
+
+    /// <summary>CDN/WAF in front of the endpoint (httpx <c>-cdn</c>), e.g. "cloudflare".</summary>
+    public string? Cdn { get; init; }
+
+    /// <summary>"cdn", "waf" or "cloud".</summary>
+    public string? CdnType { get; init; }
 
     /// <summary>SHA-256 of the response body (for change detection without storing bodies).</summary>
     public string? BodySha256 { get; init; }
@@ -133,9 +153,33 @@ public sealed record HttpDetails
     public IReadOnlyList<string> Technologies { get; init; } = [];
 }
 
+/// <summary>One <c>Set-Cookie</c> header without its value.</summary>
+public sealed record HttpCookie
+{
+    public required string Name { get; init; }
+    public bool Secure { get; init; }
+    public bool HttpOnly { get; init; }
+
+    /// <summary>"Strict" / "Lax" / "None" as sent; null when absent.</summary>
+    public string? SameSite { get; init; }
+
+    public string? Domain { get; init; }
+    public string? Path { get; init; }
+
+    /// <summary>
+    /// Non-secret information decoded from the value before it was dropped, e.g. the internal "10.1.1.100:8080" pool member of an
+    /// F5 BIG-IP persistence cookie.
+    /// </summary>
+    public string? DecodedValue { get; init; }
+}
+
 public sealed record TlsDetails
 {
     public string? SubjectCommonName { get; init; }
+
+    /// <summary>Full subject DN, e.g. "CN=printer.local, O=Example".</summary>
+    public string? SubjectDn { get; init; }
+
     public IReadOnlyList<string> SubjectAlternativeNames { get; init; } = [];
     public string? Issuer { get; init; }
     public DateTimeOffset? NotBefore { get; init; }

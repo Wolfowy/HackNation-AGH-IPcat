@@ -1,6 +1,5 @@
 using System.Runtime.CompilerServices;
 using System.Text.Json;
-using System.Text.RegularExpressions;
 using WebScan.Agent.Tools.Abstractions;
 using WebScan.Contracts;
 
@@ -30,10 +29,11 @@ public sealed class NaabuJsonlParser : IToolOutputParser
 }
 
 /// <summary>
-/// <c>httpx -json</c>: HttpResponse per URL (headers masked, cookie names only, body hash, favicon mmh3, redirects), plus
+/// <c>httpx -json</c>: HttpResponse per URL (headers masked, cookies without values, body hash, favicon mmh3/md5, redirects, page type,
+/// CDN/WAF), plus
 /// Technology observations for <c>tech</c> entries and a TlsCertificate observation for the <c>tls</c> block.
 /// </summary>
-public sealed partial class HttpxJsonlParser : IToolOutputParser
+public sealed class HttpxJsonlParser : IToolOutputParser
 {
     public string Id => "httpx-jsonl";
 
@@ -53,6 +53,7 @@ public sealed partial class HttpxJsonlParser : IToolOutputParser
             var observedAt = line.Get("timestamp").AsDate();
 
             var headers = Headers(line.Get("header"));
+            var cookies = HttpCookies.Parse(headers.GetValueOrDefault("set-cookie"));
             var tech = line.Get("tech").AsList();
             var finalUrl = line.Str("final_url");
             yield return context.NewObservation(ObservationKind.HttpResponse, address, port, TransportProtocol.Tcp, url, observedAt) with
@@ -68,10 +69,16 @@ public sealed partial class HttpxJsonlParser : IToolOutputParser
                     ContentType = line.Str("content_type"),
                     ContentLength = line.Get("content_length").AsLong(),
                     Headers = SensitiveDataMasker.MaskHeaders(headers),
-                    CookieNames = CookieNames(headers),
-                    RedirectChain = finalUrl is not null && finalUrl != url ? [url, finalUrl] : [],
+                    CookieNames = [.. cookies.Select(c => c.Name).Distinct(StringComparer.Ordinal)],
+                    Cookies = cookies,
+                    RedirectChain = RedirectChain(url, line.Str("location"), finalUrl),
+                    RedirectStatusCodes = [.. line.Get("chain_status_codes").AsList().Select(c => int.TryParse(c, out var code) ? code : 0).Where(c => c > 0)],
                     FinalUrl = finalUrl,
                     FaviconHash = line.Str("favicon"),
+                    FaviconMd5 = line.Str("favicon_md5")?.ToLowerInvariant(),
+                    PageType = line.Str("knowledgebase.PageType")?.ToLowerInvariant(),
+                    Cdn = line.Str("cdn_name"),
+                    CdnType = line.Str("cdn_type"),
                     BodySha256 = line.Str("hash.body_sha256"),
                     Technologies = tech,
                 },
@@ -107,6 +114,7 @@ public sealed partial class HttpxJsonlParser : IToolOutputParser
         return new TlsDetails
         {
             SubjectCommonName = tls.Str("subject_cn"),
+            SubjectDn = tls.Str("subject_dn"),
             SubjectAlternativeNames = tls.Get("subject_an").AsList(),
             Issuer = tls.Str("issuer_dn"),
             NotBefore = tls.Get("not_before").AsDate(),
@@ -129,18 +137,13 @@ public sealed partial class HttpxJsonlParser : IToolOutputParser
         return result;
     }
 
-    private static IReadOnlyList<string> CookieNames(Dictionary<string, string> headers) =>
-        headers.TryGetValue("set-cookie", out var value)
-            ? [.. CookieName().Matches(value).Select(m => m.Groups[1].Value).Where(n => !CookieAttributes.Contains(n)).Distinct(StringComparer.Ordinal)]
-            : [];
-
-    private static readonly HashSet<string> CookieAttributes = new(StringComparer.OrdinalIgnoreCase)
+    /// <summary>Requested URL, the (resolved) <c>Location</c> it pointed to and the final URL; empty when nothing redirected.</summary>
+    private static IReadOnlyList<string> RedirectChain(string url, string? location, string? finalUrl)
     {
-        "path", "domain", "expires", "max-age", "samesite", "priority", "secure", "httponly", "partitioned",
-    };
-
-    [GeneratedRegex(@"(?:^|[;,]\s*)([^=;,\s]+)=")]
-    private static partial Regex CookieName();
+        var next = location is not null && Uri.TryCreate(new Uri(url), location, out var resolved) ? resolved.ToString() : location;
+        List<string> chain = [url, .. new[] { next, finalUrl }.OfType<string>()];
+        return chain.Distinct(StringComparer.Ordinal).ToList() is { Count: > 1 } distinct ? distinct : [];
+    }
 }
 
 /// <summary><c>nuclei -jsonl</c>: SignatureMatch per result; evidence = masked, truncated raw response (or extracted results).</summary>

@@ -46,6 +46,9 @@ internal static class DiscoveryEndpoints
             return q.ServicesAsync(new ServiceQuery(port, serviceName, search, zone), p, size, ct);
         }).RequireAuthorization(Policies.CanRead);
 
+        api.MapGet("/assets/services/{id:guid}", async (Guid id, AssetQueries q, CancellationToken ct) =>
+            await q.ServiceAsync(id, ct) is { } service ? Results.Ok(service) : Results.NotFound()).RequireAuthorization(Policies.CanRead);
+
         api.MapGet("/topology", async (AssetQueries q, [FromServices] INetworkScopeService scope, string? zone, Guid? networkId, string? search,
             CancellationToken ct) =>
         {
@@ -237,12 +240,14 @@ internal static class DiscoveryEndpoints
 
     private static (IReadOnlyList<string>, Func<IEnumerable<IReadOnlyList<string?>>>, object) ServicesExport(IReadOnlyList<ServiceDto> items) =>
     (["id", "hostId", "zone", "address", "port", "transport", "state", "serviceName", "product", "version", "httpUrl", "httpStatusCode", "httpTitle",
-            "webServer", "tlsSubjectCommonName", "tlsIssuer", "tlsNotAfter", "tlsFingerprintSha256", "technologies", "confidence", "firstSeenAt", "lastSeenAt"],
+            "webServer", "tlsSubjectCommonName", "tlsIssuer", "tlsNotAfter", "tlsFingerprintSha256", "technologies", "confidence", "firstSeenAt", "lastSeenAt",
+            "deviceType", "artifactTags"],
         () => items.Select(s => (IReadOnlyList<string?>)
         [
             s.Id.ToString(), s.HostId.ToString(), s.Zone, s.Address, I(s.Port), s.Transport.ToString(), s.State.ToString(), s.ServiceName, s.Product,
             s.Version, s.Http?.Url, I(s.Http?.StatusCode), s.Http?.Title, s.Http?.WebServer, s.Tls?.SubjectCommonName, s.Tls?.Issuer,
             D(s.Tls?.NotAfter), s.Tls?.FingerprintSha256, string.Join(';', s.Technologies), N(s.Confidence), D(s.FirstSeenAt), D(s.LastSeenAt),
+            s.DeviceType, string.Join(';', s.ArtifactTags),
         ]), items);
 
     private static (IReadOnlyList<string>, Func<IEnumerable<IReadOnlyList<string?>>>, object) ChangesExport(IReadOnlyList<ChangeDto> items) =>

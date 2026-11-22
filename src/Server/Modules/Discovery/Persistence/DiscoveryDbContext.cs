@@ -69,6 +69,8 @@ public sealed class DiscoveryDbContext(DbContextOptions<DiscoveryDbContext> opti
             e.ToTable("services");
             e.HasIndex(x => new { x.HostId, x.Port, x.Transport }).IsUnique();
             e.HasIndex(x => new { x.Port, x.State });
+            e.Property(x => x.HttpDetailsJson).HasColumnType("jsonb");
+            e.OwnsMany(x => x.Artifacts, o => o.ToJson());
         });
 
         b.Entity<Technology>(e =>

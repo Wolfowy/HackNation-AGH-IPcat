@@ -1,9 +1,11 @@
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using WebScan.Contracts;
 using WebScan.Server.Kernel.Discovery;
 using WebScan.Server.Modules.Discovery.Domain;
+using WebScan.Server.Modules.Discovery.Fingerprinting;
 using WebScan.Server.Modules.Discovery.Normalization;
 using WebScan.Server.Modules.Discovery.Persistence;
 
@@ -104,12 +106,15 @@ internal sealed class AssetStateUpdater
                     var (method, score) = ConfidenceModel.ForService(o);
                     AddTechnology(host, service, s.Product, s.Version, null, method, score, o.Source.ToolId, seenAt);
                 }
+                ApplyFingerprint(host, service, ServiceFingerprinter.Banner(s), o, seenAt);
                 break;
             case ObservationKind.HttpResponse when service is not null && o.Http is { } http:
                 ApplyHttp(host, service, http, o, seenAt);
+                ApplyFingerprint(host, service, ServiceFingerprinter.Http(http, o.Address), o, seenAt, authoritative: true);
                 break;
             case ObservationKind.TlsCertificate when service is not null && o.Tls is { FingerprintSha256: { Length: > 0 } } tls:
                 ApplyTls(host, service, tls, seenAt);
+                ApplyFingerprint(host, service, ServiceFingerprinter.Tls(tls), o, seenAt);
                 break;
             case ObservationKind.Technology when o.Technology is { } t:
             {
@@ -232,6 +237,7 @@ internal sealed class AssetStateUpdater
             service.HttpStatusCode = http.StatusCode;
             service.HttpTitle = http.Title;
             service.HttpWebServer = http.WebServer;
+            service.HttpDetailsJson = JsonSerializer.Serialize(http, ContractJson.Options);
             service.HttpObservedAt = seenAt;
         }
 
@@ -257,6 +263,44 @@ internal sealed class AssetStateUpdater
         foreach (var tech in http.Technologies.Where(t => !string.IsNullOrWhiteSpace(t)))
             AddTechnology(host, service, tech, null, null, ConfidenceModel.ToolReported, ConfidenceModel.BaseScore(ConfidenceModel.ToolReported),
                 o.Source.ToolId, seenAt);
+    }
+
+    /// <summary>
+    /// Recog technologies, device classification and artifacts. Device and artifacts describe the latest run that fingerprinted the
+    /// service: its first result replaces them (an HTTP response always counts, so a removed header disappears), later ones merge.
+    /// High-signal artifacts are also kept as findings (source "artifact").
+    /// </summary>
+    private void ApplyFingerprint(Host host, Service service, FingerprintResult result, DiscoveryObservation o, DateTimeOffset seenAt,
+        bool authoritative = false)
+    {
+        if (result.IsEmpty && !authoritative) return;
+        if (service.FingerprintRunId != _runId)
+        {
+            service.Artifacts = [];
+            service.DeviceType = service.DeviceVendor = service.DeviceProduct = null;
+            service.FingerprintRunId = _runId;
+        }
+        foreach (var t in result.Technologies)
+            AddTechnology(host, service, t.Name, t.Version, t.Category, ConfidenceModel.Recog, t.Score, ConfidenceModel.Recog, seenAt);
+        if (result.Device is { } device && service.DeviceType is null)
+            (service.DeviceType, service.DeviceVendor, service.DeviceProduct) = (device.Type, device.Vendor, device.Product);
+        host.OsGuess ??= result.OsGuess;
+
+        var artifacts = service.Artifacts.ToList();
+        foreach (var a in result.Artifacts) HttpArtifacts.Add(artifacts, a.Kind, a.Name, a.Value, a.Reason, a.Tags, a.Severity);
+        service.Artifacts = artifacts;
+
+        foreach (var (tag, name) in HttpArtifacts.FindingTags)
+        {
+            var hits = artifacts.Where(a => a.Tags.Contains(tag)).ToList();
+            if (hits.Count == 0) continue;
+            var evidence = string.Join('\n', hits.Select(a => $"{a.Kind} {a.Name}: {a.Value} ({a.Reason})"));
+            var match = UpsertMatch(host, service, service.Port, service.Transport, $"artifact-{tag}", null, name,
+                hits.Any(a => a.Severity == "low") ? "low" : "info", SignatureMatch.ArtifactSource, evidence.Length > 2048 ? evidence[..2048] : evidence,
+                SignatureMatch.ArtifactSource, 0.9, o.Hostname, seenAt);
+            match.MatchedUrl = o.Http?.Url ?? match.MatchedUrl;
+            match.Tags = ["artifact", tag];
+        }
     }
 
     private void ApplyTls(Host host, Service service, TlsDetails tls, DateTimeOffset seenAt)
