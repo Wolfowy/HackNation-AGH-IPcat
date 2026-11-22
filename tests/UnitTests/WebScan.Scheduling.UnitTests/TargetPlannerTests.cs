@@ -24,6 +24,33 @@ public sealed class TargetPlannerTests
     public void Batch_size_is_clamped_and_rounded_to_a_power_of_two(int? requested, int expected) =>
         Assert.Equal(expected, TargetPlanner.NormalizeBatchSize(requested, 256));
 
+    [Theory]
+    [InlineData(null, null, 256, "default")]  // no measurements: configured default
+    [InlineData(null, 1.0, 256, "measured")]  // 1 t/s × 300 s = 300 → 256
+    [InlineData(null, 0.1, 64, "measured")]   // 30 → clamped to 64
+    [InlineData(null, 50.0, 1024, "measured")] // 15000 → clamped to 1024
+    [InlineData(128, 50.0, 128, "workflow")]  // explicit workflow batchSize wins over measurements
+    public void Adaptive_batch_size_aims_at_the_target_job_duration(int? explicitSize, double? tps, int expected, string reason)
+    {
+        var (size, why) = TargetPlanner.ChooseBatchSize(explicitSize, 256, 300, tps);
+        Assert.Equal(expected, size);
+        Assert.Contains(reason, why);
+        Assert.Contains(expected.ToString(System.Globalization.CultureInfo.InvariantCulture), why);
+    }
+
+    [Fact]
+    public void Duration_range_uses_parallelism_measured_rates_and_rate_cap()
+    {
+        // 4096 targets in 16 jobs of 256, 4 parallel slots, agents at 1 and 2 targets/s per job.
+        var (min, max) = TargetPlanner.EstimateDuration(4096, 16, 256, [1.0, 2.0], 4, rateCap: null)!.Value;
+        Assert.Equal(512, min);   // 4096 / (2 t/s × 4)
+        Assert.Equal(1024, max);  // 4 waves × 256 targets at 1 t/s
+        Assert.Equal(4096, TargetPlanner.EstimateDuration(4096, 16, 256, [1.0, 2.0], 4, rateCap: 1)!.Value.MinSeconds); // ≥ 1 packet per target
+        Assert.Null(TargetPlanner.EstimateDuration(4096, 16, 256, [], 4, null));    // nothing measured
+        Assert.Null(TargetPlanner.EstimateDuration(4096, 16, 256, [1.0], 0, null)); // nobody to run the jobs
+        Assert.Equal((0d, 0d), TargetPlanner.EstimateDuration(0, 0, 256, [1.0], 4, null));
+    }
+
     [Fact]
     public void Batches_are_cidr_aligned_non_overlapping_and_cover_the_scope()
     {

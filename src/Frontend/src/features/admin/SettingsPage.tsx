@@ -60,6 +60,13 @@ function SettingsEditor({ values }: { values: Settings['values'] }) {
 // Ranges mirror ScanLimits.Validate() (Scanning/Planning/ClaimSelector.cs).
 const LIMIT_FIELDS: { name: keyof ScanLimits; label: string; min: number; max: number; hint?: string }[] = [
   { name: 'defaultBatchSize', label: 'Default batch size', min: 64, max: 1024, hint: '64–1024 hosts, rounded to a power of two' },
+  {
+    name: 'targetJobSeconds',
+    label: 'Target job duration (s)',
+    min: 30,
+    max: 3600,
+    hint: 'Batch size follows measured agent throughput to aim at this job duration (default size until measured; a workflow batchSize wins).',
+  },
   { name: 'leaseDurationSeconds', label: 'Lease duration (s)', min: 30, max: 3600 },
   { name: 'maxAttempts', label: 'Max attempts per job', min: 1, max: 10 },
   { name: 'maxConcurrentJobsPerZone', label: 'Max concurrent jobs per zone', min: 1, max: 100_000 },

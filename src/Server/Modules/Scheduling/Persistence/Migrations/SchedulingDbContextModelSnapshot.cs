@@ -77,6 +77,15 @@ namespace WebScan.Server.Modules.Scheduling.Persistence.Migrations
                     b.Property<DateTimeOffset?>("QueuedFireTime")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<DateTimeOffset?>("ResumeAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("ResumeInNextWindow")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTimeOffset?>("ResumedWindowEnd")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("TimeZone")
                         .IsRequired()
                         .HasMaxLength(100)

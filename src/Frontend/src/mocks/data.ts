@@ -783,6 +783,8 @@ ${extra}    matchers:
       allowedWindows: [{ daysOfWeek: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'], start: '01:00', end: '05:00' }],
       overlapPolicy: 'Skip',
       enabled: true,
+      resumeInNextWindow: true,
+      resumeAt: ago(-60 * 7),
       nextFireAt: ago(-60 * 7),
       lastRunId: runs[0].id,
       lastRunStatus: runs[0].status,
@@ -800,6 +802,7 @@ ${extra}    matchers:
       allowedWindows: [],
       overlapPolicy: 'Queue',
       enabled: false,
+      resumeInNextWindow: false,
     },
   ]
 
@@ -920,6 +923,7 @@ ${extra}    matchers:
       subnetPrefixLength: 16,
       maxRatePerSecondGlobal: 20000,
       unassignedJobTimeoutSeconds: 900,
+      targetJobSeconds: 300,
     },
     audit,
     defectDojo: {

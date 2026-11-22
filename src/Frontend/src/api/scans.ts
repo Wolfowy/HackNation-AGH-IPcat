@@ -7,6 +7,8 @@ import {
   type Paged,
   type PlannerStats,
   type ScanDiff,
+  type ScanEstimate,
+  type ScanEstimateRequest,
   type ScanExecutionEvent,
   type ScanJob,
   type ScanLimits,
@@ -54,6 +56,15 @@ export const useScanDiff = (id: string, baseline: string) =>
     queryKey: ['scans', 'diff', id, baseline],
     queryFn: ({ signal }) => api<ScanDiff>(`/api/scans/${id}/diff`, { query: { baseline }, signal }),
     enabled: Boolean(id && baseline),
+  })
+
+/** Live estimate while a scan or schedule is being configured (null = not enough input yet). */
+export const useScanEstimate = (request: ScanEstimateRequest | null) =>
+  useQuery({
+    queryKey: ['scans', 'estimate', request],
+    queryFn: ({ signal }) => api<ScanEstimate>('/api/scans/estimate', { method: 'POST', body: request, signal }),
+    enabled: request !== null,
+    placeholderData: keepPreviousData,
   })
 
 export const useStartScan = () =>

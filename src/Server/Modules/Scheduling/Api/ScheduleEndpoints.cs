@@ -12,7 +12,8 @@ namespace WebScan.Server.Modules.Scheduling.Api;
 
 public sealed record ScheduleInput(
     string Name, string CronExpression, string TimeZone, string WorkflowKey, int? WorkflowVersion, IReadOnlyList<Guid> NetworkIds,
-    int? Priority, int? MaxRatePerSecond, int? WindowDurationMinutes, IReadOnlyList<AllowedWindow>? AllowedWindows, OverlapPolicy? OverlapPolicy, bool? Enabled)
+    int? Priority, int? MaxRatePerSecond, int? WindowDurationMinutes, IReadOnlyList<AllowedWindow>? AllowedWindows, OverlapPolicy? OverlapPolicy, bool? Enabled,
+    bool? ResumeInNextWindow = null)
 {
     public Dictionary<string, string[]> Validate()
     {
@@ -46,6 +47,8 @@ public sealed record ScheduleInput(
         s.AllowedWindows = (AllowedWindows ?? []).ToList();
         s.OverlapPolicy = OverlapPolicy ?? Persistence.OverlapPolicy.Skip;
         s.Enabled = Enabled ?? s.Enabled;
+        s.ResumeInNextWindow = ResumeInNextWindow ?? s.ResumeInNextWindow;
+        if (!s.ResumeInNextWindow || s.AllowedWindows.Count == 0) s.ResumeAt = null;
     }
 }
 
@@ -53,7 +56,7 @@ public sealed record ScheduleDto(
     Guid Id, string Name, string CronExpression, string TimeZone, string WorkflowKey, int? WorkflowVersion, IReadOnlyList<Guid> NetworkIds,
     int Priority, int? MaxRatePerSecond, int? WindowDurationMinutes, IReadOnlyList<AllowedWindow> AllowedWindows, OverlapPolicy OverlapPolicy,
     bool Enabled, DateTimeOffset? NextFireAt, DateTimeOffset? LastFireAt, Guid? LastRunId, string? LastRunStatus, DateTimeOffset? QueuedFireTime,
-    DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt);
+    DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt, bool ResumeInNextWindow, DateTimeOffset? ResumeAt);
 
 public sealed record TriggerResultDto(Guid? ScanRunId, string Outcome, string? Reason);
 
@@ -153,6 +156,7 @@ public static class ScheduleEndpoints
         schedule.Enabled = enabled;
         schedule.UpdatedAt = time.GetUtcNow();
         schedule.NextFireAt = enabled ? NextFire(schedule, schedule.UpdatedAt) : null; // resume = next fire per schedule, no catch-up
+        if (!enabled) schedule.ResumeAt = null; // pausing drops a pending window resume
         await db.SaveChangesAsync(ct);
         await sync.ApplyAsync(schedule, ct);
         await audit.WriteAsync(new AuditEntry(enabled ? "schedule.resumed" : "schedule.paused", "Schedule", id.ToString()), ct);
@@ -165,5 +169,5 @@ public static class ScheduleEndpoints
     private static ScheduleDto ToDto(Schedule s, IReadOnlyDictionary<Guid, string> runStatuses) => new(
         s.Id, s.Name, s.CronExpression, s.TimeZone, s.WorkflowKey, s.WorkflowVersion, s.NetworkIds, s.Priority, s.MaxRatePerSecond,
         s.WindowDurationMinutes, s.AllowedWindows, s.OverlapPolicy, s.Enabled, s.NextFireAt, s.LastFireAt, s.LastRunId,
-        s.LastRunId is { } r ? runStatuses.GetValueOrDefault(r) : null, s.QueuedFireTime, s.CreatedAt, s.UpdatedAt);
+        s.LastRunId is { } r ? runStatuses.GetValueOrDefault(r) : null, s.QueuedFireTime, s.CreatedAt, s.UpdatedAt, s.ResumeInNextWindow, s.ResumeAt);
 }

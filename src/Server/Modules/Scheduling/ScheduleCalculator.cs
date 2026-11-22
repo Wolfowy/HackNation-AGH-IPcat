@@ -88,6 +88,22 @@ public static class ScheduleCalculator
         return null;
     }
 
+    /// <summary>Earliest start of an allowed window strictly after <paramref name="after"/> (null without windows).</summary>
+    public static DateTimeOffset? NextWindowStart(IReadOnlyList<AllowedWindow> windows, TimeZoneInfo zone, DateTimeOffset after)
+    {
+        var today = TimeZoneInfo.ConvertTime(after, zone).Date;
+        DateTimeOffset? next = null;
+        for (var d = 0; d <= 7; d++)
+            foreach (var w in windows)
+            {
+                var day = today.AddDays(d);
+                if (!w.DaysOfWeek.Contains(day.DayOfWeek) || !TryParseTime(w.Start, out var start)) continue;
+                var instant = ToInstant(day + start, zone);
+                if (instant > after && (next is null || instant < next)) next = instant;
+            }
+        return next;
+    }
+
     /// <summary>Local wall-clock time to an instant; a time skipped by a DST jump moves forward by the gap.</summary>
     private static DateTimeOffset ToInstant(DateTime local, TimeZoneInfo zone)
     {

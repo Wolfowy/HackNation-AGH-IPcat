@@ -23,6 +23,21 @@ public sealed class ScheduleCalculatorTests
         Assert.Equal(end is null ? null : Utc(end), windowEnd);
     }
 
+    [Theory]
+    [InlineData("2026-11-23T22:00:00Z", "2026-11-30T21:00:00Z")] // inside Monday's window: next Monday 22:00 CET
+    [InlineData("2026-11-24T05:00:00Z", "2026-11-30T21:00:00Z")] // window end (Tue 06:00 CET)
+    [InlineData("2026-11-22T12:00:00Z", "2026-11-23T21:00:00Z")] // Sunday: the coming Monday
+    public void Next_window_start_is_the_next_allowed_window_opening(string after, string expected) =>
+        Assert.Equal(Utc(expected), ScheduleCalculator.NextWindowStart([MondayNight], Warsaw, Utc(after)));
+
+    [Fact]
+    public void Next_window_start_picks_the_earliest_of_several_windows_and_needs_windows()
+    {
+        var weekday = new AllowedWindow([DayOfWeek.Tuesday, DayOfWeek.Wednesday], "01:00", "04:00");
+        Assert.Equal(Utc("2026-11-24T00:00:00Z"), ScheduleCalculator.NextWindowStart([MondayNight, weekday], Warsaw, Utc("2026-11-23T22:00:00Z")));
+        Assert.Null(ScheduleCalculator.NextWindowStart([], Warsaw, Utc("2026-11-23T22:00:00Z")));
+    }
+
     [Fact]
     public void No_windows_means_always_allowed_and_unbounded()
     {

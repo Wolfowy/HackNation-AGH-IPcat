@@ -41,6 +41,48 @@ public static class TargetPlanner
         return 1 << (31 - int.LeadingZeroCount(size));
     }
 
+    /// <summary>Every size <see cref="NormalizeBatchSize"/> can return.</summary>
+    public static readonly int[] BatchSizes = [64, 128, 256, 512, 1024];
+
+    /// <summary>
+    /// Batch size of a step: the workflow's explicit size wins; otherwise measured per-job throughput × target job duration
+    /// (64–1024, power of two); without measurements the configured default.
+    /// </summary>
+    public static (int Size, string Reason) ChooseBatchSize(int? explicitSize, int defaultSize, int targetJobSeconds, double? targetsPerSecond)
+    {
+        if (explicitSize is not null)
+        {
+            var size = NormalizeBatchSize(explicitSize, defaultSize);
+            return (size, $"batch size {size} (set by the workflow)");
+        }
+        if (targetsPerSecond is not > 0)
+        {
+            var size = NormalizeBatchSize(null, defaultSize);
+            return (size, $"batch size {size} (default, no throughput measured yet)");
+        }
+        var adaptive = NormalizeBatchSize((int)Math.Min(MaxBatchSize, targetsPerSecond.Value * targetJobSeconds), defaultSize);
+        return (adaptive, string.Create(System.Globalization.CultureInfo.InvariantCulture,
+            $"batch size {adaptive} (measured {targetsPerSecond.Value:0.##} targets/s per job, {targetJobSeconds}s target job duration)"));
+    }
+
+    /// <summary>
+    /// Duration range of one step: best case = all jobs in parallel at the fastest measured agent's rate (never faster than
+    /// one packet per target at the rate cap); worst case = waves of full batches at the slowest agent's rate.
+    /// Null without measurements or without anyone to run the jobs.
+    /// </summary>
+    public static (double MinSeconds, double MaxSeconds)? EstimateDuration(long targets, int jobs, int batchSize,
+        IReadOnlyCollection<double> agentTargetsPerSecond, int concurrency, long? rateCap)
+    {
+        if (targets <= 0 || jobs <= 0) return (0, 0);
+        var rates = agentTargetsPerSecond.Where(r => r > 0).ToList();
+        if (rates.Count == 0 || concurrency < 1) return null;
+        var parallel = Math.Min(concurrency, jobs);
+        var min = targets / (rates.Max() * parallel);
+        if (rateCap is > 0) min = Math.Max(min, targets / (double)rateCap.Value);
+        var max = Math.Ceiling(jobs / (double)parallel) * Math.Min(batchSize, targets) / rates.Min();
+        return (Math.Round(min), Math.Round(Math.Max(min, max)));
+    }
+
     public static string NormalizeHostname(string host) => host.Trim().TrimEnd('.').ToLowerInvariant();
 
     /// <summary>

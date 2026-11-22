@@ -20,6 +20,9 @@ public sealed record ScanLimits
     /// </summary>
     public int UnassignedJobTimeoutSeconds { get; init; } = 900;
 
+    /// <summary>Job duration the planner aims at when it sizes batches from measured throughput (workflow batchSize wins).</summary>
+    public int TargetJobSeconds { get; init; } = 300;
+
     /// <summary>Validation errors keyed by camelCase field name (empty = valid).</summary>
     public Dictionary<string, string[]> Validate()
     {
@@ -33,6 +36,7 @@ public sealed record ScanLimits
         Check(MaxConcurrentJobsPerSubnet, 1, 100_000, "maxConcurrentJobsPerSubnet");
         Check(SubnetPrefixLength, 8, 32, "subnetPrefixLength");
         Check(MaxRatePerSecondGlobal, 1, 100_000_000, "maxRatePerSecondGlobal");
+        Check(TargetJobSeconds, 30, 3600, "targetJobSeconds");
         if (UnassignedJobTimeoutSeconds != 0) Check(UnassignedJobTimeoutSeconds, 60, 7 * 24 * 3600, "unassignedJobTimeoutSeconds");
         return errors;
     }

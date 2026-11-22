@@ -384,9 +384,13 @@ export interface Schedule {
   nextFireAt?: Instant
   lastRunId?: Guid
   lastRunStatus?: ScanRunStatus
+  /** Restart a run cut by its window at the next allowed window start (default true). */
+  resumeInNextWindow: boolean
+  /** Pending one-off resume fire. */
+  resumeAt?: Instant
 }
 
-export type ScheduleInput = Omit<Schedule, 'id' | 'nextFireAt' | 'lastRunId' | 'lastRunStatus'>
+export type ScheduleInput = Omit<Schedule, 'id' | 'nextFireAt' | 'lastRunId' | 'lastRunStatus' | 'resumeAt'>
 
 // ---------- Scans & jobs ----------
 export type ScanRunStatus =
@@ -432,6 +436,9 @@ export interface ScanRun {
   notAfter?: Instant
   progress: ScanProgress
   coverageComplete: boolean
+  /** ETA of an active run from its own rate so far (absent until a job finished). */
+  remainingSeconds?: number
+  estimatedFinishAt?: Instant
 }
 
 export type StepStatus = 'Pending' | 'Running' | 'Completed' | 'Skipped' | 'Failed' | 'Cancelled'
@@ -449,6 +456,41 @@ export interface ScanStep {
 
 export interface ScanRunDetail extends ScanRun {
   steps: ScanStep[]
+}
+
+/** POST /api/scans/estimate */
+export interface ScanEstimateRequest {
+  workflowKey: string
+  workflowVersion?: number
+  networkIds: Guid[]
+  maxRatePerSecond?: number
+  windowMinutes?: number
+}
+
+export interface StepEstimate {
+  stepId: string
+  operation: ScanOperation
+  targets: number
+  jobs: number
+  batchSize: number
+  batchReason: string
+  eligibleAgents: number
+  targetsPerSecond?: number
+  estimatedSecondsMin?: number
+  estimatedSecondsMax?: number
+  unassignable: number
+  unassignableReason?: string
+}
+
+/** Covers the steps that start first (scope-based); later steps depend on what they discover. */
+export interface ScanEstimate {
+  addressCount: number
+  steps: StepEstimate[]
+  estimatedSecondsMin?: number
+  estimatedSecondsMax?: number
+  windowMinutes?: number
+  exceedsWindow: boolean
+  warnings: string[]
 }
 
 export interface ScanStartRequest {
@@ -535,6 +577,8 @@ export interface ScanLimits {
   maxRatePerSecondGlobal: number
   /** 0 = wait forever for an eligible agent. */
   unassignedJobTimeoutSeconds: number
+  /** Job duration the planner aims at when sizing batches from measured throughput. */
+  targetJobSeconds: number
 }
 
 export interface PlannerStats {

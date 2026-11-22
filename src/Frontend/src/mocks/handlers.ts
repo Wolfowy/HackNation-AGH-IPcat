@@ -6,6 +6,8 @@ import type {
   Network,
   NetworkDevice,
   NetworkInput,
+  ScanEstimate,
+  ScanEstimateRequest,
   ScanStartRequest,
   ScanWorkflowDefinition,
   ScheduleInput,
@@ -56,6 +58,28 @@ const SCAN_LIMIT_RANGES: Record<keyof MockDb['scanLimits'], [number, number]> = 
   subnetPrefixLength: [8, 32],
   maxRatePerSecondGlobal: [1, 100_000_000],
   unassignedJobTimeoutSeconds: [0, 604_800],
+  targetJobSeconds: [30, 3600],
+}
+
+/** Mock of POST /api/scans/estimate: first step over the network address counts, agents measured at 2 targets/s per job, 8 slots. */
+function estimateScan(req: ScanEstimateRequest): ScanEstimate {
+  const addressCount = db.networks.filter((n) => req.networkIds.includes(n.id)).reduce((sum, n) => sum + n.addressCount, 0)
+  const batchSize = Math.min(1024, Math.max(64, 2 ** Math.floor(Math.log2(2 * db.scanLimits.targetJobSeconds))))
+  const jobs = Math.ceil(addressCount / batchSize)
+  const parallel = Math.max(1, Math.min(8, jobs))
+  const min = Math.round(addressCount / (4 * parallel))
+  const max = Math.max(min, Math.round((Math.ceil(jobs / parallel) * Math.min(batchSize, addressCount)) / 2))
+  const exceedsWindow = req.windowMinutes !== undefined && max > req.windowMinutes * 60
+  const reason = `batch size ${batchSize} (measured 2 targets/s per job, ${db.scanLimits.targetJobSeconds}s target job duration)`
+  return {
+    addressCount,
+    steps: [{ stepId: 'discover', operation: 'DiscoverHosts', targets: addressCount, jobs, batchSize, batchReason: reason, eligibleAgents: 2, targetsPerSecond: 2, estimatedSecondsMin: min, estimatedSecondsMax: max, unassignable: 0 }],
+    estimatedSecondsMin: min,
+    estimatedSecondsMax: max,
+    windowMinutes: req.windowMinutes,
+    exceedsWindow,
+    warnings: exceedsWindow ? [`The first steps may take longer than the ${req.windowMinutes}-minute window; the run would be stopped at the window end with partial results.`] : [],
+  }
 }
 
 const publicUser = ({ password: _password, ...u }: MockUser): User => u
@@ -332,7 +356,13 @@ function parseCsv(text: string): Record<string, string>[] {
 
 const runView = (run: MockRun) => {
   const { steps: _steps, ...rest } = run
-  return { ...rest, progress: progressOf(db, run) }
+  const progress = progressOf(db, run)
+  // ETA like the server: open work at the rate achieved so far.
+  const elapsed = run.startedAt ? (Date.now() - Date.parse(run.startedAt)) / 1000 : 0
+  const active = ['Pending', 'Running'].includes(run.status)
+  const remainingSeconds = active && progress.percent > 0 && elapsed > 0 ? Math.round((elapsed * (100 - progress.percent)) / progress.percent) : undefined
+  const estimatedFinishAt = remainingSeconds === undefined ? undefined : new Date(Date.now() + remainingSeconds * 1000).toISOString()
+  return { ...rest, progress, remainingSeconds, estimatedFinishAt }
 }
 
 function createRun(user: MockUser, req: ScanStartRequest, triggeredBy: string): MockRun {
@@ -755,6 +785,7 @@ export const handlers = [
         if (!s) return notFound('Schedule')
         s.enabled = action === 'resume'
         s.nextFireAt = s.enabled ? new Date(Date.now() + 3_600_000).toISOString() : undefined
+        if (!s.enabled) s.resumeAt = undefined // pausing drops a pending window resume
         return noContent()
       }),
     ),
@@ -766,6 +797,15 @@ export const handlers = [
     route('read', ({ url }) => {
       const status = url.searchParams.get('status')
       return HttpResponse.json(paged(db.runs.filter((r) => !status || r.status === status).map(runView), url))
+    }),
+  ),
+  http.post(
+    '*/api/scans/estimate',
+    route('read', async ({ request }) => {
+      const req = await body<ScanEstimateRequest>(request)
+      if (!req.networkIds?.length) return validationProblem({ networkIds: ['At least one network is required.'] })
+      if (!db.workflows.some((w) => w.key === req.workflowKey)) return validationProblem({ workflowKey: [`Workflow '${req.workflowKey}' not found.`] })
+      return HttpResponse.json(estimateScan(req))
     }),
   ),
   http.post(
