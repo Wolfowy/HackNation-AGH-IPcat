@@ -51,6 +51,7 @@ public sealed class AgentStepExecutor(TaskPlanner planner, IServiceProvider serv
             {
                 ScanRunId = context.Run.Id, WorkflowRunId = context.WorkflowRunId, StepId = step.Id, Operation = step.Operation,
                 NetworkIds = context.Run.NetworkIds, Parameters = parameters.Values, PreferredToolId = step.ToolId,
+                RequiredParameters = descriptor.Parameters.Select(p => p.Name).Where(step.Parameters.ContainsKey).ToList(),
                 Priority = context.Run.Priority, RunRateCap = context.Run.MaxRatePerSecond, NotAfter = context.Run.NotAfter,
                 TimeoutSeconds = step.TimeoutSeconds ?? defaults.TimeoutSeconds, MaxConcurrency = step.MaxConcurrency ?? defaults.MaxConcurrency,
                 MaxAttempts = retry.MaxAttempts, BackoffSeconds = retry.BackoffSeconds, BatchSize = defaults.BatchSize,

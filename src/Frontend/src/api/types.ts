@@ -177,6 +177,35 @@ export interface Zone {
   networkCount: number
 }
 
+/** One agent interface (or gateway route) that sees an agent subnet. */
+export interface AgentSubnetSource {
+  agentId: string
+  interfaceName: string
+  /** Interface address with prefix, or the route destination. */
+  address: string
+  online: boolean
+  gateway?: string
+}
+
+/** Subnet an agent is attached to (`interface`) or routes to through a gateway (`route`), proposed as a network. */
+export interface AgentSubnet {
+  cidr: string
+  source: 'interface' | 'route'
+  /** Null when the agent is authorized for several zones: pick one of `candidateZones`. */
+  zone?: string | null
+  candidateZones: string[]
+  addressCount: number
+  seenBy: AgentSubnetSource[]
+  scope: 'full' | 'partial' | 'none'
+  /** Inside the scope policy and not yet covered by networks of the zone: what creating a network adds. */
+  proposedRanges: string[]
+  existingNetworks: string[]
+  /** The agent reaches the server through this subnet (and has other subnets to scan). */
+  management: boolean
+  /** More than 65 536 IPv4 addresses. */
+  large: boolean
+}
+
 export interface ScopePolicy {
   allowed: string[]
   excluded: string[]
@@ -236,6 +265,8 @@ export interface ParameterDescriptor {
   max?: number
   allowedValues?: string[]
   pattern?: string
+  /** Values that need raw sockets on the agent (only agents reporting that capability get such jobs). */
+  privilegedValues?: string[]
 }
 
 export interface OperationDescriptor {

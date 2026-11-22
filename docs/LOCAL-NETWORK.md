@@ -60,6 +60,16 @@ Jeśli dodałeś inne narzędzia (np. tlsx), zatwierdź je w **Agents → Tools 
 
 Planer wybiera interfejs, którego podsieć obejmuje skanowany zakres (np. `en0`), więc ruch idzie bezpośrednio do sieci lokalnej.
 
+### Sieci z podsieci agentów (skan „wszerz”)
+
+Zamiast wpisywać sieci ręcznie: **Networks → Agent subnets** pokazuje podsieci, w których siedzą podłączone agenty
+(i te, do których mają trasę przez bramę). Zaznaczone są domyślnie podsieci bezpośrednie, mieszczące się w polityce zakresu,
+jeszcze niepokryte siecią i niebędące łączem agenta z serwerem (*server link*, np. sieć Dockera). **Create networks** tworzy
+sieci z tagiem `agent-subnet`; potem skan na tych sieciach jak zwykle. Podsieć spoza polityki (*outside / partly inside*)
+Administrator może dodać przyciskiem **Add to scope policy** (z potwierdzeniem) — tylko jeśli ma autoryzację do skanowania tej sieci.
+Planer daje każdą podsieć agentom podłączonym do niej bezpośrednio; agent, który sięga tylko przez bramę domyślną, dostaje ją
+dopiero, gdy żaden bezpośredni nie jest online.
+
 ## 5. Skan
 
 **Scans → Start scan**: workflow `standard-discovery`, sieć `home-lan`, opcjonalnie okno czasowe (minuty) i limit pakietów/s.
@@ -74,7 +84,8 @@ HTTP/TLS → zatwierdzone sygnatury (domyślnie tylko `info`/`low`) → zapis �
 * **Uprawnienia nmap**: bez roota nmap używa pingów TCP connect — hosty z zaporą odrzucającą wszystko po cichu (np. telefony)
   mogą zostać pominięte. Opcje: utwórz wersję workflow z `DiscoverHosts.method = none` (każdy adres traktowany jako aktywny;
   wolniej, ale kompletnie) albo uruchom agenta z uprawnieniami do surowych pakietów (ICMP/ARP) — świadomie, bo wtedy cały agent
-  działa jako root.
+  działa jako root. Agent bez uprawnień zgłasza to serwerowi (`rawSockets: false`), więc kroki z `scanType=syn` albo
+  `method=icmp|tcp-ack|arp` nie trafią do niego (zadanie czeka na agenta z uprawnieniami, np. kontener) zamiast kończyć się błędem nmap.
 * **Łagodność**: `Agent:MaxRatePerSecond` i limit skanu w formularzu ograniczają ruch; domowe routery źle znoszą bardzo szybkie skany.
 * **Własne sygnatury**: **Signatures → New** (szablon Nuclei YAML, walidacja odrzuca szablony inwazyjne), zatwierdzenie przez administratora.
 * **Kilka perspektyw**: uruchom kolejnych agentów w innych segmentach sieci (każdy z własnym tokenem/strefą).

@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
 using WebScan.Contracts;
 using WebScan.Server.Infrastructure.Http;
+using WebScan.Server.Kernel.Ports;
 using WebScan.Server.Kernel.Security;
 using WebScan.Server.Modules.Networks.Persistence;
 
@@ -55,6 +56,7 @@ internal static partial class NetworksEndpoints
         var networks = endpoints.MapGroup("/api/networks");
         networks.MapGet("/", List).RequireAuthorization(Policies.CanRead);
         networks.MapGet("/export", Export).RequireAuthorization(Policies.CanRead);
+        networks.MapGet("/agent-subnets", AgentSubnetList).RequireAuthorization(Policies.CanRead);
         networks.MapPost("/import", Import).RequireAuthorization(Policies.CanManage);
         networks.MapGet("/{id:guid}", Get).RequireAuthorization(Policies.CanRead);
         networks.MapPost("/", Create).RequireAuthorization(Policies.CanManage);
@@ -72,6 +74,9 @@ internal static partial class NetworksEndpoints
 
     private static async Task<List<NetworkDto>> List(NetworksDbContext db, CancellationToken ct) =>
         (await db.Networks.AsNoTracking().OrderBy(n => n.Name).ToListAsync(ct)).Select(NetworkDto.From).ToList();
+
+    private static async Task<IReadOnlyList<AgentSubnetDto>> AgentSubnetList(IAgentDirectory agents, NetworksDbContext db, CancellationToken ct) =>
+        AgentSubnets.Suggest(await agents.GetActiveAgentsAsync(ct), await db.Networks.AsNoTracking().ToListAsync(ct), await LoadRulesAsync(db, ct));
 
     private static async Task<IResult> Get(Guid id, NetworksDbContext db, CancellationToken ct)
     {

@@ -6,11 +6,15 @@ using WebScan.Server.Kernel.Ports;
 namespace WebScan.Server.Modules.Scanning.Planning;
 
 /// <summary>What a job needs from a perspective.</summary>
-public sealed record JobRequirement(string Zone, Guid NetworkId, string Capability, string? PreferredToolId, IReadOnlyList<string> ReachTargets);
+/// <param name="RequiredParameters">Parameters set explicitly in the step: the tool must support them (not silently ignore them).</param>
+/// <param name="NeedsRawSockets">A selected technique (e.g. SYN scan) needs raw sockets on the agent.</param>
+public sealed record JobRequirement(string Zone, Guid NetworkId, string Capability, string? PreferredToolId, IReadOnlyList<string> ReachTargets,
+    IReadOnlyList<string>? RequiredParameters = null, bool NeedsRawSockets = false);
 
 public sealed record PerspectiveOption(string InterfaceName, string ToolId);
 
-public sealed record EligibilityResult(IReadOnlyList<PerspectiveOption> Options, string? Reason)
+/// <param name="Direct">Targets reached through an interface subnet or a specific route, not only via a default route.</param>
+public sealed record EligibilityResult(IReadOnlyList<PerspectiveOption> Options, string? Reason, bool Direct = false)
 {
     public bool IsEligible => Options.Count > 0;
 }
@@ -46,7 +50,10 @@ public sealed class AgentReach
     /// when an interface reaches the targets through its own subnet or a specific route, the OS sends the traffic there,
     /// so interfaces that would only reach them via a default route are not offered (binding a tool to them would fail).
     /// </summary>
-    public IReadOnlyList<string> InterfacesReaching(IReadOnlyList<string> targets)
+    public IReadOnlyList<string> InterfacesReaching(IReadOnlyList<string> targets) => Reaching(targets).Interfaces;
+
+    /// <summary><see cref="InterfacesReaching"/> plus whether they reach the targets directly (subnet or specific route).</summary>
+    public (IReadOnlyList<string> Interfaces, bool Direct) Reaching(IReadOnlyList<string> targets)
     {
         var ranges = new List<IpRange>();
         var hasHostnames = false;
@@ -66,7 +73,7 @@ public sealed class AgentReach
             if (rest.IsEmpty && !hasHostnames) specific.Add(name);
             else if (rest.Ranges.All(r => r.Family == AddressFamily.InterNetwork ? v4 : v6)) viaDefault.Add(name);
         }
-        return specific.Count > 0 ? specific : viaDefault;
+        return specific.Count > 0 ? (specific, true) : (viaDefault, false);
     }
 }
 
@@ -81,20 +88,43 @@ public static class Eligibility
         if (agent.AuthorizedNetworkIds.Count > 0 && !agent.AuthorizedNetworkIds.Contains(job.NetworkId))
             return new([], $"agent {agent.AgentId} is restricted to other networks");
 
-        var tool = SelectTool(agent, job.Capability, job.PreferredToolId, options);
-        if (tool is null) return new([], $"agent {agent.AgentId} has no approved tool with capability '{job.Capability}'");
+        if (job.NeedsRawSockets && agent.RawSockets == false)
+            return new([], $"agent {agent.AgentId} has no raw-socket privileges (needed for the selected scan technique)");
 
-        var interfaces = reach.InterfacesReaching(job.ReachTargets);
+        var tool = SelectTool(agent, job.Capability, job.PreferredToolId, options, job.RequiredParameters);
+        if (tool is null)
+        {
+            var anyTool = SelectTool(agent, job.Capability, job.PreferredToolId, options) is not null;
+            return new([], anyTool
+                ? $"agent {agent.AgentId} has no approved '{job.Capability}' tool supporting parameter(s) {string.Join(", ", job.RequiredParameters!)}"
+                : $"agent {agent.AgentId} has no approved tool with capability '{job.Capability}'");
+        }
+
+        var (interfaces, direct) = reach.Reaching(job.ReachTargets);
         if (interfaces.Count == 0) return new([], $"agent {agent.AgentId} has no interface or route reaching the targets");
 
-        return new(interfaces.Select(i => new PerspectiveOption(i, tool)).ToList(), null);
+        return new(interfaces.Select(i => new PerspectiveOption(i, tool)).ToList(), null, direct);
     }
 
-    /// <summary>Step tool if the agent has it, else first of <c>Planner:ToolPreference:{capability}</c>, else any (by id).</summary>
-    public static string? SelectTool(AgentSnapshot agent, string capability, string? preferredToolId, PlannerOptions options)
+    /// <summary>
+    /// Whether another online agent can take the job directly (attached to the targets' subnet or with a specific route to it).
+    /// Such agents win over agents that would only reach the targets through a default route: they see the subnet first-hand
+    /// (ARP, MAC addresses, no router in between), so the scan stays "wide with local agents".
+    /// </summary>
+    public static bool DirectPeerExists(string agentId, IEnumerable<(AgentSnapshot Agent, AgentReach Reach)> peers, JobRequirement job, PlannerOptions options) =>
+        peers.Any(p => p.Agent.AgentId != agentId && p.Agent.IsOnline && Evaluate(p.Agent, p.Reach, job, options) is { IsEligible: true, Direct: true });
+
+    /// <summary>
+    /// Step tool if the agent has it, else first of <c>Planner:ToolPreference:{capability}</c>, else any (by id) — among the tools
+    /// that support every required parameter (a tool would otherwise run without them, silently changing the step).
+    /// </summary>
+    // shortcut: SupportedParameters is per tool, not per capability; split it in the contract if two capabilities of one tool diverge.
+    public static string? SelectTool(AgentSnapshot agent, string capability, string? preferredToolId, PlannerOptions options,
+        IReadOnlyCollection<string>? requiredParameters = null)
     {
         var tools = agent.ApprovedTools
             .Where(t => t.Capabilities.Contains(capability, StringComparer.OrdinalIgnoreCase))
+            .Where(t => requiredParameters is null || requiredParameters.All(p => t.SupportedParameters.Contains(p, StringComparer.Ordinal)))
             .Select(t => t.Id).OrderBy(id => id, StringComparer.Ordinal).ToList();
         if (tools.Count == 0) return null;
         if (preferredToolId is not null && tools.Contains(preferredToolId, StringComparer.OrdinalIgnoreCase))

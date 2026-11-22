@@ -239,6 +239,10 @@ namespace WebScan.Server.Modules.Scanning.Persistence.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("max_attempts");
 
+                    b.Property<bool>("NeedsRawSockets")
+                        .HasColumnType("boolean")
+                        .HasColumnName("needs_raw_sockets");
+
                     b.Property<Guid>("NetworkId")
                         .HasColumnType("uuid")
                         .HasColumnName("network_id");
@@ -296,6 +300,11 @@ namespace WebScan.Server.Modules.Scanning.Persistence.Migrations
                     b.Property<int>("RequestedRatePerSecond")
                         .HasColumnType("integer")
                         .HasColumnName("requested_rate_per_second");
+
+                    b.PrimitiveCollection<List<string>>("RequiredParameters")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("required_parameters");
 
                     b.Property<Guid>("ScanRunId")
                         .HasColumnType("uuid")

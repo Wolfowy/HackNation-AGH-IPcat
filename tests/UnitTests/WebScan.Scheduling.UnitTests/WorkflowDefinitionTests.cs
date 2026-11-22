@@ -24,6 +24,46 @@ public sealed class WorkflowValidatorTests
     }
 
     [Fact]
+    public void Endpoint_steps_need_a_source_with_ports_also_through_conditions()
+    {
+        static StepInput From(params string[] steps) => new() { FromSteps = steps };
+        var hostsOnly = WorkflowValidator.Validate(Workflow(
+            new() { Id = "discover", Operation = ScanOperation.DiscoverHosts },
+            new() { Id = "live", Operation = ScanOperation.EvaluateCondition, DependsOn = ["discover"], Input = From("discover") },
+            new() { Id = "services", Operation = ScanOperation.DetectService, DependsOn = ["live"], Input = From("live") }));
+        Assert.Contains(hostsOnly, e => e.Contains("'services'") && e.Contains("needs endpoints"));
+
+        var alsoBadParameters = WorkflowValidator.Validate(Workflow(
+            new() { Id = "discover", Operation = ScanOperation.DiscoverHosts, Parameters = new Dictionary<string, string> { ["probePorts"] = "top-100" } },
+            new() { Id = "services", Operation = ScanOperation.DetectService, DependsOn = ["discover"], Input = From("discover") }));
+        Assert.Contains(alsoBadParameters, e => e.Contains("probePorts"));
+        Assert.Contains(alsoBadParameters, e => e.Contains("needs endpoints")); // reported in the same pass
+
+        var withPorts = WorkflowValidator.Validate(Workflow(
+            new() { Id = "ports", Operation = ScanOperation.ScanPorts, Parameters = new Dictionary<string, string> { ["ports"] = "80" } },
+            new() { Id = "web", Operation = ScanOperation.EvaluateCondition, DependsOn = ["ports"], Input = From("ports") },
+            new() { Id = "http", Operation = ScanOperation.HttpProbe, DependsOn = ["web"], Input = From("web") }));
+        Assert.Empty(withPorts);
+    }
+
+    [Fact]
+    public void Inputs_from_server_steps_and_misplaced_closing_steps_are_rejected()
+    {
+        var errors = WorkflowValidator.Validate(Workflow(
+            new() { Id = "discover", Operation = ScanOperation.DiscoverHosts },
+            new() { Id = "persist", Operation = ScanOperation.PersistObservations, DependsOn = ["discover"] },
+            new() { Id = "ports", Operation = ScanOperation.ScanPorts, DependsOn = ["persist"], Input = new StepInput { FromSteps = ["persist"] } },
+            new() { Id = "publish", Operation = ScanOperation.PublishFinding, DependsOn = ["discover"] },
+            new() { Id = "compare", Operation = ScanOperation.ComparePreviousScan, DependsOn = ["ports"] }));
+
+        Assert.Contains(errors, e => e.Contains("'ports' reads input from 'persist'") && e.Contains("produces no observations"));
+        Assert.Contains(errors, e => e.Contains("'persist' (PersistObservations) must run after every agent step") && e.Contains("ports"));
+        Assert.Contains(errors, e => e.Contains("'publish' (PublishFinding) must run after every agent step"));
+        Assert.Contains(errors, e => e.Contains("'publish' (PublishFinding) needs a PersistObservations step before it"));
+        Assert.DoesNotContain(errors, e => e.Contains("'compare'")); // after ports, which is after persist
+    }
+
+    [Fact]
     public void Cycles_are_rejected()
     {
         var errors = WorkflowValidator.Validate(Workflow(

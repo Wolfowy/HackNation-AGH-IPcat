@@ -27,6 +27,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { t } from '@/i18n/strings'
 import { formatDateTime, formatNumber, splitLines } from '@/lib/format'
 import { validateTargetLines } from '@/lib/targets'
+import { AgentSubnetsTab } from './AgentSubnetsTab'
 import { NetworkFormDialog } from './NetworkFormDialog'
 
 function NetworksTable({ onEdit }: { onEdit: (n: Network) => void }) {
@@ -259,11 +260,15 @@ export function NetworksPage() {
       <Tabs defaultValue="networks">
         <TabsList>
           <TabsTrigger value="networks">{t.networks.tabs.networks}</TabsTrigger>
+          <TabsTrigger value="agent-subnets">{t.networks.tabs.agentSubnets}</TabsTrigger>
           <TabsTrigger value="zones">{t.networks.tabs.zones}</TabsTrigger>
           <TabsTrigger value="scope">{t.networks.tabs.scope}</TabsTrigger>
         </TabsList>
         <TabsContent value="networks">
           <NetworksTable onEdit={setEditing} />
+        </TabsContent>
+        <TabsContent value="agent-subnets">
+          <AgentSubnetsTab />
         </TabsContent>
         <TabsContent value="zones">
           <ZonesTab />

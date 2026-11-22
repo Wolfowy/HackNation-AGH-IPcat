@@ -24,6 +24,12 @@ public sealed class AgentOptions
     public int MaxRatePerSecond { get; set; } = 2000;
     public List<string> DeclaredZones { get; set; } = [];
 
+    /// <summary>
+    /// Whether the scanning tools can use raw sockets (SYN scans, ICMP/ARP discovery). Null = detect: root, CAP_NET_RAW, or
+    /// <c>NMAP_PRIVILEGED</c> set (the container image grants the tools file capabilities and sets it).
+    /// </summary>
+    public bool? RawSockets { get; set; }
+
     /// <summary>Directories with tool manifests (*.json). Default: &lt;app&gt;/tools.d.</summary>
     public List<string> ToolManifestPaths { get; set; } = [];
 

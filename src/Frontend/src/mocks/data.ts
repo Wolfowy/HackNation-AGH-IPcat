@@ -1,5 +1,6 @@
 // Deterministic, realistic seed data for the in-browser / test mock API.
 import type {
+  AgentSubnet,
   Agent,
   AuditEntry,
   Certificate,
@@ -50,6 +51,8 @@ export interface MockDb {
   networks: Network[]
   scopePolicy: ScopePolicy
   agents: Agent[]
+  /** Server-derived agent subnets (static here; the handler re-evaluates coverage and scope against the mock db). */
+  agentSubnets: AgentSubnet[]
   tools: ToolCatalogEntry[]
   tokens: EnrollmentToken[]
   workflows: WorkflowVersion[]
@@ -255,6 +258,22 @@ export function createDb(): MockDb {
     updatedAt: ago(60 * 24 * int(1, 30)),
     ...extra,
   })
+  const agentSubnets = (): AgentSubnet[] => {
+    const seen = (agentId: string, interfaceName: string, address: string, gateway?: string) => ({ agentId, interfaceName, address, online: true, gateway })
+    const subnet = (cidr: string, zone: string | null, candidateZones: string[], addressCount: number, seenBy: AgentSubnet['seenBy'], extra: Partial<AgentSubnet> = {}): AgentSubnet => ({
+      cidr, source: 'interface', zone, candidateZones, addressCount, seenBy, scope: 'full', proposedRanges: [cidr], existingNetworks: [], management: false, large: false, ...extra,
+    })
+    return [
+      subnet('10.10.0.0/24', 'dmz', ['dmz'], 256, [seen('scanner-dmz-01', 'eth0', '10.10.0.5/24')], { proposedRanges: [], existingNetworks: ['DMZ public services'] }),
+      subnet('10.10.8.0/23', 'dmz', ['dmz'], 512, [seen('scanner-dmz-01', 'eth2', '10.10.8.20/23')]),
+      subnet('10.99.0.0/24', 'dmz', ['dmz'], 256, [seen('scanner-dmz-01', 'eth1', '10.99.0.5/24')], { management: true }),
+      subnet('172.16.50.0/26', null, ['lab', 'office'], 64, [seen('scanner-office-01', 'wg0', '172.16.50.2/26')], { proposedRanges: [], existingNetworks: ['Lab'] }),
+      subnet('192.168.10.0/24', null, ['lab', 'office'], 256, [seen('scanner-office-01', 'ens18', '192.168.10.250/24')], { proposedRanges: [], existingNetworks: ['Office LAN'] }),
+      subnet('100.64.0.0/22', 'dmz', ['dmz'], 1024, [seen('scanner-dmz-01', 'eth0', '100.64.0.0/22', '10.10.0.1')], { source: 'route', scope: 'none', proposedRanges: [] }),
+      subnet('10.40.0.0/16', null, ['lab', 'office'], 65536, [seen('scanner-office-01', 'ens18', '10.40.0.0/16', '192.168.10.1')], { source: 'route' }),
+    ]
+  }
+
   const networks = [
     net('DMZ public services', 'dmz', ['10.10.0.0/24'], 253, { exclusions: ['10.10.0.1'], tags: ['internet-facing', 'pci'], description: 'Reverse proxies and public web apps' }),
     net('Office LAN', 'office', ['192.168.10.0/24', '192.168.11.0/24'], 510, { tags: ['workstations'] }),
@@ -282,6 +301,7 @@ export function createDb(): MockDb {
       interfaces: [
         { name: 'eth0', isUp: true, addresses: ['10.10.0.5/24'], macAddress: '52:54:00:12:34:56', speedMbps: 10000 },
         { name: 'eth1', isUp: true, addresses: ['10.99.0.5/24'], macAddress: '52:54:00:12:34:57', speedMbps: 1000, description: 'Management' },
+        { name: 'eth2', isUp: true, addresses: ['10.10.8.20/23'], macAddress: '52:54:00:12:34:58', speedMbps: 1000, description: 'Staging' },
       ],
       routes: [
         { destination: '10.10.0.0/24', interfaceName: 'eth0', metric: 0 },
@@ -869,6 +889,7 @@ ${extra}    matchers:
     networks,
     scopePolicy: { allowed: ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16'], excluded: ['10.255.0.0/16'], updatedAt: ago(60 * 24 * 30) },
     agents,
+    agentSubnets: agentSubnets(),
     tools,
     tokens,
     workflows,

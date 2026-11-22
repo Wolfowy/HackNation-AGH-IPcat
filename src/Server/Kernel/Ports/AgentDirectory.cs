@@ -27,6 +27,12 @@ public sealed record AgentSnapshot
     public required IReadOnlyList<NetworkInterfaceInfo> Interfaces { get; init; }
     public required IReadOnlyList<RouteInfo> Routes { get; init; }
 
+    /// <summary>Source address the server saw on the agent's last registration (null if unknown).</summary>
+    public string? ConnectedFrom { get; init; }
+
+    /// <summary>Whether the agent's tools can use raw sockets; null = unknown (treated as capable).</summary>
+    public bool? RawSockets { get; init; }
+
     /// <summary>Zones the administrator authorized this agent to scan (authoritative).</summary>
     public required IReadOnlyList<string> AuthorizedZones { get; init; }
 

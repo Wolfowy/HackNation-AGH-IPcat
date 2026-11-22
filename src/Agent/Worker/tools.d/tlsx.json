@@ -37,7 +37,9 @@
       // JSON output always contains subject/SAN/issuer/validity/serial/version/cipher; display flags such as -san/-cn
       // are rejected by tlsx when combined. tlsx has no rate flag; concurrency is bounded by {parallelism}.
       "arguments": ["-l", "{input}", "-json", "-o", "{output}", "-silent", "-no-color", "-disable-update-check",
-                    "-c", "{parallelism}", "-timeout", "10", "-hash", "sha256"]
+                    "-c", "{parallelism}", "-timeout", "10", "-hash", "sha256",
+                    // tlsx has no global rate limit: a per-thread delay keeps the connection rate at about {rate}/s.
+                    "-delay", "{threadDelayMs}ms"]
     }
   }
 }

@@ -17,6 +17,9 @@ public sealed record ArgumentValues
     public string? Interface { get; init; }
     public string? TemplatesDir { get; init; }
     public string? Ports { get; init; }
+
+    /// <summary>Delay per thread so that <see cref="Parallelism"/> threads make about <see cref="Rate"/> connections per second.</summary>
+    public int ThreadDelayMs => Math.Max(1, (int)Math.Ceiling(Math.Max(1, Parallelism) * 1000.0 / Math.Max(1, Rate)));
 }
 
 /// <summary>
@@ -28,18 +31,18 @@ public static class ArgumentBuilder
     public static List<string> Build(ToolCapabilityDefinition definition, ArgumentValues values, IReadOnlyDictionary<string, string> parameters)
     {
         var argv = new List<string>();
-        foreach (var element in definition.Arguments) argv.Add(Substitute(element, values, null));
+        foreach (var element in definition.Arguments) argv.Add(Substitute(element, values, null, parameters));
 
         foreach (var (name, mapping) in definition.ParameterArguments)
         {
             if (!parameters.TryGetValue(name, out var raw) || mapping.Resolve(raw) is not { } resolved) continue;
             if (resolved.Value.StartsWith('-'))
                 throw new ArgumentException($"Parameter '{name}' value must not start with '-'."); // defence against option injection
-            foreach (var element in resolved.Template) argv.Add(Substitute(element, values, resolved.Value));
+            foreach (var element in resolved.Template) argv.Add(Substitute(element, values, resolved.Value, parameters));
         }
 
         if (values.Interface is not null)
-            foreach (var element in definition.InterfaceArguments) argv.Add(Substitute(element, values, null));
+            foreach (var element in definition.InterfaceArguments) argv.Add(Substitute(element, values, null, parameters));
         return argv;
     }
 
@@ -49,11 +52,18 @@ public static class ArgumentBuilder
             .Concat(definition.ParameterArguments.Values.SelectMany(m => m.AllTemplates()).SelectMany(t => t))
             .Any(e => e.Contains(placeholder, StringComparison.Ordinal));
 
-    private static string Substitute(string element, ArgumentValues v, string? parameterValue)
+    private static string Substitute(string element, ArgumentValues v, string? parameterValue, IReadOnlyDictionary<string, string> parameters)
     {
         var result = element;
         foreach (var placeholder in ToolManifestLoader.Placeholders(element))
         {
+            if (ToolPlaceholders.ParameterName(placeholder) is { } name)
+            {
+                if (!parameters.TryGetValue(name, out var referenced)) throw new InvalidOperationException($"No value available for placeholder {placeholder}.");
+                if (referenced.StartsWith('-')) throw new ArgumentException($"Parameter '{name}' value must not start with '-'.");
+                result = result.Replace(placeholder, referenced, StringComparison.Ordinal);
+                continue;
+            }
             var value = placeholder switch
             {
                 ToolPlaceholders.Input => v.Input,
@@ -64,6 +74,7 @@ public static class ArgumentBuilder
                 ToolPlaceholders.Interface => v.Interface,
                 ToolPlaceholders.TemplatesDir => v.TemplatesDir,
                 ToolPlaceholders.Ports => v.Ports,
+                ToolPlaceholders.ThreadDelayMs => v.ThreadDelayMs.ToString(CultureInfo.InvariantCulture),
                 ToolPlaceholders.Value => parameterValue,
                 _ => throw new InvalidOperationException($"Unknown placeholder {placeholder}."),
             } ?? throw new InvalidOperationException($"No value available for placeholder {placeholder}.");

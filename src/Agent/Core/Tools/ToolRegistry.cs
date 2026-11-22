@@ -34,7 +34,10 @@ public sealed record RegisteredTool(ToolManifest Manifest, string ManifestPath, 
                 continue;
             }
             result.UnionWith(def.ParameterArguments.Keys);
-            if (def.Arguments.Any(a => a.Contains(ToolPlaceholders.Rate, StringComparison.Ordinal))) result.Add("rate");
+            var templates = def.Arguments.Concat(def.ParameterArguments.Values.SelectMany(m => m.AllTemplates()).SelectMany(t => t)).ToList();
+            if (templates.Any(a => a.Contains(ToolPlaceholders.Rate, StringComparison.Ordinal) || a.Contains(ToolPlaceholders.ThreadDelayMs, StringComparison.Ordinal)))
+                result.Add("rate");
+            result.UnionWith(templates.SelectMany(ToolManifestLoader.Placeholders).Select(ToolPlaceholders.ParameterName).OfType<string>());
         }
         return result;
     }

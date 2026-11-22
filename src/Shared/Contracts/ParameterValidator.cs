@@ -63,7 +63,9 @@ public static class ParameterValidator
             case ParameterType.Enum:
                 return p.AllowedValues?.Contains(raw, StringComparer.Ordinal) == true ? null : $"Parameter '{p.Name}' must be one of: {string.Join(", ", p.AllowedValues ?? [])}.";
             case ParameterType.PortSpec:
-                return IsValidPortSpec(raw) ? null : $"Parameter '{p.Name}' is not a valid port specification.";
+                if (!IsValidPortSpec(raw)) return $"Parameter '{p.Name}' is not a valid port specification.";
+                return p.Pattern is null || Regex.IsMatch(raw, p.Pattern, RegexOptions.None, TimeSpan.FromMilliseconds(100))
+                    ? null : $"Parameter '{p.Name}' does not accept '{raw}' (allowed: {p.Description ?? p.Pattern}).";
             case ParameterType.StringList:
                 foreach (var item in SplitList(raw))
                 {

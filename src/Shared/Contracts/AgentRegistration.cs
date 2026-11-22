@@ -30,6 +30,12 @@ public sealed record AgentRegistration
     public required AgentResources Resources { get; init; }
     public required AgentLimits Limits { get; init; }
 
+    /// <summary>
+    /// Whether the agent's scanning tools can use raw sockets (SYN scans, ICMP/ARP discovery): root, CAP_NET_RAW or tools with file
+    /// capabilities. Null = unknown (treated as capable, e.g. older agents).
+    /// </summary>
+    public bool? RawSockets { get; init; }
+
     public const string AgentIdPattern = "^[a-zA-Z0-9][a-zA-Z0-9_.-]{2,63}$";
 }
 

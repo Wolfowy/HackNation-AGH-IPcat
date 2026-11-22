@@ -84,8 +84,10 @@ public sealed class JobQueue(
                 .GroupBy(j => (j.ScanRunId, j.NetworkId))
                 .ToDictionary(g => g.Key, g => g.OrderBy(j => j.StartedAt).First().InterfaceName!);
 
+            var peers = (await agents.GetActiveAgentsAsync(ct)).Where(a => a.IsOnline && a.AgentId != agentId)
+                .Select(a => (a, AgentReach.Build(a, options.AllowDefaultRoute))).ToList();
             var decisions = ClaimSelector.Select(agent, AgentReach.Build(agent, options.AllowDefaultRoute),
-                candidates.Select(ToCandidate).ToList(), running, limits, performance, options, request.Interfaces, maxJobs, now, pinned);
+                candidates.Select(ToCandidate).ToList(), running, limits, performance, options, request.Interfaces, maxJobs, now, pinned, peers);
 
             var byId = candidates.ToDictionary(c => c.Id);
             foreach (var decision in decisions)
@@ -446,7 +448,7 @@ public sealed class JobQueue(
 
     private static ClaimCandidate ToCandidate(ScanJobRecord j) =>
         new(j.Id, j.ScanRunId, j.StepId, j.Priority, j.CreatedAt,
-            new JobRequirement(j.Zone, j.NetworkId, j.Capability, j.PreferredToolId, j.ReachTargets),
+            new JobRequirement(j.Zone, j.NetworkId, j.Capability, j.PreferredToolId, j.ReachTargets, j.RequiredParameters, j.NeedsRawSockets),
             j.SubnetKey, j.RequestedRatePerSecond, j.StepMaxConcurrency, j.LastAgentId);
 
     private static ScanJob Payload(ScanJobRecord job) =>

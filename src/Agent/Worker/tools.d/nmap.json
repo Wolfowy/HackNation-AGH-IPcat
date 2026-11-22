@@ -15,9 +15,11 @@
       "output": { "mode": "file" },
       "arguments": ["-sn", "-n", "-T4", "--max-rate", "{rate}", "-oX", "{output}", "-iL", "{input}"],
       "parameterArguments": {
-        // TCP ping on probePorts is always used; "method" adds further probe types.
-        "probePorts": ["-PS{value}"],
-        "method": { "default": [], "tcp-syn": [], "icmp": ["-PE"], "tcp-ack": ["-PA80,443"], "arp": ["-PR"], "none": ["-Pn"] },
+        // Each method is exactly one probe type; only the TCP pings use probePorts (an explicit -P option replaces nmap's defaults).
+        "method": {
+          "default": ["-PS{param:probePorts}"], "tcp-syn": ["-PS{param:probePorts}"], "tcp-ack": ["-PA{param:probePorts}"],
+          "icmp": ["-PE"], "arp": ["-PR"], "none": ["-Pn"]
+        },
         "retries": ["--max-retries", "{value}"]
       },
       "interfaceArguments": ["-e", "{interface}"]

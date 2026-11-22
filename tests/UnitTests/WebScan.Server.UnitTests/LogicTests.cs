@@ -4,7 +4,9 @@ using WebScan.Server.Infrastructure.Http;
 using WebScan.Server.Modules.Agents;
 using WebScan.Server.Modules.Agents.Persistence;
 using WebScan.Server.Modules.Identity.Persistence;
+using WebScan.Server.Kernel.Ports;
 using WebScan.Server.Modules.Networks;
+using WebScan.Server.Modules.Networks.Persistence;
 
 namespace WebScan.Server.UnitTests;
 
@@ -191,5 +193,85 @@ public sealed class AgentLogicTests
         Assert.Contains("agentId", errors.Keys);
         Assert.Equal(2, errors["tools"].Length);
         Assert.Contains("limits", errors.Keys);
+    }
+}
+
+public sealed class AgentSubnetsTests
+{
+    private static AgentSnapshot Agent(string id, string zone, string? connectedFrom, NetworkInterfaceInfo[] interfaces, RouteInfo[]? routes = null) => new()
+    {
+        AgentId = id, Status = AgentStatus.Active, IsOnline = true, ApprovedTools = [], Interfaces = interfaces, Routes = routes ?? [],
+        AuthorizedZones = [zone], ConnectedFrom = connectedFrom, Limits = new AgentLimits { MaxConcurrentJobs = 4, MaxRatePerSecond = 1000 },
+    };
+
+    private static NetworkInterfaceInfo Nic(string name, params string[] addresses) => new() { Name = name, Addresses = addresses };
+
+    [Fact]
+    public void Interface_subnets_become_proposals_and_noise_is_skipped()
+    {
+        // Docker-style lab agents: eth0 = link to the server (management), eth1 = scanned network. Both see the same lab subnet.
+        var lab1 = Agent("agent-1", "lab", "172.23.0.7", [Nic("eth0", "172.23.0.7/16"), Nic("eth1", "172.30.0.100/24")]);
+        var lab2 = Agent("agent-2", "lab", "172.23.0.5", [Nic("eth0", "172.23.0.5/16"), Nic("eth1", "172.30.0.101/24")]);
+        // Laptop: one LAN, link-local/VPN noise, a /32 tunnel; the server is reached through Docker NAT (not the LAN).
+        var home = Agent("home-agent", "home", "192.168.65.1",
+            [Nic("en8", "fe80::1/64", "10.250.169.79/20", "2001:db8::5/64"), Nic("utun0", "fe80::2/64"), Nic("utun9", "10.8.0.2/32"), Nic("lo0", "127.0.0.1/8")]);
+        var rules = ScopeRules.Create(["10.250.169.0/24", "172.30.0.0/16", "172.23.0.0/16"], []);
+
+        var subnets = AgentSubnets.Suggest([lab1, lab2, home], [], rules);
+
+        Assert.Equal(["10.250.160.0/20", "172.23.0.0/16", "172.30.0.0/24"], subnets.Select(s => s.Cidr));
+        var lan = subnets[0];
+        Assert.Equal(("home", "interface", "partial", 4096L), (lan.Zone, lan.Source, lan.Scope, lan.AddressCount));
+        Assert.Equal(["10.250.169.0/24"], lan.ProposedRanges);
+        Assert.False(lan.Management); // single subnet: the LAN the agent is there to scan
+
+        var management = subnets[1];
+        Assert.True(management.Management);
+        Assert.False(management.Large); // exactly /16 is not flagged
+
+        var lab = subnets[2];
+        Assert.Equal(["agent-1", "agent-2"], lab.SeenBy.Select(s => s.AgentId));
+        Assert.Equal("full", lab.Scope);
+        Assert.False(lab.Management);
+    }
+
+    [Fact]
+    public void Existing_networks_and_policy_shape_the_proposed_ranges()
+    {
+        var home = Agent("home-agent", "home", null, [Nic("en0", "192.168.1.20/24"), Nic("en1", "172.16.0.5/12")],
+            [new RouteInfo { Destination = "10.20.0.0/16", Gateway = "192.168.1.1", InterfaceName = "en0" },
+             new RouteInfo { Destination = "10.30.0.0/16", Gateway = "0.0.0.0", InterfaceName = "en0" },
+             new RouteInfo { Destination = "0.0.0.0/0", Gateway = "192.168.1.1", InterfaceName = "en0" }]);
+        var networks = new List<Network>
+        {
+            new() { Name = "home-dhcp", Zone = "home", Ranges = ["192.168.1.0/26", "printer.local"] },
+            new() { Name = "other-zone", Zone = "lab", Ranges = ["192.168.1.0/24"] },
+        };
+        var rules = ScopeRules.Create(["192.168.1.0/24"], []);
+
+        var subnets = AgentSubnets.Suggest([home], networks, rules).ToDictionary(s => s.Cidr);
+
+        Assert.Equal(["home-dhcp"], subnets["192.168.1.0/24"].ExistingNetworks); // other zones are other address spaces
+        Assert.Equal(["192.168.1.64/26", "192.168.1.128/25"], subnets["192.168.1.0/24"].ProposedRanges);
+        Assert.True(subnets["172.16.0.0/12"].Large);
+        Assert.Equal("none", subnets["172.16.0.0/12"].Scope);
+        Assert.Empty(subnets["172.16.0.0/12"].ProposedRanges);
+        // Gateway routes are a second level of breadth; on-link routes and the default route are not.
+        Assert.Equal("route", subnets["10.20.0.0/16"].Source);
+        Assert.Equal("192.168.1.1", subnets["10.20.0.0/16"].SeenBy.Single().Gateway);
+        Assert.False(subnets.ContainsKey("10.30.0.0/16"));
+        Assert.Equal(3, subnets.Count);
+    }
+
+    [Fact]
+    public void Agents_without_a_single_zone_need_a_zone_choice()
+    {
+        var multi = Agent("edge", "dmz", null, [Nic("eth0", "10.1.0.5/24")]) with { AuthorizedZones = ["dmz", "corp"] };
+        var none = Agent("new", "x", null, [Nic("eth0", "10.2.0.5/24")]) with { AuthorizedZones = [] };
+
+        var subnet = Assert.Single(AgentSubnets.Suggest([multi, none], [], ScopeRules.Create(["10.0.0.0/8"], [])));
+
+        Assert.Null(subnet.Zone);
+        Assert.Equal(["corp", "dmz"], subnet.CandidateZones);
     }
 }

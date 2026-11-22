@@ -80,8 +80,11 @@ public sealed record ParameterDescriptor
     public long? Max { get; init; }
     public IReadOnlyList<string>? AllowedValues { get; init; }
 
-    /// <summary>Anchored regex for String/StringList items.</summary>
+    /// <summary>Anchored regex for String/StringList items (for PortSpec an extra restriction on top of the port syntax).</summary>
     public string? Pattern { get; init; }
+
+    /// <summary>Values that need raw sockets on the agent (root, CAP_NET_RAW): only agents reporting that capability get such jobs.</summary>
+    public IReadOnlyList<string>? PrivilegedValues { get; init; }
 }
 
 public sealed record OperationDescriptor
@@ -134,8 +137,11 @@ public static class OperationCatalog
                 Parameters =
                 [
                     new() { Name = "method", Type = ParameterType.Enum, AllowedValues = ["default", "icmp", "tcp-syn", "tcp-ack", "arp", "none"], Default = "default",
-                            Description = "Probe technique. 'none' treats every target as up (useful behind ICMP filtering)." },
-                    new() { Name = "probePorts", Type = ParameterType.PortSpec, Default = "22,80,443,3389,8080", Description = "Ports used for TCP discovery probes. " + PortSpecHelp },
+                            PrivilegedValues = ["icmp", "tcp-ack", "arp"],
+                            Description = "Probe technique: default/tcp-syn = TCP SYN ping to probePorts, tcp-ack = TCP ACK ping to probePorts, icmp = ICMP echo only, " +
+                                          "arp = ARP only (same L2 segment), none = treat every target as up (useful behind ICMP filtering). icmp, tcp-ack and arp need raw sockets." },
+                    new() { Name = "probePorts", Type = ParameterType.PortSpec, Default = "22,80,443,3389,8080", Pattern = "^[0-9][0-9,-]*$",
+                            Description = "Ports used by the TCP ping methods (default, tcp-syn, tcp-ack), e.g. 22,80,443 or 8000-8100 (no top-N)." },
                     Rate, Retries,
                 ],
             },
@@ -146,7 +152,8 @@ public static class OperationCatalog
                 Parameters =
                 [
                     new() { Name = "ports", Type = ParameterType.PortSpec, Default = "top-100", Required = true, Description = PortSpecHelp },
-                    new() { Name = "scanType", Type = ParameterType.Enum, AllowedValues = ["connect", "syn"], Default = "connect" },
+                    new() { Name = "scanType", Type = ParameterType.Enum, AllowedValues = ["connect", "syn"], Default = "connect", PrivilegedValues = ["syn"],
+                            Description = "connect = full TCP handshake (no privileges); syn = half-open scan, needs raw sockets." },
                     Rate, Retries,
                 ],
             },
@@ -226,4 +233,9 @@ public static class OperationCatalog
         };
 
     public static OperationDescriptor Get(ScanOperation operation) => All[operation];
+
+    /// <summary>Whether the (validated) parameter values select a technique that needs raw sockets on the agent.</summary>
+    public static bool NeedsRawSockets(ScanOperation operation, IReadOnlyDictionary<string, string> values) =>
+        Get(operation).Parameters.Any(p => p.PrivilegedValues is { } privileged && values.TryGetValue(p.Name, out var v)
+            && privileged.Contains(v, StringComparer.OrdinalIgnoreCase));
 }

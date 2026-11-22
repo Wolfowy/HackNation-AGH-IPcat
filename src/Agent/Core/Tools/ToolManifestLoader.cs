@@ -110,7 +110,12 @@ public static partial class ToolManifestLoader
             foreach (var p in Placeholders(element))
             {
                 used.Add(p);
-                if (!ToolPlaceholders.All.Contains(p)) errors.Add($"{at}: unknown placeholder {p}.");
+                if (ToolPlaceholders.ParameterName(p) is { } param)
+                {
+                    if (!allowValue) errors.Add($"{at}: {p} is only allowed in parameterArguments.");
+                    else if (!KnownParameters.Contains(param)) errors.Add($"{at}: {p}: '{param}' is not an operation parameter.");
+                }
+                else if (!ToolPlaceholders.All.Contains(p)) errors.Add($"{at}: unknown placeholder {p}.");
                 else if (p == ToolPlaceholders.Value && !allowValue) errors.Add($"{at}: {p} is only allowed in parameterArguments.");
                 else if (p == ToolPlaceholders.Interface && !allowInterface) errors.Add($"{at}: {p} is only allowed in interfaceArguments.");
             }

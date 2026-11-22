@@ -54,10 +54,21 @@ Weryfikacja lokalna: `dotnet WebScan.Agent.Worker.dll --list-tools` (rejestr) i 
 }
 ```
 
-Dozwolone placeholdery: `{input} {output} {rate} {timeout} {parallelism} {interface} {templatesDir} {value} {ports}` —
-każdy inny powoduje odrzucenie manifestu przy ładowaniu. Każdy element szablonu to dokładnie jeden argument procesu
-(brak powłoki, `ProcessStartInfo.ArgumentList`); `{value}` zaczynające się od `-` jest odrzucane; wartości pochodzą wyłącznie
-z parametrów zwalidowanych przez `ParameterValidator` (nieznane parametry zadania są odrzucane już na serwerze).
+Dozwolone placeholdery: `{input} {output} {rate} {timeout} {parallelism} {interface} {templatesDir} {value} {ports} {threadDelayMs}`
+oraz `{param:NAZWA}` — każdy inny powoduje odrzucenie manifestu przy ładowaniu. Każdy element szablonu to dokładnie jeden argument
+procesu (brak powłoki, `ProcessStartInfo.ArgumentList`); `{value}` i `{param:…}` zaczynające się od `-` są odrzucane; wartości
+pochodzą wyłącznie z parametrów zwalidowanych przez `ParameterValidator` (nieznane parametry zadania są odrzucane już na serwerze).
+
+* `{threadDelayMs}` — opóźnienie na wątek (ms), przy którym `{parallelism}` wątków robi ok. `{rate}` połączeń/s; dla narzędzi bez
+  globalnego limitu (tlsx: `"-delay", "{threadDelayMs}ms"`). Liczy się jako obsługa parametru `rate`.
+* `{param:NAZWA}` — tylko w `parameterArguments`: wartość innego parametru operacji, np. nmap używa `probePorts` wyłącznie
+  w metodach TCP: `"method": { "tcp-syn": ["-PS{param:probePorts}"], "icmp": ["-PE"], … }`. Liczy się jako obsługa NAZWY.
+
+**Obsługiwane parametry.** Agent zgłasza `supportedParameters` każdego narzędzia (klucze `parameterArguments`, `{param:…}`,
+`rate` przy `{rate}`/`{threadDelayMs}`; adaptery z pluginów — wszystkie parametry swoich operacji). Planer daje zadanie tylko
+narzędziu, które obsługuje **każdy parametr ustawiony jawnie w kroku** (wartości domyślne nie są wymaganiem) — narzędzie nie
+pominie więc po cichu np. limitu `rate`. Techniki wymagające surowych gniazd (`scanType=syn`, `method=icmp|tcp-ack|arp`) trafiają
+tylko do agentów z `rawSockets` ≠ false (`Agent:RawSockets`, domyślnie wykrywane: root, `CAP_NET_RAW` albo `NMAP_PRIVILEGED`).
 
 ### `generic-jsonl` — narzędzie bez kodu
 

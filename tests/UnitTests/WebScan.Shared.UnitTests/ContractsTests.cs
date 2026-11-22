@@ -28,6 +28,19 @@ public class ContractsTests
     public void PortSpec(string spec, bool valid) => Assert.Equal(valid, ParameterValidator.IsValidPortSpec(spec));
 
     [Fact]
+    public void Probe_ports_take_explicit_ports_only_and_privileged_techniques_are_flagged()
+    {
+        var discover = OperationCatalog.Get(ScanOperation.DiscoverHosts).Parameters;
+        Assert.True(ParameterValidator.Validate(discover, new Dictionary<string, string> { ["probePorts"] = "22,80,8000-8100" }).IsValid);
+        Assert.Contains(ParameterValidator.Validate(discover, new Dictionary<string, string> { ["probePorts"] = "top-100" }).Errors, e => e.Contains("probePorts"));
+
+        Assert.True(OperationCatalog.NeedsRawSockets(ScanOperation.ScanPorts, new Dictionary<string, string> { ["scanType"] = "syn" }));
+        Assert.False(OperationCatalog.NeedsRawSockets(ScanOperation.ScanPorts, new Dictionary<string, string> { ["scanType"] = "connect" }));
+        Assert.True(OperationCatalog.NeedsRawSockets(ScanOperation.DiscoverHosts, new Dictionary<string, string> { ["method"] = "arp" }));
+        Assert.False(OperationCatalog.NeedsRawSockets(ScanOperation.DiscoverHosts, new Dictionary<string, string> { ["method"] = "default" }));
+    }
+
+    [Fact]
     public void Masker_hides_cookie_values_and_tokens()
     {
         Assert.Equal("sid=***; Path=/; HttpOnly", SensitiveDataMasker.MaskHeader("Set-Cookie", "sid=abc123; Path=/; HttpOnly"));

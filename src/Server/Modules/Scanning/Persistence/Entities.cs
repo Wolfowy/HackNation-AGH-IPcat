@@ -56,6 +56,12 @@ public sealed class ScanJobRecord
 
     public required string Capability { get; set; }
     public string? PreferredToolId { get; set; }
+
+    /// <summary>Step parameters set explicitly: only tools supporting all of them may run the job.</summary>
+    public List<string> RequiredParameters { get; set; } = [];
+
+    /// <summary>The selected technique needs raw sockets (agents reporting RawSockets=false are not eligible).</summary>
+    public bool NeedsRawSockets { get; set; }
     public required string Zone { get; set; }
     public Guid NetworkId { get; set; }
     public string? SubnetKey { get; set; }

@@ -55,6 +55,8 @@ public class ManifestTests
     [InlineData("""{ "parser": "naabu-jsonl", "arguments": ["-l", "{input}", "-o", "{output}"], "parameterArguments": { "extraArgs": ["{value}"] } }""", "not an operation parameter")]
     [InlineData("""{ "parser": "naabu-jsonl", "arguments": ["-l", "{input}", "-o", "{output}", "{rate"] }""", "unbalanced braces")]
     [InlineData("""{ "parser": "generic-jsonl", "arguments": ["-l", "{input}", "-o", "{output}"] }""", "parserOptions are required")]
+    [InlineData("""{ "parser": "naabu-jsonl", "arguments": ["-l", "{input}", "-o", "{output}", "-p", "{param:ports}"] }""", "only allowed in parameterArguments")]
+    [InlineData("""{ "parser": "naabu-jsonl", "arguments": ["-l", "{input}", "-o", "{output}"], "parameterArguments": { "ports": ["{param:secret}"] } }""", "'secret' is not an operation parameter")]
     public void Invalid_capability_definitions_are_rejected(string capability, string expectedError)
     {
         var errors = ToolManifestLoader.Validate(Parse(Manifest(capability)), Parsing.BuiltInRegistry());
@@ -74,6 +76,15 @@ public class ManifestTests
 
 public class ArgumentBuilderTests
 {
+    [Fact]
+    public void Tools_without_a_rate_limit_get_a_per_thread_delay_that_holds_the_rate_and_count_as_rate_support()
+    {
+        var tlsx = ToolManifestLoader.Load([TestPaths.ShippedManifests], Parsing.BuiltInRegistry()).Manifests.Single(m => m.Manifest.Id == "tlsx").Manifest;
+        var argv = ArgumentBuilder.Build(tlsx.Capabilities["tls-probe"], new ArgumentValues { Input = "in", Output = "out", Rate = 50, Parallelism = 10 }, new Dictionary<string, string>());
+        Assert.Equal("200ms", argv[argv.IndexOf("-delay") + 1]); // 10 threads x 1 connection / 200 ms = 50/s
+        Assert.Contains("rate", new RegisteredTool(tlsx, "tlsx.json", new string('0', 64), "/usr/bin/tlsx", "1.0").ToDescriptor().SupportedParameters);
+    }
+
     private static ToolCapabilityDefinition Nmap(string capability) =>
         JsonSerializer.Deserialize<ToolManifest>(File.ReadAllText(Path.Combine(TestPaths.ShippedManifests, "nmap.json")), ToolManifestJson.Options)!.Capabilities[capability];
 
@@ -150,8 +161,17 @@ public class ArgumentBuilderTests
 
         Assert.DoesNotContain("-e", without);
         Assert.Equal(["-e", "eth1"], with[^2..]);
-        Assert.Contains("-PS22,80", without);
         Assert.Contains("-PE", without);
+        Assert.DoesNotContain(without, a => a.StartsWith("-PS", StringComparison.Ordinal)); // icmp means ICMP only
+    }
+
+    [Fact]
+    public void Tcp_ping_methods_use_the_probe_ports_through_a_parameter_reference()
+    {
+        var def = Nmap("host-discovery");
+        Assert.Contains("-PS22,80", ArgumentBuilder.Build(def, Values, new Dictionary<string, string> { ["method"] = "default", ["probePorts"] = "22,80" }));
+        Assert.Contains("-PA443", ArgumentBuilder.Build(def, Values, new Dictionary<string, string> { ["method"] = "tcp-ack", ["probePorts"] = "443" }));
+        Assert.Throws<InvalidOperationException>(() => ArgumentBuilder.Build(def, Values, new Dictionary<string, string> { ["method"] = "tcp-syn" }));
     }
 
     [Fact]

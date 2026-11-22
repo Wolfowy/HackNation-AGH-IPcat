@@ -23,6 +23,10 @@ public sealed record AgentStepSpec
     public IReadOnlyDictionary<string, string> Parameters { get; init; } = new Dictionary<string, string>();
 
     public string? PreferredToolId { get; init; }
+
+    /// <summary>Parameters the step sets explicitly (the chosen tool must support them).</summary>
+    public IReadOnlyList<string> RequiredParameters { get; init; } = [];
+
     public int Priority { get; init; }
     public int? RunRateCap { get; init; }
     public DateTimeOffset? NotAfter { get; init; }
@@ -82,6 +86,7 @@ public sealed class TaskPlanner(
             logger.LogWarning("Run {RunId} step {StepId}: {Count} targets outside the authorized scope were dropped", spec.ScanRunId, spec.StepId, plan.OutOfScope);
 
         var capability = _options.CapabilityFor(spec.Operation);
+        var needsRawSockets = OperationCatalog.NeedsRawSockets(spec.Operation, spec.Parameters);
         var stepRate = spec.Parameters.TryGetValue("rate", out var r) && int.TryParse(r, CultureInfo.InvariantCulture, out var rate) ? rate : int.MaxValue;
         var onlineAgents = (await agents.GetActiveAgentsAsync(ct))
             .Where(a => a.IsOnline && a.Status == AgentStatus.Active)
@@ -98,15 +103,18 @@ public sealed class TaskPlanner(
             targets += batch.Count;
             if (!existing.Add(batch.TargetKey)) { skipped++; continue; }
 
-            var requirement = new JobRequirement(batch.Zone, batch.NetworkId, capability, spec.PreferredToolId, batch.ReachTargets);
-            var eligible = new List<string>();
+            var requirement = new JobRequirement(batch.Zone, batch.NetworkId, capability, spec.PreferredToolId, batch.ReachTargets,
+                spec.RequiredParameters, needsRawSockets);
+            var eligible = new List<(string AgentId, bool Direct)>();
             string? reason = onlineAgents.Count == 0 ? "no online agents" : null;
             foreach (var (agent, reach) in onlineAgents)
             {
                 var eligibility = Eligibility.Evaluate(agent, reach, requirement, _options);
-                if (eligibility.IsEligible) eligible.Add(agent.AgentId);
+                if (eligibility.IsEligible) eligible.Add((agent.AgentId, eligibility.Direct));
                 else reason ??= eligibility.Reason;
             }
+            // Same rule as the claim: directly attached agents first, default-route agents only when none is online.
+            var eligibleIds = (eligible.Any(e => e.Direct) ? eligible.Where(e => e.Direct) : eligible).Select(e => e.AgentId).ToList();
             if (eligible.Count == 0) { unassignable++; unassignableReason ??= reason; }
 
             var requested = Math.Min(stepRate, Math.Min(spec.RunRateCap ?? int.MaxValue, batch.NetworkRateCap ?? int.MaxValue));
@@ -125,9 +133,10 @@ public sealed class TaskPlanner(
                 Id = jobId, ScanRunId = spec.ScanRunId, WorkflowRunId = spec.WorkflowRunId, StepId = spec.StepId, Operation = spec.Operation,
                 Status = JobStatus.Queued, TargetKey = batch.TargetKey, TargetSummary = batch.Summary, TargetCount = batch.Count,
                 ReachTargets = [.. batch.ReachTargets], Capability = capability, PreferredToolId = spec.PreferredToolId,
+                RequiredParameters = [.. spec.RequiredParameters], NeedsRawSockets = needsRawSockets,
                 Zone = batch.Zone, NetworkId = batch.NetworkId, SubnetKey = batch.SubnetKey, Priority = spec.Priority,
                 RequestedRatePerSecond = requested, StepMaxConcurrency = spec.MaxConcurrency, TimeoutSeconds = spec.TimeoutSeconds,
-                NotAfter = spec.NotAfter, EligibleAgentIds = eligible, QueueReason = eligible.Count == 0 ? $"No eligible agent: {reason}" : null,
+                NotAfter = spec.NotAfter, EligibleAgentIds = eligibleIds, QueueReason = eligible.Count == 0 ? $"No eligible agent: {reason}" : null,
                 MaxAttempts = Math.Clamp(spec.MaxAttempts, 1, limits.MaxAttempts), BackoffSeconds = spec.BackoffSeconds,
                 CreatedAt = now, PayloadJson = JsonSerializer.Serialize(payload, ContractJson.Options),
             });

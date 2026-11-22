@@ -59,13 +59,69 @@ public static partial class WorkflowValidator
         var cyclic = DagScheduler.CyclicSteps(steps);
         if (cyclic.Count > 0) { errors.Add($"Dependencies contain a cycle involving: {string.Join(", ", cyclic)}."); return errors; }
 
+        var inputsSound = ids.Count == steps.Count;
         foreach (var step in steps.Where(s => s.Input is not null))
         {
             var ancestors = DagScheduler.Ancestors(steps, step.Id);
-            foreach (var from in step.Input!.FromSteps?.Where(ids.Contains) ?? [])
-                if (!ancestors.Contains(from)) errors.Add($"Step '{step.Id}' reads input from '{from}', which must be one of its (transitive) dependencies.");
+            if (step.Input!.FromSteps is not { Count: > 0 } fromSteps || !fromSteps.All(ids.Contains)) { inputsSound = false; continue; }
+            foreach (var from in fromSteps.Where(from => !ancestors.Contains(from)))
+            {
+                errors.Add($"Step '{step.Id}' reads input from '{from}', which must be one of its (transitive) dependencies.");
+                inputsSound = false;
+            }
         }
+        // Needs a sound graph (unique ids, inputs from ancestors), not valid parameters: report data-flow problems together with those.
+        if (inputsSound) ValidateDataFlow(errors, steps);
         return errors;
+    }
+
+    /// <summary>Operations whose observations carry a port, so they can feed endpoint (host:port) operations.</summary>
+    private static readonly IReadOnlySet<ScanOperation> EndpointProducers = new HashSet<ScanOperation>
+    {
+        ScanOperation.ScanPorts, ScanOperation.DetectService, ScanOperation.HttpProbe, ScanOperation.TlsProbe, ScanOperation.ExecuteSignatures,
+    };
+
+    /// <summary>Server steps that close a run: they only see what the agent steps before them produced.</summary>
+    private static readonly IReadOnlySet<ScanOperation> ClosingSteps = new HashSet<ScanOperation>
+    {
+        ScanOperation.PersistObservations, ScanOperation.ComparePreviousScan, ScanOperation.PublishFinding,
+    };
+
+    /// <summary>
+    /// Semantic compatibility (after structure is valid): inputs must come from steps that produce observations, endpoint
+    /// operations need a source with ports, and closing steps run after every agent step (compare/publish after persist).
+    /// </summary>
+    private static void ValidateDataFlow(List<string> errors, IReadOnlyList<WorkflowStep> steps)
+    {
+        var byId = steps.ToDictionary(s => s.Id, StringComparer.Ordinal);
+        bool IsAgent(WorkflowStep s) => OperationCatalog.Get(s.Operation).Plane == OperationPlane.Agent;
+
+        // EvaluateCondition passes its own input through, so look through it to the steps that produced the observations.
+        IEnumerable<WorkflowStep> Producers(WorkflowStep step) => (step.Input?.FromSteps ?? []).Select(id => byId[id])
+            .SelectMany(s => s.Operation == ScanOperation.EvaluateCondition ? Producers(s) : [s]);
+
+        foreach (var step in steps.Where(s => s.Input is not null))
+        {
+            var at = $"Step '{step.Id}'";
+            foreach (var from in step.Input!.FromSteps.Select(id => byId[id]).Where(s => !IsAgent(s) && s.Operation != ScanOperation.EvaluateCondition))
+                errors.Add($"{at} reads input from '{from.Id}' ({from.Operation}), which produces no observations; use an agent step or EvaluateCondition.");
+            if (OperationCatalog.Get(step.Operation).InputKind == TargetKind.Endpoints && !Producers(step).Any(p => EndpointProducers.Contains(p.Operation)))
+                errors.Add($"{at}: {step.Operation} needs endpoints (host:port), but its input only has hosts without ports; " +
+                           $"read from a step with ports ({string.Join(", ", EndpointProducers)}).");
+        }
+
+        var agentSteps = steps.Where(IsAgent).Select(s => s.Id).ToList();
+        var persistIds = steps.Where(s => s.Operation == ScanOperation.PersistObservations).Select(s => s.Id).ToHashSet(StringComparer.Ordinal);
+        foreach (var step in steps.Where(s => ClosingSteps.Contains(s.Operation)))
+        {
+            var at = $"Step '{step.Id}' ({step.Operation})";
+            var ancestors = DagScheduler.Ancestors(steps, step.Id);
+            var notBefore = agentSteps.Where(id => !ancestors.Contains(id)).ToList();
+            if (notBefore.Count > 0)
+                errors.Add($"{at} must run after every agent step; add a dependency path from: {string.Join(", ", notBefore)}.");
+            if (step.Operation != ScanOperation.PersistObservations && !ancestors.Overlaps(persistIds))
+                errors.Add($"{at} needs a PersistObservations step before it (it records coverage and waits for all results).");
+        }
     }
 
     /// <summary>JSON may carry explicit nulls for collections; treat them as empty.</summary>

@@ -118,7 +118,12 @@ public static class Agents
     public static readonly ToolDescriptor Nuclei = Tool("nuclei", ToolCapabilities.SignatureScan);
     public static readonly ToolDescriptor[] All = [Nmap, Naabu, Httpx, Nuclei];
 
-    public static ToolDescriptor Tool(string id, params string[] capabilities) => new() { Id = id, Version = "1.0", Capabilities = capabilities };
+    /// <summary>Tool supporting every parameter of the operations its capabilities serve (like a complete manifest).</summary>
+    public static ToolDescriptor Tool(string id, params string[] capabilities) => new()
+    {
+        Id = id, Version = "1.0", Capabilities = capabilities,
+        SupportedParameters = OperationCatalog.All.Values.Where(o => capabilities.Contains(o.RequiredCapability)).SelectMany(o => o.Parameters).Select(p => p.Name).Distinct().ToList(),
+    };
 
     /// <summary>Agent with one interface per entry of <paramref name="interfaces"/> (name → addresses with prefix).</summary>
     public static AgentSnapshot Create(string id, string[] zones, Dictionary<string, string[]> interfaces, RouteInfo[]? routes = null,

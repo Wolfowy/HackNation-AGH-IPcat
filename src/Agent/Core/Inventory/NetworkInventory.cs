@@ -62,6 +62,23 @@ public sealed class NetworkInventory(IOptionsMonitor<AgentOptions> options, IToo
         (OperatingSystem.IsLinux() ? "linux" : OperatingSystem.IsWindows() ? "windows" : OperatingSystem.IsMacOS() ? "osx" : RuntimeInformation.OSDescription.ToLowerInvariant(),
          RuntimeInformation.OSDescription);
 
+    /// <summary>Configured value, else detected for this process and its tools (see <see cref="AgentOptions.RawSockets"/>).</summary>
+    public static bool? RawSockets(bool? configured) =>
+        DetectRawSockets(configured, OperatingSystem.IsWindows(), Environment.IsPrivilegedProcess,
+            OperatingSystem.IsLinux() && File.Exists("/proc/self/status") ? File.ReadAllText("/proc/self/status") : null,
+            Environment.GetEnvironmentVariable("NMAP_PRIVILEGED"));
+
+    /// <summary>Pure detection rule (testable): Windows = unknown (Npcap decides); else root, CAP_NET_RAW in CapEff, or NMAP_PRIVILEGED.</summary>
+    public static bool? DetectRawSockets(bool? configured, bool isWindows, bool isPrivileged, string? procStatus, string? nmapPrivileged)
+    {
+        if (configured is not null) return configured;
+        if (isWindows) return null;
+        if (isPrivileged || !string.IsNullOrEmpty(nmapPrivileged)) return true;
+        const int CapNetRaw = 13;
+        var capEff = procStatus?.Split('\n').FirstOrDefault(l => l.StartsWith("CapEff:", StringComparison.Ordinal))?["CapEff:".Length..].Trim();
+        return capEff is not null && ulong.TryParse(capEff, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var caps) && (caps & (1UL << CapNetRaw)) != 0;
+    }
+
     public static AgentResources Resources() => new()
     {
         CpuCores = Environment.ProcessorCount,

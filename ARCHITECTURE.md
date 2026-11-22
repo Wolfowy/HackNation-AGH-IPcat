@@ -127,6 +127,12 @@ Tools are **data, not code paths**. Nothing on the server switches on tool names
   non-overlapping, CIDR-aligned.
 * Eligibility: agent Active + online + approved tool with capability + authorized zone (and network if restricted) + reachability
   (interface subnet or route covering the batch; default route counts only if `Planner:AllowDefaultRoute`). Perspective = (agent, interface).
+* Tool parameters: a job carries the step's explicitly set parameters (`required_parameters`); only tools whose
+  `supportedParameters` contain all of them are eligible (defaults are not requirements). Techniques flagged in the catalog
+  (`PrivilegedValues`: `scanType=syn`, `method=icmp|tcp-ack|arp`) set `needs_raw_sockets`; agents reporting `RawSockets=false` skip them.
+* Direct agents first: an agent that reaches a batch only through its default route leaves it to an **online** agent that reaches it
+  directly (attached subnet or specific route) and can run the step; it takes the job once no such agent is online. Applied at claim
+  time (`ClaimSelector`, peers = online agents) and in the job's `eligibleAgentIds`. Direct agents see the subnet first-hand (ARP, MACs).
 * Dedup: unique `(scan_run_id, step_id, target_key, perspective)` prevents scanning the same batch twice from the same perspective.
 * Assignment: pull-based claim with `SELECT … FOR UPDATE SKIP LOCKED`; weighted score = priority, free capacity, measured throughput
   (EWMA of targets/s per agent+interface+tool), age. Global caps per zone, per interface, per subnet (`/16` default) and per run rate.
@@ -144,6 +150,10 @@ Tools are **data, not code paths**. Nothing on the server switches on tool names
   immutable versions. `IWorkflowRuntime` abstraction (start/cancel/signal) with an own DAG implementation; step executors
   (`IStepExecutor` per `ScanOperation`) are independent of the runtime so Elsa Workflows 3 can host them later.
 * Agent steps create jobs through the planner; server steps call Kernel ports (`IDiscoveryRunProcessor`, `IFindingPublisher`).
+* Data-flow validation (on save): input steps must produce observations (agent steps or `EvaluateCondition`, seen through to its
+  sources); endpoint operations (DetectService, HttpProbe, TlsProbe, ExecuteSignatures) need a source with ports (ScanPorts,
+  DetectService, HttpProbe, TlsProbe, ExecuteSignatures); PersistObservations, ComparePreviousScan and PublishFinding must have every
+  agent step as an ancestor, and the last two also a PersistObservations step (coverage + all results ingested).
 * Step input = observations of `Input.FromSteps` filtered by `Input.Filter`; `When` gates execution (else Skipped).
   Independent steps run in parallel. Timeouts, retries (`RetryPolicy`), `OnFailure`, cancellation, window expiry
   (`NotAfter` → cancel active jobs, run = `WindowExpired`, partial observations kept, coverage marked incomplete).
@@ -190,6 +200,13 @@ Role shorthand: R=CanRead, E=CanEdit, M=CanManage, A=AdminOnly.
 **Networks & scope (A)**
 * `GET /api/networks` (R) → [{id, name, description, zone, ranges[], exclusions[], tags[], maxRatePerSecond?, enabled, addressCount, createdAt, updatedAt}]
 * `POST /api/networks` (M), `PUT /api/networks/{id}` (E), `DELETE /api/networks/{id}` (M), `GET /api/networks/{id}` (R)
+* `GET /api/networks/agent-subnets` (R) → [{cidr, source: interface|route, zone|null, candidateZones[], addressCount,
+  seenBy[{agentId, interfaceName, address, online, gateway?}], scope: full|partial|none, proposedRanges[], existingNetworks[],
+  management, large}] — subnets of active agents' interfaces and gateway routes (loopback, link-local, multicast, single addresses,
+  IPv6 > 65 536 and IPv4 > /8 skipped). `zone` = the agent's only authorized zone (null if several); `proposedRanges` = part inside
+  the scope policy minus networks of those zones (what a new network adds, no overlaps); `management` = contains the address the
+  agent registered from while the agent has other subnets; `large` = IPv4 > 65 536. The UI creates networks with the normal
+  `POST /api/networks` (tag `agent-subnet`); widening the policy stays an explicit Admin `PUT /api/scope-policy`.
 * `GET /api/networks/export?format=json|csv` (R); `POST /api/networks/import?format=json|csv` (M, raw body) → {created, updated, errors[]}
 * `GET /api/zones` (R) → [{name, description, networkCount}]; `POST /api/zones` (M); `DELETE /api/zones/{name}` (M)
 * `GET /api/scope-policy` (R) / `PUT` (A) → {allowed[], excluded[], updatedAt}

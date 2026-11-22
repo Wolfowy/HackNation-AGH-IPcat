@@ -98,7 +98,16 @@ export const t = {
   },
   networks: {
     title: 'Networks',
-    tabs: { networks: 'Networks', zones: 'Zones', scope: 'Scope policy' },
+    tabs: { networks: 'Networks', agentSubnets: 'Agent subnets', zones: 'Zones', scope: 'Scope policy' },
+    agentSubnets: {
+      intro:
+        'Subnets the connected agents are attached to, or route to through a gateway. Create networks from them to scan wide with the agents you have: each subnet is scanned by the agents attached to it. Not listed: loopback, link-local, multicast, single addresses and IPv6 subnets above 65,536 addresses.',
+      empty: 'No active agent with an authorized zone reports a usable subnet.',
+      create: (n = 0) => (n === 1 ? 'Create 1 network' : `Create ${n} networks`),
+      created: (n = 0) => (n === 1 ? 'Created 1 network' : `Created ${n} networks`),
+      policyWarning: (cidr = '', addresses = 0) =>
+        `Adds ${cidr} (${addresses.toLocaleString()} addresses) to the allowed scope. Only allow networks you are authorized to scan.`,
+    },
     create: 'Create network',
     edit: 'Edit network',
     rangesHint: 'One per line: IPv4/IPv6 address, CIDR (10.0.0.0/24), range (10.0.0.1-10.0.0.50) or hostname.',

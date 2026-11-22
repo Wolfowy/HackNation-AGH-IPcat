@@ -76,7 +76,7 @@ internal static partial class AgentApiEndpoints
                 SecretHash = AgentSecrets.Hash(secret),
                 EnrollmentTokenId = token.Id,
             };
-            agent.ApplyRegistration(registration, now);
+            agent.ApplyRegistration(registration, now, ConnectedFrom(http));
             db.Agents.Add(agent);
             await db.SaveChangesAsync(ct);
             await tx.CommitAsync(ct);
@@ -94,7 +94,7 @@ internal static partial class AgentApiEndpoints
             if (agent.Status is AgentStatus.Disabled or AgentStatus.Blocked)
                 return Results.Problem(statusCode: StatusCodes.Status403Forbidden, title: $"Agent is {agent.Status}.");
 
-            agent.ApplyRegistration(registration, now);
+            agent.ApplyRegistration(registration, now, ConnectedFrom(http));
             await db.SaveChangesAsync(ct);
         }
 
@@ -110,6 +110,9 @@ internal static partial class AgentApiEndpoints
             UnapprovedTools = unapproved,
         });
     }
+
+    private static string? ConnectedFrom(HttpContext http) =>
+        http.Connection.RemoteIpAddress is { } ip ? (ip.IsIPv4MappedToIPv6 ? ip.MapToIPv4() : ip).ToString() : null;
 
     private static async Task<IResult> Heartbeat(AgentHeartbeat heartbeat, HttpContext http, AgentsDbContext db, TimeProvider time,
         IServiceProvider services, ILoggerFactory loggers, CancellationToken ct)

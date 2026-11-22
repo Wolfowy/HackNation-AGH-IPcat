@@ -150,10 +150,26 @@ public static class ToolPlaceholders
     /// <summary>Comma separated ports of an endpoint job; the adapter runs one invocation per group of hosts sharing a port set (no cross-product over-scan).</summary>
     public const string Ports = "{ports}";
 
+    /// <summary>
+    /// Per-thread delay in milliseconds that keeps {parallelism} threads at about {rate} connections/s, for tools without a
+    /// global rate limit (e.g. tlsx <c>-delay</c>). Counts as rate support.
+    /// </summary>
+    public const string ThreadDelayMs = "{threadDelayMs}";
+
+    /// <summary>
+    /// <c>{param:NAME}</c> in parameterArguments: the validated value of another operation parameter, e.g. a method mapping that
+    /// uses the probe ports only for TCP methods. Counts as support for NAME.
+    /// </summary>
+    public const string ParameterPrefix = "{param:";
+
     public static readonly IReadOnlySet<string> All = new HashSet<string>(StringComparer.Ordinal)
     {
-        Input, Output, Rate, Timeout, Parallelism, Interface, TemplatesDir, Value, Ports,
+        Input, Output, Rate, Timeout, Parallelism, Interface, TemplatesDir, Value, Ports, ThreadDelayMs,
     };
+
+    /// <summary>NAME of a <c>{param:NAME}</c> placeholder, else null.</summary>
+    public static string? ParameterName(string placeholder) =>
+        placeholder.StartsWith(ParameterPrefix, StringComparison.Ordinal) && placeholder.EndsWith('}') ? placeholder[ParameterPrefix.Length..^1] : null;
 }
 
 /// <summary>JSON options for manifests: contract wire options plus comments and trailing commas for hand-written files.</summary>

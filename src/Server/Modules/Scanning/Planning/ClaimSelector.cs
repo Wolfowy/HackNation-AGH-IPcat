@@ -65,7 +65,8 @@ public static class ClaimSelector
         AgentSnapshot agent, AgentReach reach, IReadOnlyList<ClaimCandidate> candidates, IReadOnlyCollection<RunningJob> running,
         ScanLimits limits, IReadOnlyCollection<PerformanceSample> performance, PlannerOptions options,
         IReadOnlyCollection<string>? allowedInterfaces, int maxJobs, DateTimeOffset now,
-        IReadOnlyDictionary<(Guid ScanRunId, Guid NetworkId), string>? pinnedInterfaces = null)
+        IReadOnlyDictionary<(Guid ScanRunId, Guid NetworkId), string>? pinnedInterfaces = null,
+        IReadOnlyList<(AgentSnapshot Agent, AgentReach Reach)>? peers = null)
     {
         // One perspective per run and network: once this agent scanned part of a run's network through an interface,
         // every later job of that run/network (all workflow steps) uses the same interface, so results stay comparable.
@@ -98,12 +99,24 @@ public static class ClaimSelector
             return throughput + free - penalty;
         }
 
+        // A job this agent reaches only through its default route waits for an online agent that reaches it directly.
+        var directPeer = new Dictionary<(string, Guid, string, string?, string, string, bool), bool>();
+        bool LeaveToDirectPeer(JobRequirement r)
+        {
+            if (peers is null || peers.Count == 0) return false;
+            var key = (r.Zone.ToLowerInvariant(), r.NetworkId, r.Capability, r.PreferredToolId, string.Join(',', r.ReachTargets),
+                string.Join(',', r.RequiredParameters ?? []), r.NeedsRawSockets);
+            if (!directPeer.TryGetValue(key, out var exists)) directPeer[key] = exists = Eligibility.DirectPeerExists(agent.AgentId, peers, r, options);
+            return exists;
+        }
+
         var scored = new List<(ClaimCandidate Candidate, IReadOnlyList<PerspectiveOption> Options, double Score)>();
         foreach (var c in candidates)
         {
             var eligibility = Eligibility.Evaluate(agent, reach, c.Requirement, options);
             var opts = eligibility.Options.Where(o => allowedInterfaces is null || allowedInterfaces.Contains(o.InterfaceName)).ToList();
             if (opts.Count == 0) continue;
+            if (!eligibility.Direct && LeaveToDirectPeer(c.Requirement)) continue;
             var jobScore = PriorityWeight * c.Priority + Math.Clamp((now - c.QueuedAt).TotalMinutes, 0, MaxWaitMinutes);
             scored.Add((c, opts, jobScore + opts.Max(o => PerspectiveScore(c, o))));
         }

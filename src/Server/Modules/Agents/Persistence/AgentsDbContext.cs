@@ -106,7 +106,7 @@ public sealed class Agent
     public bool IsOnlineAt(DateTimeOffset now, TimeSpan heartbeatTimeout) =>
         IsOnline && LastHeartbeatAt is { } last && now - last <= heartbeatTimeout;
 
-    public void ApplyRegistration(AgentRegistration registration, DateTimeOffset now)
+    public void ApplyRegistration(AgentRegistration registration, DateTimeOffset now, string? connectedFrom = null)
     {
         Hostname = registration.Hostname;
         OsPlatform = registration.OsPlatform;
@@ -118,6 +118,8 @@ public sealed class Agent
             Interfaces = registration.Interfaces,
             Routes = registration.Routes,
             Resources = registration.Resources,
+            ConnectedFrom = connectedFrom,
+            RawSockets = registration.RawSockets,
         };
         InventoryHash = null;
         DeclaredZones = registration.DeclaredZones.Distinct().ToList();
@@ -136,6 +138,12 @@ public sealed record AgentInventory
     public IReadOnlyList<NetworkInterfaceInfo> Interfaces { get; init; } = [];
     public IReadOnlyList<RouteInfo> Routes { get; init; } = [];
     public AgentResources? Resources { get; init; }
+
+    /// <summary>Source address the server saw on registration (the agent's link to the server, e.g. a management network).</summary>
+    public string? ConnectedFrom { get; init; }
+
+    /// <summary>Agent-reported raw-socket capability of its tools (null = unknown).</summary>
+    public bool? RawSockets { get; init; }
 }
 
 public sealed class EnrollmentToken

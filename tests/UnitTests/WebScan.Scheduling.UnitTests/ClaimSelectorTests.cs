@@ -30,6 +30,27 @@ public sealed class ClaimSelectorTests
         Agents.Create("a1", ["dc1"], new() { ["eth0"] = ["10.0.0.5/16"], ["eth1"] = ["10.0.0.6/16"] }, maxJobs: maxJobs, maxRate: maxRate);
 
     [Fact]
+    public void Default_route_agent_leaves_a_subnet_to_the_agent_attached_to_it_while_that_agent_is_online()
+    {
+        // Same zone (one address space): the gateway agent could reach 10.0.1.0/24 through its default route, the local agent sits in it.
+        var gateway = Agents.Create("gw", ["dc1"], new() { ["eth0"] = ["192.168.0.5/24"] }, [new RouteInfo { Destination = "0.0.0.0/0", Gateway = "192.168.0.1", InterfaceName = "eth0" }]);
+        var local = Agents.Simple("local", "dc1", "10.0.1.20/24");
+        var job = Candidate(target: "10.0.1.0/24");
+        IReadOnlyList<ClaimDecision> Claim(params AgentSnapshot[] peers) =>
+            ClaimSelector.Select(gateway, AgentReach.Build(gateway, true), [job], [], Limits, [], Options, null, 10, Now, null,
+                peers.Select(p => (p, AgentReach.Build(p, true))).ToList());
+
+        Assert.Empty(Claim(local));
+        Assert.Single(Claim(local with { IsOnline = false })); // the local agent is gone: the scan goes on through the router
+        Assert.Single(Claim(local with { ApprovedTools = [Agents.Httpx] })); // it cannot run the step itself
+        Assert.Single(Claim()); // no peers known (e.g. simulator): previous behaviour
+
+        // The attached agent itself is never held back.
+        Assert.Single(ClaimSelector.Select(local, AgentReach.Build(local, true), [job], [], Limits, [], Options, null, 10, Now, null,
+            [(gateway, AgentReach.Build(gateway, true))]));
+    }
+
+    [Fact]
     public void Agent_concurrency_counts_running_jobs()
     {
         var agent = Agents.Simple("a1", "dc1", "10.0.0.5/16", maxJobs: 3);

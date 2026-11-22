@@ -38,6 +38,8 @@ internal sealed class AgentDirectory(AgentsDbContext db, IOptions<AgentsOptions>
         ApprovedTools = a.Inventory.Tools.Where(t => usableTools.Contains(t.Id)).ToList(),
         Interfaces = a.Inventory.Interfaces,
         Routes = a.Inventory.Routes,
+        ConnectedFrom = a.Inventory.ConnectedFrom,
+        RawSockets = a.Inventory.RawSockets,
         AuthorizedZones = a.AuthorizedZones,
         AuthorizedNetworkIds = a.AuthorizedNetworkIds,
         Limits = a.EffectiveLimits,

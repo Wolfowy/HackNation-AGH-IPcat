@@ -187,6 +187,19 @@ public class FakeScannerTests
 
 public class InventoryTests
 {
+    [Theory]
+    [InlineData(null, false, false, null, null, false)]                       // macOS user without sudo
+    [InlineData(null, false, true, null, null, true)]                         // root
+    [InlineData(null, false, false, "Name:\tdotnet\nCapEff:\t0000000000002000\n", null, true)] // CAP_NET_RAW (bit 13)
+    [InlineData(null, false, false, "CapEff:\t0000000000000400\n", null, false)]
+    [InlineData(null, false, false, null, "1", true)]                         // container image: tools carry file capabilities
+    [InlineData(false, false, true, null, "1", false)]                        // operator override wins
+    public void Raw_socket_capability_is_detected(bool? configured, bool windows, bool privileged, string? procStatus, string? nmapPrivileged, bool expected) =>
+        Assert.Equal(expected, NetworkInventory.DetectRawSockets(configured, windows, privileged, procStatus, nmapPrivileged));
+
+    [Fact]
+    public void Raw_socket_capability_is_unknown_on_windows() => Assert.Null(NetworkInventory.DetectRawSockets(null, true, false, null, null));
+
     [Fact]
     public void Linux_route_tables_are_parsed()
     {

@@ -230,8 +230,49 @@ export function validateWorkflowDefinition(def: ScanWorkflowDefinition): Validat
   for (const [i, step] of (def.steps ?? []).entries())
     for (const dep of [...(step.dependsOn ?? []), ...(step.input?.fromSteps ?? [])])
       if (!ids.has(dep)) errors.push(`steps[${i}]: unknown step "${dep}" referenced`)
-  if (errors.length === 0 && dagLevels(def.steps).unresolved.length) errors.push('steps: the dependency graph contains a cycle')
+  const steps = def.steps ?? []
+  const referencesKnown = steps.every((s) => [...(s.dependsOn ?? []), ...(s.input?.fromSteps ?? [])].every((d) => ids.has(d)))
+  const acyclic = referencesKnown && dagLevels(steps).unresolved.length === 0
+  if (referencesKnown && !acyclic) errors.push('steps: the dependency graph contains a cycle')
+  // Like the server: data-flow problems are reported together with parameter errors once the graph itself is sound.
+  if (acyclic && ids.size === steps.length) errors.push(...dataFlowErrors(steps))
   return { valid: errors.length === 0, errors }
+}
+
+/** Mirrors WorkflowValidator.ValidateDataFlow: inputs need producers, endpoint steps need ports, closing steps come last. */
+function dataFlowErrors(steps: ScanWorkflowDefinition['steps']): string[] {
+  const errors: string[] = []
+  const byId = new Map(steps.map((s) => [s.id, s]))
+  const plane = (s: (typeof steps)[number]) => OPERATIONS.find((o) => o.operation === s.operation)?.plane
+  const ancestors = (id: string, seen = new Set<string>()): Set<string> => {
+    for (const dep of byId.get(id)?.dependsOn ?? []) if (!seen.has(dep)) ancestors(dep, seen.add(dep))
+    return seen
+  }
+  // `seen` guards against inputs that point at non-ancestors (the server rejects those before this check).
+  const producers = (s: (typeof steps)[number], seen = new Set<string>()): (typeof steps)[number][] =>
+    (s.input?.fromSteps ?? [])
+      .filter((id) => !seen.has(id) && seen.add(id))
+      .map((id) => byId.get(id)!)
+      .flatMap((p) => (p.operation === 'EvaluateCondition' ? producers(p, seen) : [p]))
+  const endpointProducers = ['ScanPorts', 'DetectService', 'HttpProbe', 'TlsProbe', 'ExecuteSignatures']
+  for (const s of steps.filter((x) => x.input)) {
+    for (const from of s.input!.fromSteps.map((id) => byId.get(id)!))
+      if (plane(from) !== 'Agent' && from.operation !== 'EvaluateCondition')
+        errors.push(`Step '${s.id}' reads input from '${from.id}' (${from.operation}), which produces no observations; use an agent step or EvaluateCondition.`)
+    const op = OPERATIONS.find((o) => o.operation === s.operation)
+    if (op?.inputKind === 'Endpoints' && !producers(s).some((p) => endpointProducers.includes(p.operation)))
+      errors.push(`Step '${s.id}': ${s.operation} needs endpoints (host:port), but its input only has hosts without ports; read from a step with ports (${endpointProducers.join(', ')}).`)
+  }
+  const agentSteps = steps.filter((s) => plane(s) === 'Agent').map((s) => s.id)
+  const persist = steps.filter((s) => s.operation === 'PersistObservations').map((s) => s.id)
+  for (const s of steps.filter((x) => ['PersistObservations', 'ComparePreviousScan', 'PublishFinding'].includes(x.operation))) {
+    const before = ancestors(s.id)
+    const missing = agentSteps.filter((id) => !before.has(id))
+    if (missing.length) errors.push(`Step '${s.id}' (${s.operation}) must run after every agent step; add a dependency path from: ${missing.join(', ')}.`)
+    if (s.operation !== 'PersistObservations' && !persist.some((id) => before.has(id)))
+      errors.push(`Step '${s.id}' (${s.operation}) needs a PersistObservations step before it (it records coverage and waits for all results).`)
+  }
+  return errors
 }
 
 export function validateSignatureContent(kind: SignatureKind, content: string): ValidationResult {
@@ -489,6 +530,25 @@ export const handlers = [
       audit(user, 'network.imported', 'network')
       return HttpResponse.json(result)
     }),
+  ),
+  http.get(
+    '*/api/networks/agent-subnets',
+    route('read', () =>
+      // shortcut: exact-string matching instead of the server's address-set math; enough for the fixtures.
+      HttpResponse.json(
+        db.agentSubnets.map((subnet) => {
+          const allowed = subnet.scope === 'full' || db.scopePolicy.allowed.includes(subnet.cidr)
+          const wanted = allowed && subnet.scope !== 'full' ? [subnet.cidr] : subnet.proposedRanges
+          const covering = db.networks.filter((n) => subnet.candidateZones.includes(n.zone) && n.ranges.some((r) => r === subnet.cidr || wanted.includes(r)))
+          return {
+            ...subnet,
+            scope: allowed ? 'full' : subnet.scope,
+            existingNetworks: [...new Set([...subnet.existingNetworks, ...covering.map((n) => n.name)])],
+            proposedRanges: covering.length ? [] : wanted,
+          }
+        }),
+      ),
+    ),
   ),
   http.get('*/api/networks', route('read', () => HttpResponse.json(db.networks))),
   http.get(

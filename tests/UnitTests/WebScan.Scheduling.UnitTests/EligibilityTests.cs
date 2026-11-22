@@ -32,6 +32,35 @@ public sealed class EligibilityTests
         var reach = AgentReach.Build(agent, allowDefaultRoute: true);
         Assert.Equal(["eth1"], reach.InterfacesReaching(["172.30.0.0/26"]));
         Assert.Equal(["eth0"], reach.InterfacesReaching(["10.99.0.0/24"])); // only reachable via the default route
+        Assert.True(reach.Reaching(["172.30.0.0/26"]).Direct);
+        Assert.False(reach.Reaching(["10.99.0.0/24"]).Direct);
+    }
+
+    [Fact]
+    public void Explicit_step_parameters_need_a_tool_that_supports_them()
+    {
+        var limited = Agents.Tool("tlsx-old", ToolCapabilities.TlsProbe) with { SupportedParameters = [] };
+        var agent = Agents.Simple("a1", "dc1", "10.0.0.5/16", tools: [limited]);
+        var job = new JobRequirement("dc1", Network, ToolCapabilities.TlsProbe, null, ["10.0.1.0/24"], RequiredParameters: ["rate"]);
+
+        var result = Evaluate(agent, job);
+        Assert.False(result.IsEligible);
+        Assert.Contains("supporting parameter(s) rate", result.Reason);
+        Assert.True(Evaluate(agent, job with { RequiredParameters = [] }).IsEligible); // defaults only: any tool will do
+
+        var both = agent with { ApprovedTools = [limited, Agents.Tool("nmap", ToolCapabilities.TlsProbe)] };
+        Assert.Equal("nmap", Assert.Single(Evaluate(both, job with { PreferredToolId = "tlsx-old" }).Options).ToolId);
+    }
+
+    [Fact]
+    public void Raw_socket_techniques_go_only_to_agents_that_can_use_them()
+    {
+        var job = Job(["10.0.1.0/24"]) with { NeedsRawSockets = true };
+        var agent = Agents.Simple("a1", "dc1", "10.0.0.5/16");
+        Assert.Contains("raw-socket", Evaluate(agent with { RawSockets = false }, job).Reason);
+        Assert.True(Evaluate(agent with { RawSockets = true }, job).IsEligible);
+        Assert.True(Evaluate(agent, job).IsEligible); // unknown (older agent): allowed
+        Assert.True(Evaluate(agent with { RawSockets = false }, job with { NeedsRawSockets = false }).IsEligible);
     }
 
     [Fact]

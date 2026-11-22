@@ -57,6 +57,7 @@ public sealed class AgentRegistrar(
             DeclaredZones = [.. o.DeclaredZones],
             Resources = NetworkInventory.Resources(),
             Limits = new AgentLimits { MaxConcurrentJobs = o.MaxConcurrentJobs, MaxRatePerSecond = o.MaxRatePerSecond },
+            RawSockets = NetworkInventory.RawSockets(o.RawSockets),
         };
     }
 
