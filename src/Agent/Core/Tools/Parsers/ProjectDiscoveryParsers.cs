@@ -140,7 +140,9 @@ public sealed class HttpxJsonlParser : IToolOutputParser
     /// <summary>Requested URL, the (resolved) <c>Location</c> it pointed to and the final URL; empty when nothing redirected.</summary>
     private static IReadOnlyList<string> RedirectChain(string url, string? location, string? finalUrl)
     {
-        var next = location is not null && Uri.TryCreate(new Uri(url), location, out var resolved) ? resolved.ToString() : location;
+        var next = location is not null && Uri.TryCreate(url, UriKind.Absolute, out var requested) && Uri.TryCreate(requested, location, out var resolved)
+            ? resolved.ToString()
+            : location;
         List<string> chain = [url, .. new[] { next, finalUrl }.OfType<string>()];
         return chain.Distinct(StringComparer.Ordinal).ToList() is { Count: > 1 } distinct ? distinct : [];
     }
