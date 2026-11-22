@@ -60,9 +60,21 @@ public sealed class WorkflowDefinitionStore(WorkflowsDbContext db, TimeProvider 
     public async Task EnsureSeededAsync(CancellationToken ct = default)
     {
         var standard = StandardWorkflows.StandardDiscovery;
-        if (!await db.Definitions.AnyAsync(d => d.Key == standard.Key, ct))
+        var latest = await db.Definitions.AsNoTracking().Where(d => d.Key == standard.Key).OrderByDescending(d => d.Version).FirstOrDefaultAsync(ct);
+        if (latest is null)
+        {
             await InsertAsync(standard, 1, "system", ct);
+            return;
+        }
+        // An updated built-in reaches existing databases as a new version, unless someone already saved their own newer version.
+        if (latest.CreatedBy != SystemUser) return;
+        // Compared after a round trip: the stored jsonb does not keep the serializer's formatting.
+        string Canonical(ScanWorkflowDefinition d) => JsonSerializer.Serialize(WorkflowValidator.Normalize(d) with { Version = 0 }, ContractJson.Options);
+        var stored = JsonSerializer.Deserialize<ScanWorkflowDefinition>(latest.DefinitionJson, ContractJson.Options)!;
+        if (Canonical(standard) != Canonical(stored)) await InsertAsync(standard, latest.Version + 1, SystemUser, ct);
     }
+
+    private const string SystemUser = "system";
 
     private async Task<SaveResult> InsertAsync(ScanWorkflowDefinition definition, int version, string createdBy, CancellationToken ct)
     {

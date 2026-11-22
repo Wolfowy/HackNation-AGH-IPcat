@@ -1,23 +1,29 @@
+using System.Globalization;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using WebScan.Contracts;
 using WebScan.Server.Kernel.Discovery;
 using WebScan.Server.Kernel.Ports;
+using WebScan.Server.Kernel.Scanning;
 using WebScan.Server.Modules.Discovery.Domain;
 using WebScan.Server.Modules.Discovery.Normalization;
 using WebScan.Server.Modules.Discovery.Persistence;
 
 namespace WebScan.Server.Modules.Discovery.Api;
 
-public sealed record HostQuery(string? Search, HostStatus? Status, string? Zone, bool NetworkDevice = false);
-public sealed record ServiceQuery(int? Port, string? ServiceName, string? Search, string? Zone = null);
+/// <param name="Sort">"interest" = highest interest score first; default zone/address order.</param>
+/// <param name="MinInterest">Only hosts whose interest score is at least this.</param>
+public sealed record HostQuery(string? Search, HostStatus? Status, string? Zone, bool NetworkDevice = false, string? Sort = null, int? MinInterest = null);
+/// <param name="Sort">"interest" = highest interest score first; default zone/address/port order.</param>
+/// <param name="MinInterest">Only services whose interest score is at least this.</param>
+public sealed record ServiceQuery(int? Port, string? ServiceName, string? Search, string? Zone = null, string? Sort = null, int? MinInterest = null);
 public sealed record ChangeQuery(DateTimeOffset? Since, AssetChangeType? Type, Guid? HostId, Guid? ScanRunId, string? Zone = null);
 /// <param name="Severity">Matches the effective severity (user override, else detected).</param>
 public sealed record FindingQuery(string? Severity, FindingStatus? Status, string? Zone = null, FindingTriage? Triage = null);
 public sealed record TopologyQuery(string? Zone, string? Search);
 
 /// <summary>Read models of the current-state tables, shared by the list and export endpoints.</summary>
-internal sealed class AssetQueries(DiscoveryDbContext db)
+internal sealed class AssetQueries(DiscoveryDbContext db, TimeProvider time)
 {
     public const int MaxPageSize = 500;
 
@@ -42,17 +48,39 @@ internal sealed class AssetQueries(DiscoveryDbContext db)
             q = q.Where(h => deviceHosts.Contains(h.Id));
         }
 
+        q = q.OrderBy(h => h.Zone).ThenBy(h => h.Address);
+        if (ByInterest(query.Sort, query.MinInterest))
+        {
+            // shortcut: the score is computed, not stored, so ranking loads every matching host (capped); persist scores if this gets slow.
+            var all = await q.Take(MaxExportRows).ToListAsync(ct);
+            var (_, scores) = await InterestAsync(all.Select(h => h.Id).ToList(), null, ct);
+            var ranked = Rank(all, h => scores[h.Id].Score, query.Sort, query.MinInterest);
+            return new PagedResult<HostListItemDto>(await ToHostItemsAsync(ranked.Skip((page - 1) * pageSize).Take(pageSize).ToList(), ct, scores),
+                ranked.Count, page, pageSize);
+        }
+
         var total = await q.CountAsync(ct);
-        var hosts = await q.OrderBy(h => h.Zone).ThenBy(h => h.Address).Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(ct);
+        var hosts = await q.Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(ct);
         return new PagedResult<HostListItemDto>(await ToHostItemsAsync(hosts, ct), total, page, pageSize);
+    }
+
+    private static bool ByInterest(string? sort, int? minInterest) => string.Equals(sort, "interest", StringComparison.OrdinalIgnoreCase) || minInterest > 0;
+
+    /// <summary>Filters by <paramref name="minInterest"/>; sorts by score (stable, keeps the default order on ties) when asked to.</summary>
+    private static List<T> Rank<T>(List<T> items, Func<T, int> score, string? sort, int? minInterest)
+    {
+        var kept = items.Where(i => score(i) >= (minInterest ?? 0));
+        return (string.Equals(sort, "interest", StringComparison.OrdinalIgnoreCase) ? kept.OrderByDescending(score) : kept).ToList();
     }
 
     public async Task<HostDetailDto?> HostAsync(Guid id, CancellationToken ct)
     {
         var host = await db.Hosts.AsNoTracking().FirstOrDefaultAsync(h => h.Id == id, ct);
         if (host is null) return null;
-        var item = (await ToHostItemsAsync([host], ct))[0];
-        var services = await ToServiceDtosAsync(await db.Services.AsNoTracking().Where(s => s.HostId == id).OrderBy(s => s.Port).ToListAsync(ct), ct);
+        var hostServices = await db.Services.AsNoTracking().Where(s => s.HostId == id).OrderBy(s => s.Port).ToListAsync(ct);
+        var (serviceScores, hostScores) = await InterestAsync([id], hostServices, ct);
+        var item = (await ToHostItemsAsync([host], ct, hostScores))[0];
+        var services = await ToServiceDtosAsync(hostServices, ct, serviceScores);
         var technologies = await db.Technologies.AsNoTracking().Where(t => t.HostId == id).OrderBy(t => t.Port).ThenBy(t => t.Name).ToListAsync(ct);
         var certificates = await db.Certificates.AsNoTracking().Where(c => c.HostId == id).OrderByDescending(c => c.LastSeenAt).ToListAsync(ct);
         var findings = await db.SignatureMatches.AsNoTracking().Where(m => m.HostId == id).OrderByDescending(m => m.MatchedAt).ToListAsync(ct);
@@ -62,7 +90,9 @@ internal sealed class AssetQueries(DiscoveryDbContext db)
             host.LastScannedAt, item.OpenPortCount, host.Zone, item.Annotation, item.Classifications, host.MacAddress, host.MacVendor,
             host.OsGuess, host.ConsecutiveMisses, host.StateChangeCount, services, technologies.Select(t => t.ToDto()).ToList(),
             certificates.Select(c => c.ToDto()).ToList(), findings.Select(f => f.ToDto()).ToList(), changes.Select(c => c.ToDto()).ToList(),
-            item.NetworkDevice, item.NetworkDeviceConfidence, device?.Interfaces.Where(i => i.HostId != id).ToList() ?? []);
+            item.NetworkDevice, item.NetworkDeviceConfidence, device?.Interfaces.Where(i => i.HostId != id).ToList() ?? [],
+            Enumerable.Range(0, 24).Select(h => new HourVisibilityDto(h, host.HourlySeen.ElementAtOrDefault(h), host.HourlyMissed.ElementAtOrDefault(h))).ToList(),
+            item.InterestScore, item.InterestReasons ?? []);
     }
 
     public async Task<PagedResult<ServiceDto>> ServicesAsync(ServiceQuery query, int page, int pageSize, CancellationToken ct)
@@ -82,8 +112,19 @@ internal sealed class AssetQueries(DiscoveryDbContext db)
         }
         if (!string.IsNullOrWhiteSpace(query.Zone)) q = q.Where(s => s.Zone == query.Zone);
 
+        q = q.OrderBy(s => s.Zone).ThenBy(s => s.Address).ThenBy(s => s.Port);
+        if (ByInterest(query.Sort, query.MinInterest))
+        {
+            // shortcut: computed score, so ranking loads every matching service (capped); persist scores if this gets slow.
+            var all = await q.Take(MaxExportRows).ToListAsync(ct);
+            var (scores, _) = await InterestAsync(all.Select(s => s.HostId).Distinct().ToList(), all, ct);
+            var ranked = Rank(all, s => scores[s.Id].Score, query.Sort, query.MinInterest);
+            return new PagedResult<ServiceDto>(await ToServiceDtosAsync(ranked.Skip((page - 1) * pageSize).Take(pageSize).ToList(), ct, scores),
+                ranked.Count, page, pageSize);
+        }
+
         var total = await q.CountAsync(ct);
-        var services = await q.OrderBy(s => s.Zone).ThenBy(s => s.Address).ThenBy(s => s.Port).Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(ct);
+        var services = await q.Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(ct);
         return new PagedResult<ServiceDto>(await ToServiceDtosAsync(services, ct), total, page, pageSize);
     }
 
@@ -246,8 +287,9 @@ internal sealed class AssetQueries(DiscoveryDbContext db)
             await db.ProcessedBatches.MaxAsync(b => (DateTimeOffset?)b.ProcessedAt, ct));
     }
 
-    private async Task<List<HostListItemDto>> ToHostItemsAsync(List<Host> hosts, CancellationToken ct)
+    private async Task<List<HostListItemDto>> ToHostItemsAsync(List<Host> hosts, CancellationToken ct, Dictionary<Guid, InterestScore>? scores = null)
     {
+        scores ??= (await InterestAsync(hosts.Select(h => h.Id).ToList(), null, ct)).Hosts;
         var ids = hosts.Select(h => h.Id).ToList();
         var addresses = hosts.Select(h => h.Address).ToList();
         var openPorts = await db.Services.Where(s => ids.Contains(s.HostId) && s.State == ServiceState.Open)
@@ -267,7 +309,8 @@ internal sealed class AssetQueries(DiscoveryDbContext db)
         return hosts.Select(h => new HostListItemDto(h.Id, h.Address, h.Hostnames, h.Status, h.Unstable, h.FirstSeenAt, h.LastSeenAt,
             h.LastScannedAt, openPorts.GetValueOrDefault(h.Id), technologies[h.Id].Distinct().Order().ToList(), h.Zone,
             annotations.GetValueOrDefault((h.Zone, h.Address)).ToDto(), classifications[h.Id].Concat(deviceTypes[h.Id]).Distinct().Order().ToList(), h.MacAddress, h.MacVendor,
-            devices.ContainsKey(h.Id), devices.GetValueOrDefault(h.Id)?.Confidence)).ToList();
+            devices.ContainsKey(h.Id), devices.GetValueOrDefault(h.Id)?.Confidence,
+            scores.GetValueOrDefault(h.Id, InterestScore.None).Score, scores.GetValueOrDefault(h.Id, InterestScore.None).Reasons)).ToList();
     }
 
     /// <summary>
@@ -291,7 +334,7 @@ internal sealed class AssetQueries(DiscoveryDbContext db)
         return Topology.InferDevices(rows);
     }
 
-    private async Task<List<ServiceDto>> ToServiceDtosAsync(List<Service> services, CancellationToken ct)
+    private async Task<List<ServiceDto>> ToServiceDtosAsync(List<Service> services, CancellationToken ct, Dictionary<Guid, InterestScore>? scores = null)
     {
         var ids = services.Select(s => s.Id).ToList();
         var technologies = (await db.Technologies.Where(t => t.ServiceId != null && ids.Contains(t.ServiceId.Value))
@@ -302,18 +345,117 @@ internal sealed class AssetQueries(DiscoveryDbContext db)
         var addresses = services.Select(s => s.Address).Distinct().ToList();
         var annotations = await db.ServiceAnnotations.AsNoTracking().Where(a => addresses.Contains(a.Address))
             .ToDictionaryAsync(a => (a.Zone, a.Address, a.Port, a.Transport), ct);
+        scores ??= (await InterestAsync(services.Select(s => s.HostId).Distinct().ToList(), services, ct)).Services;
+        var hours = await HourlyResponsesAsync(services.Where(s => s.TimeOfDayVariance).Select(s => s.Id).ToList(), ct);
 
         return services.Select(s =>
         {
             var cert = s.CurrentCertFingerprint is { } fp ? certificates.GetValueOrDefault((s.Id, fp)) : null;
+            var interest = scores.GetValueOrDefault(s.Id, InterestScore.None);
             return new ServiceDto(s.Id, s.HostId, s.Address, s.Port, s.Transport, s.State, s.ServiceName, s.Product, s.Version, s.Banner, s.Cpe,
                 s.HttpUrl is null ? null : new HttpInfoDto(s.HttpUrl, s.HttpStatusCode, s.HttpTitle, s.HttpWebServer),
                 cert is null ? null : new TlsInfoDto(cert.SubjectCommonName, cert.Issuer, cert.NotAfter, cert.FingerprintSha256),
                 technologies[s.Id].Distinct().Order().ToList(), s.Confidence, s.ConfidenceMethod, s.TimeOfDayVariance, s.FirstSeenAt, s.LastSeenAt,
                 Topology.ServiceUrl(s.Address, s.Port, s.ServiceName, s.Tunnel, s.HttpUrl, s.CurrentCertFingerprint is not null), s.Zone,
                 annotations.GetValueOrDefault((s.Zone, s.Address, s.Port, s.Transport)).ToDto(),
-                s.Artifacts.Count, s.Artifacts.SelectMany(a => a.Tags).Distinct().Order(StringComparer.Ordinal).ToList(), s.DeviceType);
+                s.Artifacts.Count, s.Artifacts.SelectMany(a => a.Tags).Distinct().Order(StringComparer.Ordinal).ToList(), s.DeviceType,
+                interest.Score, interest.Reasons, hours.GetValueOrDefault(s.Id));
         }).ToList();
+    }
+
+    /// <summary>Per UTC hour: HTTP observations (all paths) and the most frequent response of that hour, from the hourly snapshots.</summary>
+    private async Task<Dictionary<Guid, IReadOnlyList<HourVisibilityDto>>> HourlyResponsesAsync(List<Guid> serviceIds, CancellationToken ct)
+    {
+        if (serviceIds.Count == 0) return [];
+        var snapshots = await db.HttpSnapshots.AsNoTracking().Where(s => serviceIds.Contains(s.ServiceId))
+            .Select(s => new { s.ServiceId, s.HourBucket, s.ObservationCount, s.StatusCode, s.Title, s.WebServer }).ToListAsync(ct);
+        return snapshots.GroupBy(s => s.ServiceId).ToDictionary(g => g.Key, g => (IReadOnlyList<HourVisibilityDto>)g.GroupBy(s => s.HourBucket)
+            .Select(h =>
+            {
+                var top = h.MaxBy(s => s.ObservationCount)!;
+                return new HourVisibilityDto(h.Key, h.Sum(s => s.ObservationCount), 0, $"{top.StatusCode} '{top.Title}' {top.WebServer}".Trim());
+            })
+            .OrderBy(h => h.Hour).ToList());
+    }
+
+    /// <summary>
+    /// Interest scores of <paramref name="services"/> (null = the open services of the hosts) and of the hosts: the max of their open
+    /// services and their host-level signals (findings without a port, unstable, new).
+    /// </summary>
+    private async Task<(Dictionary<Guid, InterestScore> Services, Dictionary<Guid, InterestScore> Hosts)> InterestAsync(
+        List<Guid> hostIds, List<Service>? services, CancellationToken ct)
+    {
+        services ??= await db.Services.AsNoTracking().Where(s => hostIds.Contains(s.HostId) && s.State == ServiceState.Open).ToListAsync(ct);
+        var serviceIds = services.Select(s => s.Id).ToList();
+        var hosts = await db.Hosts.AsNoTracking().Where(h => hostIds.Contains(h.Id))
+            .Select(h => new { h.Id, h.Unstable, h.FirstSeenAt, h.FirstSeenRunId }).ToDictionaryAsync(h => h.Id, ct);
+        var findings = (await db.SignatureMatches.AsNoTracking().Where(InterestScorer.CountsFinding).Where(m => hostIds.Contains(m.HostId))
+            .Select(m => new { m.HostId, m.ServiceId, m.Severity, m.SeverityOverride, m.Name, m.Source, m.ClassificationTag }).ToListAsync(ct)).ToLookup(m => m.ServiceId ?? m.HostId);
+        var versions = (await db.Technologies.AsNoTracking().Where(t => t.ServiceId != null && t.Version != null && serviceIds.Contains(t.ServiceId.Value))
+            .Select(t => new { t.ServiceId, t.Name, t.Version }).ToListAsync(ct)).ToLookup(t => t.ServiceId!.Value, t => $"{t.Name} {t.Version}");
+        var fingerprints = services.Select(s => s.CurrentCertFingerprint).OfType<string>().ToList();
+        var certificates = (await db.Certificates.AsNoTracking().Where(c => serviceIds.Contains(c.ServiceId) && fingerprints.Contains(c.FingerprintSha256))
+            .Select(c => new { c.ServiceId, c.FingerprintSha256, c.SelfSigned, c.NotAfter }).ToListAsync(ct)).ToDictionary(c => (c.ServiceId, c.FingerprintSha256));
+        var lastRun = await db.Runs.AsNoTracking().Where(r => r.ComparedAt != null).OrderByDescending(r => r.ComparedAt)
+            .Select(r => (Guid?)r.ScanRunId).FirstOrDefaultAsync(ct);
+        var now = time.GetUtcNow();
+
+        // Findings keyed by service id, host-level ones (no service) by host id.
+        InterestInput Base(Guid key, Guid hostId, DateTimeOffset firstSeen, Guid firstRun) => new()
+        {
+            Findings = findings[key].Where(f => f.Source != SignatureMatch.ClassificationSource).Select(f => (f.SeverityOverride ?? f.Severity, f.Name)).ToList(),
+            Classifications = findings[key].Select(f => f.ClassificationTag).OfType<string>().ToList(),
+            NewInLastRun = firstRun == lastRun, FirstSeenAt = firstSeen, HostUnstable = hosts.GetValueOrDefault(hostId)?.Unstable == true,
+        };
+
+        var serviceScores = services.ToDictionary(s => s.Id, s =>
+        {
+            var cert = s.CurrentCertFingerprint is { } fp ? certificates.GetValueOrDefault((s.Id, fp)) : null;
+            return InterestScorer.Score(Base(s.Id, s.HostId, s.FirstSeenAt, s.FirstSeenRunId) with
+            {
+                Port = s.Port, ServiceName = s.ServiceName, Http = s.HttpUrl is not null || Topology.IsWebName(s.ServiceName),
+                VersionedTechnologies = versions[s.Id].Distinct().Order().ToList(), SelfSigned = cert?.SelfSigned, CertNotAfter = cert?.NotAfter,
+                TimeOfDayVariance = s.TimeOfDayVariance,
+                Extra = InterestScorer.ArtifactExtras(s.Artifacts.SelectMany(a => a.Tags), s.DeviceType),
+            }, now);
+        });
+        var openByHost = services.Where(s => s.State == ServiceState.Open).ToLookup(s => s.HostId, s => serviceScores[s.Id]);
+        var hostScores = hosts.Values.ToDictionary(h => h.Id, h => openByHost[h.Id]
+            .Append(InterestScorer.Score(Base(h.Id, h.Id, h.FirstSeenAt, h.FirstSeenRunId), now)).MaxBy(s => s.Score)!);
+        return (serviceScores, hostScores);
+    }
+
+    /// <summary>Dashboard insights: top findings and services, changes per day, recent scans (passed in by the endpoint from Scanning).</summary>
+    public async Task<DashboardInsightsDto> InsightsAsync(DateTimeOffset now, int days, IReadOnlyList<ScanRunSummary> scans, CancellationToken ct)
+    {
+        const int top = 10;
+        var findings = await db.SignatureMatches.AsNoTracking().Where(InterestScorer.CountsFinding)
+            .OrderByDescending(m => (m.SeverityOverride ?? m.Severity) == "critical" ? 4 : (m.SeverityOverride ?? m.Severity) == "high" ? 3
+                : (m.SeverityOverride ?? m.Severity) == "medium" ? 2 : (m.SeverityOverride ?? m.Severity) == "low" ? 1 : 0)
+            .ThenByDescending(m => m.MatchedAt).Take(top).ToListAsync(ct);
+
+        // shortcut: scores every open service in memory; persist the score (or pre-filter candidates) if services grow beyond ~10^5.
+        var open = await db.Services.AsNoTracking().Where(s => s.State == ServiceState.Open).ToListAsync(ct);
+        var (scores, _) = await InterestAsync(open.Select(s => s.HostId).Distinct().ToList(), open, ct);
+        var topServices = open.Where(s => scores[s.Id].Score > 0).OrderByDescending(s => scores[s.Id].Score).ThenByDescending(s => s.FirstSeenAt)
+            .Take(top).ToList();
+
+        var firstDay = new DateTimeOffset(now.UtcDateTime.Date, TimeSpan.Zero).AddDays(1 - days);
+        var changes = (await db.Changes.AsNoTracking().Where(c => c.DetectedAt >= firstDay).Select(c => new { c.DetectedAt, c.Type }).ToListAsync(ct))
+            .ToLookup(c => c.DetectedAt.UtcDateTime.Date);
+        var byDay = Enumerable.Range(0, days).Select(i => firstDay.AddDays(i).UtcDateTime.Date).Select(day => new ChangeDayDto(
+            day.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), changes[day].Count(),
+            changes[day].GroupBy(c => c.Type.ToString()).ToDictionary(g => g.Key, g => g.Count()))).ToList();
+
+        var scanIds = scans.Select(s => s.Id).ToList();
+        var compared = await db.Runs.AsNoTracking().Where(r => scanIds.Contains(r.ScanRunId)).ToDictionaryAsync(r => r.ScanRunId, r => r.ChangesDetected, ct);
+        var recent = scans.Select(s => new RecentScanDto(s.Id, s.Name, s.Status, s.WorkflowKey, s.CreatedAt, s.StartedAt, s.FinishedAt,
+            s.StartedAt is { } started && s.FinishedAt is { } finished ? (finished - started).TotalSeconds : null, s.CoverageComplete,
+            compared.GetValueOrDefault(s.Id))).ToList();
+
+        return new DashboardInsightsDto(findings.Select(f => f.ToDto()).ToList(), await ToServiceDtosAsync(topServices, ct, scores), byDay, recent,
+            await db.Hosts.CountAsync(h => h.Unstable && h.Status != HostStatus.Gone, ct),
+            await db.Services.CountAsync(s => s.TimeOfDayVariance && s.State == ServiceState.Open, ct));
     }
 
     private static string Like(string search) =>

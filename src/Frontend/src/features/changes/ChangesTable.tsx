@@ -1,13 +1,26 @@
 import { Link } from 'react-router'
-import type { Change } from '@/api/types'
+import { Clock } from 'lucide-react'
+import type { Change, ChangeType } from '@/api/types'
 import { TargetLink } from '@/components/EndpointLink'
 import { EmptyState } from '@/components/feedback'
 import { StatusBadge } from '@/components/page'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { formatDateTime } from '@/lib/format'
+import { cn } from '@/lib/utils'
 
 const show = (v: unknown) => (v === undefined || v === null ? '' : typeof v === 'string' ? v : JSON.stringify(v))
+
+/** Change type; time-of-day variance stands out (it explains "flapping" HTTP responses instead of reporting each one). */
+export function ChangeTypeBadge({ type }: { type: ChangeType }) {
+  return type === 'TimeOfDayVariance' ? (
+    <Badge variant="warning" title="Responses differ consistently by hour of day; repeated HTTP changes are suppressed">
+      <Clock /> Time of day
+    </Badge>
+  ) : (
+    <Badge variant="outline">{type}</Badge>
+  )
+}
 
 export function ChangesTable({ changes }: { changes: Change[] }) {
   if (changes.length === 0) return <EmptyState>No changes.</EmptyState>
@@ -29,7 +42,7 @@ export function ChangesTable({ changes }: { changes: Change[] }) {
           <TableRow key={c.id} data-testid="change-row">
             <TableCell className="text-muted-foreground whitespace-nowrap">{formatDateTime(c.detectedAt)}</TableCell>
             <TableCell>
-              <Badge variant="outline">{c.type}</Badge>
+              <ChangeTypeBadge type={c.type} />
             </TableCell>
             <TableCell>
               <StatusBadge status={c.severity} />
@@ -38,7 +51,10 @@ export function ChangesTable({ changes }: { changes: Change[] }) {
               <TargetLink hostId={c.hostId} address={c.address} port={c.port} />
             </TableCell>
             <TableCell>{c.summary}</TableCell>
-            <TableCell className="max-w-72 truncate font-mono text-xs" title={`${show(c.before)} → ${show(c.after)}`}>
+            <TableCell
+              className={cn('max-w-72 font-mono text-xs', c.type === 'TimeOfDayVariance' ? 'whitespace-normal' : 'truncate')}
+              title={`${show(c.before)} → ${show(c.after)}`}
+            >
               {c.before !== undefined || c.after !== undefined ? `${show(c.before) || '∅'} → ${show(c.after) || '∅'}` : ''}
             </TableCell>
             <TableCell>

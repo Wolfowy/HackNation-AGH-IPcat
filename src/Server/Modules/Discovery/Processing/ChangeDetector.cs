@@ -100,7 +100,15 @@ internal sealed class ChangeDetector(DiscoveryDbContext db, Guid runId, Coverage
         host.StateHistory = history.Length > Host.StateHistoryLength ? history[^Host.StateHistoryLength..] : history;
         var transitions = Enumerable.Range(1, host.StateHistory.Length - 1).Count(i => host.StateHistory[i] != host.StateHistory[i - 1]);
         host.Unstable = transitions >= options.FlapTransitions;
+
+        var hour = now.UtcDateTime.Hour;
+        host.HourlySeen = Hourly(host.HourlySeen, outcome == 'U' ? hour : -1);
+        host.HourlyMissed = Hourly(host.HourlyMissed, outcome == 'D' ? hour : -1);
     }
+
+    /// <summary>24 per-hour counters (padded), <paramref name="hour"/> incremented; a new list so EF sees the change.</summary>
+    private static List<int> Hourly(List<int> counts, int hour) =>
+        Enumerable.Range(0, 24).Select(h => counts.ElementAtOrDefault(h) + (h == hour ? 1 : 0)).ToList();
 
     private HashSet<Guid> DetectServices(List<Service> services, Dictionary<Guid, Host> hosts, HashSet<(string, string, int, TransportProtocol)> tlsEndpoints,
         List<Certificate> certificates, HashSet<Guid> goneHosts)

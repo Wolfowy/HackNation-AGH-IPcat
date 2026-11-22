@@ -62,6 +62,25 @@ public interface IDiscoveryRunProcessor
     Task<CompareRunResult> CompareWithPreviousAsync(Guid scanRunId, int missingThreshold, CancellationToken ct = default);
 }
 
+/// <summary>RecheckMissing: what the current run did not observe although it was known before (Discovery module).</summary>
+public interface IRecheckTargetSource
+{
+    /// <summary>
+    /// Waits for pending ingestion of the run, then returns known hosts (not Gone) and open endpoints that the run has not
+    /// observed and whose miss would count (<paramref name="coverage"/> complete, covering, operation executed). Unstable hosts
+    /// are always included (also when Gone or not covered) and come first. Entries already observed by the run are excluded.
+    /// </summary>
+    Task<RecheckTargets> FindRecheckTargetsAsync(Guid scanRunId, RunCoverage coverage, CancellationToken ct = default);
+}
+
+/// <param name="Hosts">Addresses to re-probe with host discovery, unstable hosts first.</param>
+/// <param name="Endpoints">Known open endpoints to re-probe with a port scan.</param>
+/// <param name="UnstableHosts">How many of <paramref name="Hosts"/> are unstable.</param>
+public sealed record RecheckTargets(IReadOnlyList<string> Hosts, IReadOnlyList<ScanEndpoint> Endpoints, int UnstableHosts)
+{
+    public static readonly RecheckTargets None = new([], [], 0);
+}
+
 public sealed record PersistRunResult(int HostsUpdated, int ServicesUpdated, int ObservationsTotal);
 
 public sealed record CompareRunResult(int ChangesDetected, IReadOnlyDictionary<string, int> ChangesByType);

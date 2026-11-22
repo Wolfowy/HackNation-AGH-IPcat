@@ -253,6 +253,7 @@ export const SCAN_OPERATIONS = [
   'PersistObservations',
   'ComparePreviousScan',
   'PublishFinding',
+  'RecheckMissing',
 ] as const
 export type ScanOperation = (typeof SCAN_OPERATIONS)[number]
 export type OperationPlane = 'Agent' | 'Server'
@@ -628,6 +629,48 @@ export interface DashboardSummary {
   lastScanAt?: Instant
 }
 
+/** GET /api/dashboard/insights — what deserves attention, in one call. */
+export interface DashboardInsights {
+  /** Open findings, highest severity first, then most recent. */
+  topFindings: Finding[]
+  /** Open services with the highest interest score (with reasons). */
+  topServices: Service[]
+  /** Every UTC day of the window, oldest first (days without changes included). */
+  changesByDay: ChangeDay[]
+  recentScans: RecentScan[]
+  unstableHosts: number
+  timeOfDayVarianceServices: number
+}
+
+export interface ChangeDay {
+  /** yyyy-MM-dd (UTC) */
+  date: string
+  total: number
+  byType: Partial<Record<ChangeType, number>>
+}
+
+export interface RecentScan {
+  id: Guid
+  name: string
+  status: ScanRunStatus
+  workflowKey: string
+  createdAt: Instant
+  startedAt?: Instant
+  finishedAt?: Instant
+  durationSeconds?: number
+  coverageComplete: boolean
+  /** Changes found by the run's comparison (absent: not compared). */
+  changesDetected?: number
+}
+
+/** One UTC hour of day: covering scans that saw / missed the asset; for HTTP services the usual response in that hour. */
+export interface HourVisibility {
+  hour: number
+  seen: number
+  missed: number
+  response?: string
+}
+
 export type HostStatus = 'Active' | 'Unreachable' | 'Gone' | 'Unknown'
 export const HOST_STATUSES: HostStatus[] = ['Active', 'Unreachable', 'Gone', 'Unknown']
 
@@ -661,6 +704,9 @@ export interface Host {
   /** 'low' when the MAC is locally administered (e.g. Docker/VM 02:42:…) and may repeat by coincidence. */
   networkDeviceConfidence?: DeviceConfidence
   annotation?: AssetAnnotation
+  /** Analytical priority 0–100 (max over the host's services) and the reasons behind it. */
+  interestScore?: number
+  interestReasons?: string[]
 }
 
 export interface HostTechnology {
@@ -691,6 +737,8 @@ export interface HostDetail extends Host {
   certificates: Certificate[]
   findings: Finding[]
   recentChanges: Change[]
+  /** 24 UTC hours: how often covering scans saw / missed the host at that hour. */
+  hourlyVisibility?: HourVisibility[]
 }
 
 export interface Service {
@@ -719,6 +767,13 @@ export interface Service {
   artifactTags?: string[]
   /** recog device classification, e.g. 'IP Camera', 'Printer', 'Router', 'NAS'. */
   deviceType?: string
+  /** Responses differ consistently by hour of day (e.g. maintenance page at night). */
+  timeOfDayVariance?: boolean
+  /** For services with time-of-day variance: observed HTTP responses per UTC hour. */
+  hourlyResponses?: HourVisibility[]
+  /** Analytical priority 0–100 and the reasons behind it (highest weight first). */
+  interestScore?: number
+  interestReasons?: string[]
 }
 
 export const CRITICALITIES = ['low', 'medium', 'high', 'critical'] as const

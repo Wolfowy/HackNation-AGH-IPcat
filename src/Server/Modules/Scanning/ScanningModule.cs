@@ -38,6 +38,7 @@ public static class ScanningModule
         services.AddScoped<JobQueue>();
         services.AddScoped<ScanRunStore>();
         services.AddScoped<IScanRunStatusReader, ScanRunStatusReader>();
+        services.AddScoped<IRecentScanRunReader, ScanRunStatusReader>();
         services.AddScoped<IRunBatchCatalog, RunBatchCatalog>();
         services.AddSingleton<LeaseSweeper>();
         services.AddHostedService<LeaseSweeperService>();

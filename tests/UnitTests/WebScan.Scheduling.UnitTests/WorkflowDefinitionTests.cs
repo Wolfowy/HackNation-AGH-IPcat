@@ -64,6 +64,22 @@ public sealed class WorkflowValidatorTests
     }
 
     [Fact]
+    public void RecheckMissing_runs_after_every_other_agent_step_and_takes_no_input()
+    {
+        var errors = WorkflowValidator.Validate(Workflow(
+            new() { Id = "discover", Operation = ScanOperation.DiscoverHosts },
+            new() { Id = "recheck", Operation = ScanOperation.RecheckMissing, DependsOn = ["discover"], Input = new StepInput { FromSteps = ["discover"] } },
+            new() { Id = "ports", Operation = ScanOperation.ScanPorts, DependsOn = ["discover"], Input = new StepInput { FromSteps = ["discover"] } },
+            new() { Id = "persist", Operation = ScanOperation.PersistObservations, DependsOn = ["recheck", "ports"] }));
+        Assert.Contains(errors, e => e.Contains("'recheck' (RecheckMissing) must run after every other agent step") && e.Contains("ports"));
+        Assert.Contains(errors, e => e.Contains("'recheck'") && e.Contains("input is not allowed"));
+
+        var bad = WorkflowValidator.Validate(Workflow(
+            new WorkflowStep { Id = "recheck", Operation = ScanOperation.RecheckMissing, Parameters = new Dictionary<string, string> { ["attempts"] = "9" } }));
+        Assert.Contains(bad, e => e.Contains("attempts"));
+    }
+
+    [Fact]
     public void Cycles_are_rejected()
     {
         var errors = WorkflowValidator.Validate(Workflow(
@@ -263,7 +279,7 @@ public sealed class DagAndInputTests
     public void Ancestors_are_transitive()
     {
         var ancestors = DagScheduler.Ancestors(StandardWorkflows.StandardDiscovery.Steps, "persist");
-        Assert.Equal(["discover", "http", "ports", "services", "signatures", "tls"], ancestors.Order());
+        Assert.Equal(["discover", "http", "ports", "recheck", "services", "signatures", "tls"], ancestors.Order());
     }
 
     [Fact]

@@ -89,6 +89,41 @@ public sealed class WorkflowRuntimeTests(TestHost host) : DbTestBase(host)
     }
 
     [Fact]
+    public async Task Built_in_workflow_updates_reach_existing_databases_unless_a_user_saved_a_newer_version()
+    {
+        var key = StandardWorkflows.StandardDiscoveryKey;
+        Task<List<WorkflowDefinitionRecord>> Versions() => Host.WithScopeAsync(sp =>
+            sp.GetRequiredService<WorkflowsDbContext>().Definitions.AsNoTracking().Where(d => d.Key == key).OrderBy(d => d.Version).ToListAsync());
+        Task Seed() => Host.WithScopeAsync(sp => sp.GetRequiredService<WorkflowDefinitionStore>().EnsureSeededAsync());
+        async Task Add(ScanWorkflowDefinition definition, string by) => await Host.WithScopeAsync(async sp =>
+        {
+            var db = sp.GetRequiredService<WorkflowsDbContext>();
+            var version = await db.Definitions.Where(d => d.Key == key).MaxAsync(d => d.Version) + 1;
+            db.Definitions.Add(new WorkflowDefinitionRecord
+            {
+                Key = key, Version = version, Name = definition.Name, CreatedAt = DateTimeOffset.UtcNow, CreatedBy = by,
+                DefinitionJson = System.Text.Json.JsonSerializer.Serialize(WorkflowValidator.Normalize(definition) with { Version = version }, ContractJson.Options),
+            });
+            await db.SaveChangesAsync();
+        });
+
+        // An older built-in (here: without the last step) seeded by the system is upgraded to the current built-in once.
+        var builtIn = StandardWorkflows.StandardDiscovery;
+        await Add(builtIn with { Steps = builtIn.Steps.Take(builtIn.Steps.Count - 1).ToList() }, "system");
+        var before = (await Versions()).Count;
+        await Seed();
+        await Seed();
+        var versions = await Versions();
+        Assert.Equal(before + 1, versions.Count);
+        Assert.Equal(("system", builtIn.Steps.Count), (versions[^1].CreatedBy, System.Text.Json.JsonSerializer.Deserialize<ScanWorkflowDefinition>(versions[^1].DefinitionJson, ContractJson.Options)!.Steps.Count));
+
+        // A user's own newer version is never replaced.
+        await Add(builtIn, "alice");
+        await Seed();
+        Assert.Equal(("alice", before + 2), ((await Versions())[^1].CreatedBy, (await Versions()).Count));
+    }
+
+    [Fact]
     public async Task Standard_discovery_runs_end_to_end_with_parallel_http_and_tls_branches()
     {
         var net = Host.Scope.Add(Zone, ["10.60.0.0/28"]);
@@ -308,6 +343,44 @@ public sealed class WorkflowRuntimeTests(TestHost host) : DbTestBase(host)
         Assert.True(heartbeat!.CancelRequested);
         Assert.All((await StepsAsync(runId)).Values, s => Assert.Equal(StepStatus.Cancelled, s.Status));
         Assert.Equal(HttpStatusCode.Conflict, (await Host.UserClient().PostAsync($"/api/scans/{runId}/cancel", null)).StatusCode);
+    }
+
+    [Fact]
+    public async Task RecheckMissing_reprobes_only_missing_targets_in_scope_round_by_round_before_persist()
+    {
+        var net = Host.Scope.Add(Zone, ["10.61.0.0/28"]);
+        Host.Agents.Set(Agents.Simple(AgentId, Zone, "10.61.0.0/24", maxJobs: 10));
+        var key = await CreateWorkflowAsync(
+            new() { Id = "discover", Operation = ScanOperation.DiscoverHosts },
+            new()
+            {
+                Id = "recheck", Operation = ScanOperation.RecheckMissing, DependsOn = ["discover"],
+                Parameters = new Dictionary<string, string> { ["attempts"] = "3", ["delaySeconds"] = "0" },
+            },
+            new() { Id = "persist", Operation = ScanOperation.PersistObservations, DependsOn = ["recheck"] });
+        var runId = await LaunchAsync(net, key);
+        static ScanEndpoint E(string address, int port) => new() { Address = address, Port = port };
+        Host.Recheck.Targets = (run, round) => run != runId ? RecheckTargets.None : round switch
+        {
+            1 => new(["10.61.0.5", "10.99.0.1"], [E("10.61.0.1", 8080), E("10.61.0.1", 22), E("10.61.0.2", 8080)], 1),
+            2 => new(["10.61.0.5"], [], 1), // still silent after round 1
+            _ => RecheckTargets.None, // answered in round 2: round 3 queues nothing
+        };
+
+        await RunAgentUntilFinishedAsync(runId, Lab());
+
+        Assert.Equal(ScanRunStatus.Completed, (await Host.RunAsync(runId)).Status);
+        var steps = await StepsAsync(runId);
+        Assert.Equal(StepStatus.Completed, steps["recheck"].Status);
+        Assert.StartsWith("Round 3/3", steps["recheck"].Message);
+        Assert.Equal(3, Host.Recheck.Calls[runId]);
+        var jobs = await JobsAsync(runId, "recheck");
+        Assert.Equal(2, jobs.Count(j => j.Operation == ScanOperation.DiscoverHosts && j.Targets.Hosts.SequenceEqual(["10.61.0.5"]))); // same target, both rounds
+        var portScans = jobs.Where(j => j.Operation == ScanOperation.ScanPorts).ToDictionary(j => j.Parameters["ports"], j => j.Targets.Hosts.Single());
+        Assert.Equal(new Dictionary<string, string> { ["22,8080"] = "10.61.0.1", ["8080"] = "10.61.0.2" }, portScans); // only each host's own ports
+        Assert.DoesNotContain(jobs, j => j.Targets.Hosts.Contains("10.99.0.1")); // outside the authorized scope
+        Assert.Contains(Host.Discovery.Persisted, p => p.RunId == runId);
+        Assert.True(steps["persist"].StartedAt >= steps["recheck"].FinishedAt);
     }
 
     [Fact]

@@ -52,6 +52,13 @@ internal sealed class CoverageSet
                 zones.ToDictionary(z => z.Key, z => Parse(z.Value.Hosts, z.Value.Endpoints), StringComparer.Ordinal), operations);
     }
 
+    /// <summary>Coverage reported by Scanning, read the same way as after PersistObservations stored it.</summary>
+    public static CoverageSet From(RunCoverage coverage) => From(new RunProcessing
+    {
+        CoverageComplete = coverage.Complete, CoveredHosts = [.. coverage.CoveredHosts], CoveredEndpoints = [.. coverage.CoveredEndpoints],
+        CoverageByZone = SerializeZones(coverage), OperationsExecuted = coverage.OperationsExecuted.Select(o => o.ToString()).ToList(),
+    });
+
     /// <summary>JSON for <see cref="RunProcessing.CoverageByZone"/>; null when the coverage carries no zone information.</summary>
     public static string? SerializeZones(RunCoverage coverage)
     {

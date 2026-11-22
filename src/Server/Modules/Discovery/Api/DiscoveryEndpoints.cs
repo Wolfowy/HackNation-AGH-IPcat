@@ -6,10 +6,12 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using WebScan.Contracts;
 using WebScan.Server.Kernel.Discovery;
 using WebScan.Server.Kernel.Networking;
 using WebScan.Server.Kernel.Ports;
+using WebScan.Server.Kernel.Scanning;
 using WebScan.Server.Kernel.Security;
 using WebScan.Server.Modules.Discovery.Domain;
 using WebScan.Server.Modules.Discovery.Normalization;
@@ -28,11 +30,18 @@ internal static class DiscoveryEndpoints
         api.MapGet("/dashboard/summary", (AssetQueries q, TimeProvider time, CancellationToken ct) => q.DashboardAsync(time.GetUtcNow(), ct))
             .RequireAuthorization(Policies.CanRead);
 
-        api.MapGet("/assets/hosts", (AssetQueries q, string? search, HostStatus? status, string? zone, bool? networkDevice, int? page, int? pageSize,
-            CancellationToken ct) =>
+        // Recent scans come from Scanning when it runs in the same host; without it the dashboard shows none.
+        api.MapGet("/dashboard/insights", async (AssetQueries q, TimeProvider time, IServiceProvider services, int? days, CancellationToken ct) =>
+        {
+            var scans = services.GetService<IRecentScanRunReader>() is { } reader ? await reader.GetRecentAsync(10, ct) : [];
+            return await q.InsightsAsync(time.GetUtcNow(), Math.Clamp(days ?? 14, 1, 90), scans, ct);
+        }).RequireAuthorization(Policies.CanRead);
+
+        api.MapGet("/assets/hosts", (AssetQueries q, string? search, HostStatus? status, string? zone, bool? networkDevice, string? sort, int? minInterest,
+            int? page, int? pageSize, CancellationToken ct) =>
         {
             var (p, size) = AssetQueries.Paging(page, pageSize);
-            return q.HostsAsync(new HostQuery(search, status, zone, networkDevice ?? false), p, size, ct);
+            return q.HostsAsync(new HostQuery(search, status, zone, networkDevice ?? false, sort, minInterest), p, size, ct);
         }).RequireAuthorization(Policies.CanRead);
 
         api.MapGet("/assets/hosts/{id:guid}", async (Guid id, AssetQueries q, CancellationToken ct) =>
@@ -40,11 +49,11 @@ internal static class DiscoveryEndpoints
 
         api.MapPut("/assets/hosts/{id:guid}/annotation", PutAnnotation).RequireAuthorization(Policies.CanEdit);
 
-        api.MapGet("/assets/services", (AssetQueries q, int? port, string? serviceName, string? search, string? zone, int? page, int? pageSize,
-            CancellationToken ct) =>
+        api.MapGet("/assets/services", (AssetQueries q, int? port, string? serviceName, string? search, string? zone, string? sort, int? minInterest,
+            int? page, int? pageSize, CancellationToken ct) =>
         {
             var (p, size) = AssetQueries.Paging(page, pageSize);
-            return q.ServicesAsync(new ServiceQuery(port, serviceName, search, zone), p, size, ct);
+            return q.ServicesAsync(new ServiceQuery(port, serviceName, search, zone, sort, minInterest), p, size, ct);
         }).RequireAuthorization(Policies.CanRead);
 
         api.MapGet("/assets/services/{id:guid}", async (Guid id, AssetQueries q, CancellationToken ct) =>
@@ -275,20 +284,20 @@ internal static class DiscoveryEndpoints
 
     private static (IReadOnlyList<string>, Func<IEnumerable<IReadOnlyList<string?>>>, object) HostsExport(IReadOnlyList<HostListItemDto> items) =>
     (["id", "zone", "address", "macAddress", "macVendor", "networkDevice", "hostnames", "status", "unstable", "firstSeenAt", "lastSeenAt", "lastScannedAt", "openPortCount",
-            "technologies", "classifications", "description", "classification", "businessState", "owner", "tags"],
+            "technologies", "classifications", "description", "classification", "businessState", "owner", "tags", "interestScore", "interestReasons"],
         () => items.Select(h => (IReadOnlyList<string?>)
         [
             h.Id.ToString(), h.Zone, h.Address, h.MacAddress, h.MacVendor, h.NetworkDevice ? "true" : "false", string.Join(';', h.Hostnames), h.Status.ToString(), h.Unstable ? "true" : "false",
             D(h.FirstSeenAt),
             D(h.LastSeenAt), D(h.LastScannedAt), I(h.OpenPortCount), string.Join(';', h.Technologies), string.Join(';', h.Classifications),
             h.Annotation?.Description, h.Annotation?.Classification, h.Annotation?.BusinessState, h.Annotation?.Owner,
-            string.Join(';', h.Annotation?.Tags ?? []),
+            string.Join(';', h.Annotation?.Tags ?? []), I(h.InterestScore), string.Join(';', h.InterestReasons ?? []),
         ]), items);
 
     private static (IReadOnlyList<string>, Func<IEnumerable<IReadOnlyList<string?>>>, object) ServicesExport(IReadOnlyList<ServiceDto> items) =>
     (["id", "hostId", "zone", "address", "port", "transport", "state", "serviceName", "product", "version", "httpUrl", "httpStatusCode", "httpTitle",
             "webServer", "tlsSubjectCommonName", "tlsIssuer", "tlsNotAfter", "tlsFingerprintSha256", "technologies", "confidence", "firstSeenAt", "lastSeenAt",
-            "criticality", "owner", "notes", "tags", "deviceType", "artifactTags"],
+            "criticality", "owner", "notes", "tags", "deviceType", "artifactTags", "timeOfDayVariance", "interestScore", "interestReasons"],
         () => items.Select(s => (IReadOnlyList<string?>)
         [
             s.Id.ToString(), s.HostId.ToString(), s.Zone, s.Address, I(s.Port), s.Transport.ToString(), s.State.ToString(), s.ServiceName, s.Product,
@@ -296,6 +305,7 @@ internal static class DiscoveryEndpoints
             D(s.Tls?.NotAfter), s.Tls?.FingerprintSha256, string.Join(';', s.Technologies), N(s.Confidence), D(s.FirstSeenAt), D(s.LastSeenAt),
             s.Annotation?.Criticality, s.Annotation?.Owner, s.Annotation?.Notes, string.Join(';', s.Annotation?.Tags ?? []),
             s.DeviceType, string.Join(';', s.ArtifactTags),
+            s.TimeOfDayVariance ? "true" : "false", I(s.InterestScore), string.Join(';', s.InterestReasons ?? []),
         ]), items);
 
     private static (IReadOnlyList<string>, Func<IEnumerable<IReadOnlyList<string?>>>, object) ChangesExport(IReadOnlyList<ChangeDto> items) =>

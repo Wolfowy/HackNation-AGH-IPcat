@@ -41,8 +41,40 @@ internal sealed class DiscoveryRunProcessor(
     IOptions<DiscoveryOptions> options,
     ILogger<DiscoveryRunProcessor> logger,
     IRunBatchCatalog? batchCatalog = null,
-    IScanEventPublisher? events = null) : IDiscoveryRunProcessor
+    IScanEventPublisher? events = null) : IDiscoveryRunProcessor, IRecheckTargetSource
 {
+    public async Task<RecheckTargets> FindRecheckTargetsAsync(Guid scanRunId, RunCoverage coverage, CancellationToken ct = default)
+    {
+        await WaitForIngestionAsync(scanRunId, ct);
+        var covered = CoverageSet.From(coverage);
+        var seen = await db.Observations.AsNoTracking().Where(o => o.ScanRunId == scanRunId)
+            .Select(o => new { o.Zone, o.Address, o.Port, o.Transport, o.Kind }).Distinct().ToListAsync(ct);
+        var seenHosts = seen.Where(s => AssetStateUpdater.UpKinds.Contains(s.Kind)).Select(s => (s.Zone, s.Address)).ToHashSet();
+        var seenEndpoints = seen.Where(s => s.Port is not null && AssetStateUpdater.EndpointKinds.Contains(s.Kind))
+            .Select(s => (s.Zone, s.Address, s.Port!.Value)).ToHashSet();
+
+        // Same miss rule as ChangeDetector; unstable hosts are re-checked whenever the run targeted them (also Gone, also incomplete runs).
+        bool Missable(string zone, string address, bool unstable) => unstable
+            ? covered.CoversHost(zone, address)
+            : covered.CanCountMiss(zone, address, ScanOperation.DiscoverHosts) || covered.CanCountMiss(zone, address, ScanOperation.ScanPorts);
+
+        // shortcut: coverage containment tested in memory over all known hosts (like ChangeDetector).
+        var hosts = (await db.Hosts.AsNoTracking().Where(h => h.Status != HostStatus.Gone || h.Unstable)
+                .Select(h => new { h.Zone, h.Address, h.Unstable }).ToListAsync(ct))
+            .Where(h => !seenHosts.Contains((h.Zone, h.Address)) && Missable(h.Zone, h.Address, h.Unstable))
+            .OrderByDescending(h => h.Unstable).ThenBy(h => h.Zone, StringComparer.Ordinal).ThenBy(h => h.Address, StringComparer.Ordinal).ToList();
+        var unstable = hosts.Where(h => h.Unstable).Select(h => (h.Zone, h.Address)).ToHashSet();
+
+        // Port scans are TCP: UDP services are left to the next full scan.
+        var endpoints = (await db.Services.AsNoTracking().Where(s => s.State == ServiceState.Open && s.Transport == TransportProtocol.Tcp)
+                .Select(s => new { s.Zone, s.Address, s.Port }).ToListAsync(ct))
+            .Where(s => !seenEndpoints.Contains((s.Zone, s.Address, s.Port))
+                && (unstable.Contains((s.Zone, s.Address)) ? covered.CoversHost(s.Zone, s.Address) : covered.CanCountMiss(s.Zone, s.Address, ScanOperation.ScanPorts)))
+            .Select(s => new ScanEndpoint { Address = s.Address, Port = s.Port }).DistinctBy(e => (e.Address, e.Port)).ToList();
+
+        return new RecheckTargets(hosts.Select(h => h.Address).Distinct().ToList(), endpoints, unstable.Count);
+    }
+
     public async Task<PersistRunResult> PersistRunAsync(Guid scanRunId, RunCoverage coverage, CancellationToken ct = default)
     {
         await WaitForIngestionAsync(scanRunId, ct);

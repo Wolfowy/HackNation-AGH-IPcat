@@ -16,6 +16,12 @@ public enum ScanOperation
     PersistObservations,
     ComparePreviousScan,
     PublishFinding,
+
+    /// <summary>
+    /// Re-probes hosts/endpoints that were known before but not observed in the current run (inside its coverage), in
+    /// rounds with a delay, through the existing host-discovery and port-scan capabilities. Unstable hosts are always re-checked.
+    /// </summary>
+    RecheckMissing,
 }
 
 /// <summary>Where an operation runs.</summary>
@@ -199,6 +205,20 @@ public static class OperationCatalog
                             Description = "Only approved signatures carrying one of these tags. Empty = all approved active signatures." },
                     new() { Name = "signatureIds", Type = ParameterType.StringList, Pattern = "^[A-Za-z0-9_.-]{1,100}$" },
                     new() { Name = "severities", Type = ParameterType.StringList, AllowedValues = ["info", "low", "medium", "high", "critical"], Default = "info,low" },
+                    Rate,
+                ],
+            },
+            [ScanOperation.RecheckMissing] = new()
+            {
+                // Targets are computed server-side from the previous asset state; jobs run as DiscoverHosts / ScanPorts.
+                Operation = ScanOperation.RecheckMissing, Plane = OperationPlane.Agent,
+                RequiredCapability = ToolCapabilities.PortScan, InputKind = TargetKind.None,
+                Parameters =
+                [
+                    new() { Name = "attempts", Type = ParameterType.Integer, Min = 1, Max = 5, Default = "2",
+                            Description = "Re-check rounds; each round probes only what is still missing." },
+                    new() { Name = "delaySeconds", Type = ParameterType.Integer, Min = 0, Max = 3600, Default = "30",
+                            Description = "Wait between rounds (lets briefly unreachable hosts come back)." },
                     Rate,
                 ],
             },

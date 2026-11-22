@@ -194,6 +194,15 @@ Tools are **data, not code paths**. Nothing on the server switches on tool names
   sources); endpoint operations (DetectService, HttpProbe, TlsProbe, ExecuteSignatures) need a source with ports (ScanPorts,
   DetectService, HttpProbe, TlsProbe, ExecuteSignatures); PersistObservations, ComparePreviousScan and PublishFinding must have every
   agent step as an ancestor, and the last two also a PersistObservations step (coverage + all results ingested).
+  RecheckMissing takes no input and must have every other agent step as an ancestor.
+* **RecheckMissing** (agent plane, targets computed server-side): asks Discovery (`IRecheckTargetSource`) for known hosts (not Gone)
+  and open TCP endpoints the run has **not** observed although a miss would count (complete coverage covering the target with the
+  relevant operation, same rule as ComparePreviousScan); unstable hosts are always included (also Gone or with incomplete coverage)
+  and listed first. It queues `DiscoverHosts` jobs for missing hosts and one `ScanPorts` job per distinct port set for missing
+  endpoints (each host only on its own known ports) — existing capabilities, no new tool; out-of-scope targets are dropped by the
+  planner. Parameters `attempts` (1–5 rounds, default 2), `delaySeconds` (0–3600 between rounds, default 30), `rate`. After a
+  round's jobs finish the runtime re-runs the step after the delay; each round asks again, so only what is still missing is
+  probed (dedup key salted per round). Its observations belong to the run, so a target that answered is not counted as a miss.
 * Step input = observations of `Input.FromSteps` filtered by `Input.Filter`; `When` gates execution (else Skipped).
   Independent steps run in parallel. Timeouts, retries (`RetryPolicy`), `OnFailure`, cancellation, window expiry
   (`NotAfter` → cancel active jobs, run = `WindowExpired`, partial observations kept, coverage marked incomplete).
@@ -201,7 +210,10 @@ Tools are **data, not code paths**. Nothing on the server switches on tool names
   so far (finished job targets / elapsed). Null until a job finished; steps not planned yet (their targets come from discoveries) are
   not counted, so the ETA grows when they start.
 * Built-in workflow `standard-discovery` is seeded (DiscoverHosts → ScanPorts → DetectService → [HTTP: HttpProbe → ExecuteSignatures]
-  [TLS: TlsProbe] → PersistObservations → ComparePreviousScan → PublishFinding).
+  [TLS: TlsProbe] → RecheckMissing (OnFailure = Continue) → PersistObservations → ComparePreviousScan → PublishFinding). Seeding
+  only inserts the key when it is absent: existing databases keep their stored version until a new one is saved.
+* Operations (closed enum `ScanOperation`, `OperationCatalog`): agent plane DiscoverHosts, ScanPorts, DetectService, HttpProbe,
+  TlsProbe, ExecuteSignatures, RecheckMissing; server plane EvaluateCondition, PersistObservations, ComparePreviousScan, PublishFinding.
 * Schedules: Quartz.NET (RAM store, rebuilt from DB at startup), cron + IANA time zone, allowed windows, overlap policy;
   `(scheduleId, fireTime)` unique → no duplicate runs.
 * Resume in the next window (`resumeInNextWindow`, default on): when the schedule's last run ends `WindowExpired` and the schedule
@@ -236,6 +248,18 @@ Tools are **data, not code paths**. Nothing on the server switches on tool names
   Express/Drupal session cookies, session cookies without Secure/HttpOnly) and pages (login, admin, HTTP auth). Artifacts and the
   device describe the latest run that fingerprinted the service; `debug`, `internal-ip-leak` and `login-page` artifacts are also
   info/low findings (source `artifact`, signature id `artifact-{tag}`), resolved after runs that probed HTTP no longer see them.
+* Unstable hosts and changing responses: RecheckMissing re-probes missed targets (unstable hosts always) before the comparison, so
+  a short outage is not a miss; unstable hosts never produce HostGone/HostReappeared noise. Each covering outcome is also counted
+  per UTC hour (`hosts.HourlySeen/HourlyMissed`) → per-hour availability on the host detail. HTTP responses are kept per
+  (path, UTC hour, fingerprint) (`http_snapshots`); consistent hour-dependent responses set `Service.TimeOfDayVariance`, emit one
+  `TimeOfDayVariance` change (pattern in `after`, e.g. `/ → 03h UTC: 503 'Maintenance'; 14h UTC: 200 'App'`) and stop repeated
+  HttpResponseChanged events for that hour pattern.
+* **Interest score** (`InterestScorer`, 0–100, computed on read, reasons ordered by weight): counted findings by severity
+  (`InterestScorer.CountsFinding` = open and not triaged as false positive), classification tags (admin panel,
+  staging/dev/test, IoT/camera/printer…), new in the last compared run / first seen < 7 days, technologies with versions,
+  remote-admin/database/cleartext ports, web UI on a non-standard port, expired / soon-expiring / self-signed certificates, unstable
+  host, time-of-day variance, HTTP artifacts (internal IP leak, debug headers, login page, version leak, insecure cookie, permissive CORS) and recog device type. Host score = max of its open
+  services and its host-level signals. Lists sort/filter by it; exports carry `interestScore` + `interestReasons`.
 * Signatures: Nuclei YAML (active detection; validated: no `code`/`headless`/`javascript`/`file` protocols, no interactsh,
   no intrusive/dos/fuzz tags, default severities info/low), JSON classification rules (interpretation of observations),
   change rules (historical). Versioned; only **approved** versions are executable/applied.
@@ -319,15 +343,22 @@ Role shorthand: R=CanRead, E=CanEdit, M=CanManage, A=AdminOnly.
 
 **Discovery, analytics, signatures, integrations (D)**
 * `GET /api/dashboard/summary` (R) → {hostsTotal, hostsActive, servicesTotal, changesLast24h, findingsOpen, lastScanAt?}
-* `GET /api/assets/hosts?search&status&zone&networkDevice&page&pageSize` (R) → paged [{id, address, hostnames[], status: Active|Unreachable|Gone|Unknown, unstable,
+* `GET /api/dashboard/insights?days=14` (R, days 1–90) → {topFindings: Finding[10] (counted, severity then recency), topServices:
+  Service[10] (highest interest score, with reasons), changesByDay:[{date: yyyy-MM-dd UTC, total, byType:{type: count}}] (every day of
+  the window), recentScans:[{id, name, status, workflowKey, createdAt, startedAt?, finishedAt?, durationSeconds?, coverageComplete,
+  changesDetected?}] (from Scanning via `IRecentScanRunReader`), unstableHosts, timeOfDayVarianceServices}
+* `GET /api/assets/hosts?search&status&zone&networkDevice&sort=interest&minInterest&page&pageSize` (R) → paged [{id, address, hostnames[], status: Active|Unreachable|Gone|Unknown, unstable,
+  interestScore, interestReasons[],
   firstSeenAt, lastSeenAt, lastScannedAt?, openPortCount, technologies[], zone?, macAddress?, macVendor?, networkDevice, networkDeviceConfidence?: high|low,
   annotation?:{description, classification, businessState, owner, tags[]}}] (`networkDevice=true` → only network-device interfaces)
 * `GET /api/assets/hosts/{id}` (R) → host + services[] + technologies[] + certificates[] + findings[] + recentChanges[] +
-  deviceInterfaces:[{hostId, zone, address}] (the other zones' interfaces of the same network device)
+  deviceInterfaces:[{hostId, zone, address}] (the other zones' interfaces of the same network device) +
+  hourlyVisibility:[{hour 0–23 UTC, seen, missed}] (covering scans per hour) + interestScore + interestReasons[]
 * `PUT /api/assets/hosts/{id}/annotation` (E) {description, classification, businessState, owner, tags[]}
-* `GET /api/assets/services?port&serviceName&search&page` (R) → paged [{id, hostId, address, port, transport, state: Open|Gone, serviceName, product, version,
+* `GET /api/assets/services?port&serviceName&search&sort=interest&minInterest&page` (R) → paged [{id, hostId, address, port, transport, state: Open|Gone, serviceName, product, version,
   http?:{url, statusCode, title, webServer}, tls?:{subjectCommonName, issuer, notAfter, fingerprintSha256}, technologies[], confidence?, firstSeenAt, lastSeenAt,
-  annotation?:{notes, tags[], criticality, owner, updatedAt, updatedBy}, artifactCount, artifactTags[], deviceType?}]
+  annotation?:{notes, tags[], criticality, owner, updatedAt, updatedBy}, artifactCount, artifactTags[], deviceType?, timeOfDayVariance,
+  hourlyResponses?:[{hour, seen, missed: 0, response}] (only with time-of-day variance), interestScore, interestReasons[]}]
 * `PUT /api/assets/services/{id}/annotation` (E) {notes?, tags[], criticality?: low|medium|high|critical, owner?} — kept per (zone, address, port, transport)
 * `GET /api/assets/services/{id}` (R) → {service (as in the list), http?: HttpDetails {url, scheme, statusCode, title, webServer, contentType,
   headers{}, cookies:[{name, secure, httpOnly, sameSite?, domain?, path?, decodedValue?}], redirectChain[], redirectStatusCodes[], finalUrl?,

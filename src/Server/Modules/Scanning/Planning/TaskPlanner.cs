@@ -45,6 +45,9 @@ public sealed record AgentStepSpec
 
     /// <summary>Endpoint targets for endpoint operations.</summary>
     public IReadOnlyCollection<ScanEndpoint>? Endpoints { get; init; }
+
+    /// <summary>Mixed into the dedup key so one step can queue the same targets again (e.g. RecheckMissing rounds).</summary>
+    public string? TargetKeySalt { get; init; }
 }
 
 public sealed record PlanResult(int JobsCreated, int JobsExisting, long TargetCount, int OutOfScope, int Unassignable, string? UnassignableReason)
@@ -165,7 +168,8 @@ public sealed class TaskPlanner(
         foreach (var batch in plan.Batches)
         {
             targets += batch.Count;
-            if (!existing.Add(batch.TargetKey)) { skipped++; continue; }
+            var targetKey = spec.TargetKeySalt is null ? batch.TargetKey : TargetPlanner.Hash([batch.TargetKey, spec.TargetKeySalt]);
+            if (!existing.Add(targetKey)) { skipped++; continue; }
 
             var requirement = new JobRequirement(batch.Zone, batch.NetworkId, capability, spec.PreferredToolId, batch.ReachTargets,
                 spec.RequiredParameters, needsRawSockets);
@@ -198,7 +202,7 @@ public sealed class TaskPlanner(
             db.Jobs.Add(new ScanJobRecord
             {
                 Id = jobId, ScanRunId = spec.ScanRunId, WorkflowRunId = spec.WorkflowRunId, StepId = spec.StepId, Operation = spec.Operation,
-                Status = JobStatus.Queued, TargetKey = batch.TargetKey, TargetSummary = batch.Summary, TargetCount = batch.Count,
+                Status = JobStatus.Queued, TargetKey = targetKey, TargetSummary = batch.Summary, TargetCount = batch.Count,
                 ReachTargets = [.. batch.ReachTargets], Capability = capability, PreferredToolId = spec.PreferredToolId,
                 RequiredParameters = [.. spec.RequiredParameters], NeedsRawSockets = needsRawSockets,
                 Zone = batch.Zone, NetworkId = batch.NetworkId, SubnetKey = batch.SubnetKey, Priority = spec.Priority,

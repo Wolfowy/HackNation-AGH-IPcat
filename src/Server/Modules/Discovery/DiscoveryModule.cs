@@ -22,6 +22,7 @@ public static class DiscoveryModule
         services.TryAddSingleton(TimeProvider.System);
         services.AddScoped<IObservationSink, ObservationIngestor>();
         services.AddScoped<IDiscoveryRunProcessor, DiscoveryRunProcessor>();
+        services.AddScoped<IRecheckTargetSource, DiscoveryRunProcessor>();
         services.AddScoped<IObservationReader, ObservationReader>();
         services.AddScoped<IFindingStore, FindingStore>();
         services.AddScoped<AssetQueries>();

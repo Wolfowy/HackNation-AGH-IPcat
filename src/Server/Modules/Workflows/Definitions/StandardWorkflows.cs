@@ -44,7 +44,7 @@ public static class StandardWorkflows
 
     /// <summary>
     /// DiscoverHosts → ScanPorts → DetectService → [HTTP: HttpProbe → ExecuteSignatures] [TLS: TlsProbe]
-    /// → PersistObservations → ComparePreviousScan → PublishFinding.
+    /// → RecheckMissing → PersistObservations → ComparePreviousScan → PublishFinding.
     /// </summary>
     public static ScanWorkflowDefinition StandardDiscovery { get; } = new()
     {
@@ -81,7 +81,8 @@ public static class StandardWorkflows
                 Id = "tls", Operation = ScanOperation.TlsProbe, DependsOn = ["services"], OnFailure = StepFailurePolicy.Continue,
                 Input = new StepInput { FromSteps = ["services"], Filter = IsTlsService }, When = IsTlsService,
             },
-            new() { Id = "persist", Operation = ScanOperation.PersistObservations, DependsOn = ["signatures", "tls"] },
+            new() { Id = "recheck", Operation = ScanOperation.RecheckMissing, DependsOn = ["signatures", "tls"], OnFailure = StepFailurePolicy.Continue },
+            new() { Id = "persist", Operation = ScanOperation.PersistObservations, DependsOn = ["recheck"] },
             new() { Id = "compare", Operation = ScanOperation.ComparePreviousScan, DependsOn = ["persist"] },
             new() { Id = "publish", Operation = ScanOperation.PublishFinding, DependsOn = ["compare"] },
         ],

@@ -12,6 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { formatRelative, zoneLabel } from '@/lib/format'
 import { ServiceAnnotationDialog } from './ServiceAnnotationDialog'
 import { ArtifactTags } from './ServiceDetailPage'
+import { InterestBadge, TimeOfDayBadge } from './insight'
 
 export function ServicesTable({ services, showHost = true }: { services: Service[]; showHost?: boolean }) {
   const canEdit = useCan('edit')
@@ -26,6 +27,7 @@ export function ServicesTable({ services, showHost = true }: { services: Service
             {showHost && <TableHead>Zone</TableHead>}
             {showHost && <TableHead>Host</TableHead>}
             <TableHead>Endpoint</TableHead>
+            <TableHead title="Analytical priority 0–100; hover for the reasons">Interest</TableHead>
             <TableHead>State</TableHead>
             <TableHead>Service</TableHead>
             <TableHead>HTTP</TableHead>
@@ -53,12 +55,16 @@ export function ServicesTable({ services, showHost = true }: { services: Service
                 <span className="text-muted-foreground">/{s.transport.toLowerCase()}</span>
               </TableCell>
               <TableCell>
+                <InterestBadge score={s.interestScore} reasons={s.interestReasons} />
+              </TableCell>
+              <TableCell>
                 <Badge variant={s.state === 'Open' ? 'success' : 'outline'}>{s.state}</Badge>
               </TableCell>
               <TableCell>
                 <Link to={`/assets/services/${s.id}`} className="font-medium hover:underline" title="Service details">
                   {s.serviceName ?? 'unknown'}
-                </Link>
+                </Link>{' '}
+                {s.timeOfDayVariance && <TimeOfDayBadge />}
                 {s.deviceType && (
                   <Badge variant="secondary" className="ml-1">
                     {s.deviceType}

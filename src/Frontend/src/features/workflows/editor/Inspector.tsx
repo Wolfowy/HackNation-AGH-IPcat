@@ -25,8 +25,8 @@ import { OperationIcon } from './operationStyle'
 const num = (s: string) => (s.trim() === '' ? undefined : Number(s))
 /** Retry with both fields empty means "inherit the workflow default" (omit), not "{}" (= server defaults). */
 const retryOf = (r: RetryPolicy) => (r.maxAttempts === undefined && r.backoffSeconds === undefined ? undefined : r)
-/** Whether the step reads targets (input / when are allowed): agent steps and EvaluateCondition. */
-export const takesInput = (op?: OperationDescriptor) => op?.plane === 'Agent' || op?.operation === 'EvaluateCondition'
+/** Whether the step reads targets (input / when are allowed): agent steps with an input kind (not RecheckMissing) and EvaluateCondition. */
+export const takesInput = (op?: OperationDescriptor) => (op?.plane === 'Agent' && op.inputKind !== 'None') || op?.operation === 'EvaluateCondition'
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
