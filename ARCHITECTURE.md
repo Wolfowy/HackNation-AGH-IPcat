@@ -165,7 +165,9 @@ Tools are **data, not code paths**. Nothing on the server switches on tool names
 ## 10. Discovery & analysis (stream D)
 
 * Raw observations append-only (`observations`), current state separate (`hosts`, `services`, `technologies`, `certificates`,
-  `signature_matches`), user annotations separate (`asset_annotations`, audited) — user edits never overwrite evidence.
+  `signature_matches`), user annotations separate (`asset_annotations`, `service_annotations`, audited) — user edits never overwrite evidence.
+* Findings carry a **user triage** (`triage`: None|Confirmed|FalsePositive|AcceptedRisk, `severityOverride`, `notes`, `userTags`,
+  `triagedBy/At`) next to the detection lifecycle (`status` Open|Resolved, owned by ingestion/change detection).
 * Change events: NewHost, HostReappeared, HostGone, NewPort, PortGone, NewService, ServiceChanged, TechnologyChanged,
   TlsCertificateChanged, HttpResponseChanged, TimeOfDayVariance.
 * "Gone" only after `missingThreshold` consecutive runs whose coverage **included** the target and the relevant operation;
@@ -222,8 +224,11 @@ Role shorthand: R=CanRead, E=CanEdit, M=CanManage, A=AdminOnly.
   nextFireAt?, lastRunId?, lastRunStatus?}]; `POST` (M), `PUT /{id}` (E), `DELETE /{id}` (M), `POST /{id}/trigger` (E) → {scanRunId}, `POST /{id}/pause|resume` (E)
 * `GET /api/scans?status&page&pageSize` (R) → paged [{id, name, status: Pending|Running|Completed|PartiallyCompleted|Failed|Cancelled|WindowExpired,
   workflowKey, workflowVersion, networkIds[], triggeredBy, priority, createdAt, startedAt?, finishedAt?, notAfter?,
-  progress:{jobsTotal, jobsQueued, jobsRunning, jobsCompleted, jobsFailed, percent}, coverageComplete}]
+  progress:{jobsTotal, jobsQueued, jobsRunning, jobsCompleted, jobsFailed, percent}, coverageComplete, notes?, tags[]}]
 * `POST /api/scans` (E) {name, workflowKey, workflowVersion?, networkIds[], priority?, maxRatePerSecond?, windowMinutes?} → run
+* `PUT /api/scans/{id}` (E) {name, notes?, tags[] (≤20)} → run — user metadata, editable in any run state
+* `POST /api/scans/import?format=json|csv|nmap-xml|httpx-jsonl|naabu-jsonl|nuclei-jsonl&zone&name?&snapshot?` (M), raw file body →
+  201 {scanRunId, rows, observations, changesDetected, errors[]} (422 ValidationProblem when nothing is importable)
 * `GET /api/scans/{id}` (R) → run + steps:[{stepId, operation, status: Pending|Running|Completed|Skipped|Failed|Cancelled, jobsTotal, jobsCompleted, startedAt?, finishedAt?, message?}]
 * `POST /api/scans/{id}/cancel` (E); `GET /api/scans/{id}/jobs` (R); `GET /api/scans/{id}/events?after=` (R) → ScanExecutionEvent[]
 * `GET /api/jobs?status&agentId&page` (R) → paged [{id, scanRunId, stepId, operation, status: Queued|Leased|Completed|Failed|Cancelled,
@@ -243,7 +248,9 @@ Role shorthand: R=CanRead, E=CanEdit, M=CanManage, A=AdminOnly.
   deviceInterfaces:[{hostId, zone, address}] (the other zones' interfaces of the same network device)
 * `PUT /api/assets/hosts/{id}/annotation` (E) {description, classification, businessState, owner, tags[]}
 * `GET /api/assets/services?port&serviceName&search&page` (R) → paged [{id, hostId, address, port, transport, state: Open|Gone, serviceName, product, version,
-  http?:{url, statusCode, title, webServer}, tls?:{subjectCommonName, issuer, notAfter, fingerprintSha256}, technologies[], confidence?, firstSeenAt, lastSeenAt}]
+  http?:{url, statusCode, title, webServer}, tls?:{subjectCommonName, issuer, notAfter, fingerprintSha256}, technologies[], confidence?, firstSeenAt, lastSeenAt,
+  annotation?:{notes, tags[], criticality, owner, updatedAt, updatedBy}}]
+* `PUT /api/assets/services/{id}/annotation` (E) {notes?, tags[], criticality?: low|medium|high|critical, owner?} — kept per (zone, address, port, transport)
 * `GET /api/assets/technologies` (R) → [{name, version?, category?, hostCount, serviceCount, confidence}]
 * `GET /api/observations?hostId&scanRunId&kind&page` (R) → paged raw observations
 * `GET /api/changes?since&type&hostId&scanRunId&page` (R) → paged [{id, detectedAt, scanRunId, type, hostId?, address, port?, summary, before?, after?, severity}]
@@ -254,7 +261,9 @@ Role shorthand: R=CanRead, E=CanEdit, M=CanManage, A=AdminOnly.
   services:[{port, transport, serviceName?, product?, version?, url?, isWeb, tls}], technologies[], observedBy:[{agentId, interfaceName?}]}], truncated}
   (subnets: IPv4 /24, IPv6 /64; max 5000 hosts; devices = those with an interface among the returned hosts, with all their zones/interfaces).
   Service DTOs carry `url` (best clickable URL: HTTP probe URL, else https/http by TLS/service name).
-* `GET /api/findings?severity&status&page` (R) → paged [{id, signatureId, signatureVersion, name, severity, hostId, address, port?, matchedAt, evidence?, status: Open|Resolved, firstSeenAt, lastSeenAt, externalRefs:[{system, externalId}]}]
+* `GET /api/findings?severity&status&zone&triage&page` (R) → paged [{id, signatureId, signatureVersion, name, severity, hostId, address, port?, matchedAt, evidence?, status: Open|Resolved, firstSeenAt, lastSeenAt, externalRefs:[{system, externalId}],
+  triage: None|Confirmed|FalsePositive|AcceptedRisk, severityOverride?, effectiveSeverity, notes?, userTags[], triagedBy?, triagedAt?}] (`severity` filters the effective severity)
+* `PUT /api/findings/{id}` (E) {triage?, severityOverride? (null clears), notes? (≤4000), userTags[] (≤20)} → finding
 * `GET /api/export/{hosts|services|changes|findings}?format=json|csv` (R); `POST /api/import/assets?format=json|csv` (M) → {imported, updated, errors[]}
 * `GET /api/signatures?kind&status` (R) → [{id, name, kind: NucleiTemplate|ClassificationRule|ChangeRule, latestVersion, approvedVersion?, status: Draft|Approved|Retired, severity?, tags[], updatedAt}]
 * `GET /api/signatures/{id}` (R) → + versions:[{version, content, sha256, createdAt, createdBy, approvedAt?, approvedBy?}]
@@ -313,6 +322,12 @@ Deviations and clarifications agreed during integration (code is the source of t
   SHA-256 over UTF-8 `{id}\n{version}\n{content}\n` per item, ordered by id.
 * DefectDojo export uses `POST /api/v2/findings/` within a lazily created "WebScan" test (Generic Findings Import) and `PATCH` for
   changed findings; external id + content hash stored per finding.
+* **Finding triage** is user data on the finding row that ingestion never writes, so re-detecting the same finding (same host, port,
+  signature) refreshes evidence and re-opens it but keeps triage, override, notes and tags. Effective severity = `severityOverride ??
+  severity`; it drives finding filters, the dashboard, `PublishFinding` and DefectDojo (via `FindingRecord.Severity`). `FalsePositive`
+  findings stay listed (filter `triage=FalsePositive`, muted in the UI) but are not counted in `findingsOpen` and are never published
+  or exported to DefectDojo (counted as skipped). Exports keep the detected `severity` column (import round trip) and add
+  `effectiveSeverity`, `triage`, `severityOverride`, `notes`, `userTags`, `triagedBy`, `triagedAt`.
 * Quartz keeps a process-wide static log provider; hosts created repeatedly in one process (tests) must reset it
   (`LogContext.SetCurrentLogProvider`).
 * Planner keeps **one interface per (agent, scan run, network)** across all workflow steps; a busy pinned interface means waiting,

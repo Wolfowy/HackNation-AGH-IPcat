@@ -22,7 +22,11 @@ public sealed record ScanProgressDto(int JobsTotal, int JobsQueued, int JobsRunn
 public sealed record ScanRunDto(
     Guid Id, string Name, ScanRunStatus Status, string WorkflowKey, int WorkflowVersion, IReadOnlyList<Guid> NetworkIds, string TriggeredBy,
     int Priority, int? MaxRatePerSecond, Guid? ScheduleId, DateTimeOffset CreatedAt, DateTimeOffset? StartedAt, DateTimeOffset? FinishedAt,
-    DateTimeOffset? NotAfter, ScanProgressDto Progress, bool CoverageComplete, string? Message, IReadOnlyList<ScanStepDto>? Steps = null);
+    DateTimeOffset? NotAfter, ScanProgressDto Progress, bool CoverageComplete, string? Message, string? Notes, IReadOnlyList<string> Tags,
+    IReadOnlyList<ScanStepDto>? Steps = null);
+
+/// <summary>User metadata of a run (full replacement); editable whatever the run state.</summary>
+public sealed record UpdateScanDto(string? Name, string? Notes, IReadOnlyList<string>? Tags);
 
 public sealed record ScanStepDto(
     string StepId, ScanOperation Operation, StepStatus Status, int JobsTotal, int JobsCompleted, DateTimeOffset? StartedAt, DateTimeOffset? FinishedAt, string? Message);
@@ -107,6 +111,27 @@ public static class ScanEndpoints
             return Results.Ok(ToDto(run, await ProgressAsync(db, [id], ct)) with { Steps = steps });
         }).RequireAuthorization(Policies.CanRead);
 
+        scans.MapPut("/{id:guid}", async (Guid id, UpdateScanDto body, ScanningDbContext db, IAuditLog audit, CancellationToken ct) =>
+        {
+            var name = body.Name?.Trim() ?? "";
+            var tags = (body.Tags ?? []).Select(t => t.Trim()).Where(t => t.Length > 0).Distinct().ToList();
+            var errors = new Dictionary<string, string[]>();
+            if (name.Length is 0 or > 200) errors["name"] = ["Name is required (max 200 characters)."];
+            if (body.Notes?.Length > 4000) errors["notes"] = ["Max 4000 characters."];
+            if (tags.Count > 20) errors["tags"] = ["Max 20 tags."];
+            else if (tags.Any(t => t.Length > 64)) errors["tags"] = ["Max 64 characters per tag."];
+            if (errors.Count > 0) return Results.ValidationProblem(errors, statusCode: StatusCodes.Status422UnprocessableEntity);
+
+            var run = await db.ScanRuns.FirstOrDefaultAsync(r => r.Id == id, ct);
+            if (run is null) return Results.NotFound();
+            run.Name = name;
+            run.Notes = string.IsNullOrWhiteSpace(body.Notes) ? null : body.Notes.Trim();
+            run.Tags = tags;
+            await db.SaveChangesAsync(ct); // only these columns are updated, so concurrent status changes by the pipeline are kept
+            await audit.WriteAsync(new AuditEntry("scan.updated", "ScanRun", id.ToString(), new { run.Name, run.Tags }), ct);
+            return Results.Ok(ToDto(run, await ProgressAsync(db, [id], ct)));
+        }).RequireAuthorization(Policies.CanEdit);
+
         scans.MapPost("/{id:guid}/cancel", async (Guid id, IScanLauncher launcher, ScanningDbContext db, IAuditLog audit, ClaimsPrincipal user, CancellationToken ct) =>
         {
             var run = await db.ScanRuns.AsNoTracking().FirstOrDefaultAsync(r => r.Id == id, ct);
@@ -165,5 +190,6 @@ public static class ScanEndpoints
     private static ScanRunDto ToDto(ScanRun r, IReadOnlyDictionary<Guid, ScanProgressDto> progress) => new(
         r.Id, r.Name, r.Status, r.WorkflowKey, r.WorkflowVersion, r.NetworkIds, r.TriggeredBy, r.Priority, r.MaxRatePerSecond, r.ScheduleId,
         r.CreatedAt, r.StartedAt, r.FinishedAt, r.NotAfter,
-        progress.GetValueOrDefault(r.Id) ?? new ScanProgressDto(0, 0, 0, 0, 0, r.Status.IsTerminal() ? 100 : 0), r.CoverageComplete, r.Message);
+        progress.GetValueOrDefault(r.Id) ?? new ScanProgressDto(0, 0, 0, 0, 0, r.Status.IsTerminal() ? 100 : 0), r.CoverageComplete, r.Message,
+        r.Notes, r.Tags);
 }

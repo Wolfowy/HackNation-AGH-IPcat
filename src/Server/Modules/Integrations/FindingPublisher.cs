@@ -7,7 +7,8 @@ namespace WebScan.Server.Modules.Integrations;
 
 /// <summary>
 /// PublishFinding step. "internal" marks the run's open findings (≥ minSeverity) as published; "defectdojo" exports them when
-/// the integration is enabled (configured minimum severity also applies). Only signature matches are ever published.
+/// the integration is enabled (configured minimum severity also applies). Only signature matches are ever published, never ones triaged
+/// as false positive; severity is the effective (user-overridden) one.
 /// </summary>
 internal sealed class FindingPublisher(IFindingStore findings, DefectDojoExporter defectDojo, ILogger<FindingPublisher> logger) : IFindingPublisher
 {
@@ -15,7 +16,7 @@ internal sealed class FindingPublisher(IFindingStore findings, DefectDojoExporte
     {
         if (!Severities.IsValid(minSeverity)) throw new ArgumentException($"Unknown severity '{minSeverity}'.", nameof(minSeverity));
         var runFindings = await findings.GetRunFindingsAsync(scanRunId, ct);
-        var eligible = runFindings.Where(f => Severities.Rank(f.Severity) >= Severities.Rank(minSeverity)).ToList();
+        var eligible = runFindings.Where(f => !f.IsFalsePositive && Severities.Rank(f.Severity) >= Severities.Rank(minSeverity)).ToList();
 
         switch (destination.Trim().ToLowerInvariant())
         {

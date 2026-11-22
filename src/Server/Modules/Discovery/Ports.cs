@@ -53,7 +53,8 @@ internal sealed class FindingStore(DiscoveryDbContext db, TimeProvider time) : I
 
     private static FindingRecord ToRecord(SignatureMatch m) => new()
     {
-        Id = m.Id, SignatureId = m.SignatureId, SignatureVersion = m.SignatureVersion, Name = m.Name, Severity = m.Severity, Address = m.Address,
+        Id = m.Id, SignatureId = m.SignatureId, SignatureVersion = m.SignatureVersion, Name = m.Name, Severity = m.EffectiveSeverity,
+        Triage = m.Triage.ToString(), Address = m.Address,
         Hostname = m.Hostname, Port = m.Port, Transport = m.Transport?.ToString().ToLowerInvariant(), MatchedAt = m.MatchedAt,
         FirstSeenAt = m.FirstSeenAt, MatchedUrl = m.MatchedUrl, Evidence = m.Evidence, Source = m.Source, ConfidenceScore = m.ConfidenceScore,
         ConfidenceMethod = m.ConfidenceMethod, Status = m.Status.ToString(), Tags = m.Tags, PublishedAt = m.PublishedAt,

@@ -33,7 +33,11 @@ public sealed record ServiceDto(
     Guid Id, Guid HostId, string Address, int Port, TransportProtocol Transport, ServiceState State, string? ServiceName, string? Product,
     string? Version, string? Banner, IReadOnlyList<string> Cpe, HttpInfoDto? Http, TlsInfoDto? Tls, IReadOnlyList<string> Technologies,
     double? Confidence, string? ConfidenceMethod, bool TimeOfDayVariance, DateTimeOffset FirstSeenAt, DateTimeOffset LastSeenAt,
-    string? Url, string Zone);
+    string? Url, string Zone, ServiceAnnotationDto? Annotation);
+
+public sealed record ServiceAnnotationDto(string? Notes, IReadOnlyList<string> Tags, string? Criticality, string? Owner, DateTimeOffset UpdatedAt, string? UpdatedBy);
+
+public sealed record ServiceAnnotationRequest(string? Notes, IReadOnlyList<string>? Tags, string? Criticality, string? Owner);
 
 /// <summary>
 /// Graph read model of <c>GET /api/topology</c> (current state): network devices → zones → subnets → hosts, plus the scan perspectives
@@ -88,7 +92,12 @@ public sealed record FindingDto(
     Guid Id, string SignatureId, int? SignatureVersion, string Name, string Severity, Guid HostId, string Address, int? Port,
     DateTimeOffset MatchedAt, string? Evidence, FindingStatus Status, DateTimeOffset FirstSeenAt, DateTimeOffset LastSeenAt,
     IReadOnlyList<ExternalRefDto> ExternalRefs, string Source, double Confidence, string ConfidenceMethod, string? MatchedUrl,
-    string? ClassificationTag, IReadOnlyList<string> Tags, string Zone);
+    string? ClassificationTag, IReadOnlyList<string> Tags, string Zone, FindingTriage Triage, string? SeverityOverride, string EffectiveSeverity,
+    string? Notes, IReadOnlyList<string> UserTags, string? TriagedBy, DateTimeOffset? TriagedAt);
+
+/// <param name="Triage">Null = <see cref="FindingTriage.None"/>.</param>
+/// <param name="SeverityOverride">Null/empty clears the override.</param>
+public sealed record FindingTriageRequest(FindingTriage? Triage, string? SeverityOverride, string? Notes, IReadOnlyList<string>? UserTags);
 
 public sealed record ChangeDto(
     Guid Id, DateTimeOffset DetectedAt, Guid ScanRunId, AssetChangeType Type, Guid? HostId, string Address, int? Port, string Summary,
@@ -117,7 +126,11 @@ internal static class DtoMapping
     public static FindingDto ToDto(this SignatureMatch m) =>
         new(m.Id, m.SignatureId, m.SignatureVersion, m.Name, m.Severity, m.HostId, m.Address, m.Port, m.MatchedAt, m.Evidence, m.Status,
             m.FirstSeenAt, m.LastSeenAt, m.ExternalRefs.Select(r => new ExternalRefDto(r.System, r.ExternalId)).ToList(), m.Source,
-            m.ConfidenceScore, m.ConfidenceMethod, m.MatchedUrl, m.ClassificationTag, m.Tags, m.Zone);
+            m.ConfidenceScore, m.ConfidenceMethod, m.MatchedUrl, m.ClassificationTag, m.Tags, m.Zone, m.Triage, m.SeverityOverride, m.EffectiveSeverity,
+            m.Notes, m.UserTags, m.TriagedBy, m.TriagedAt);
+
+    public static ServiceAnnotationDto? ToDto(this ServiceAnnotation? a) =>
+        a is null ? null : new ServiceAnnotationDto(a.Notes, a.Tags, a.Criticality, a.Owner, a.UpdatedAt, a.UpdatedBy);
 
     public static TechnologyDto ToDto(this Technology t) =>
         new(t.Id, t.Name, t.Version, t.Category, t.Port, t.Confidence, t.ConfidenceMethod, t.Sources, t.FirstSeenAt, t.LastSeenAt);

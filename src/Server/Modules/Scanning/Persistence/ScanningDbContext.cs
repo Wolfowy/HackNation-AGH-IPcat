@@ -26,6 +26,7 @@ public sealed class ScanningDbContext(DbContextOptions<ScanningDbContext> option
             e.Property(x => x.Name).HasMaxLength(200);
             e.Property(x => x.WorkflowKey).HasMaxLength(64);
             e.Property(x => x.TriggeredBy).HasMaxLength(200);
+            e.Property(x => x.Notes).HasMaxLength(4000);
             e.HasIndex(x => new { x.ScheduleId, x.ScheduledFireTime }).IsUnique();
             e.HasIndex(x => new { x.Status, x.CreatedAt });
         });

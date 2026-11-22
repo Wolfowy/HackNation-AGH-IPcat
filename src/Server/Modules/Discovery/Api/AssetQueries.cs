@@ -12,7 +12,8 @@ namespace WebScan.Server.Modules.Discovery.Api;
 public sealed record HostQuery(string? Search, HostStatus? Status, string? Zone, bool NetworkDevice = false);
 public sealed record ServiceQuery(int? Port, string? ServiceName, string? Search, string? Zone = null);
 public sealed record ChangeQuery(DateTimeOffset? Since, AssetChangeType? Type, Guid? HostId, Guid? ScanRunId, string? Zone = null);
-public sealed record FindingQuery(string? Severity, FindingStatus? Status, string? Zone = null);
+/// <param name="Severity">Matches the effective severity (user override, else detected).</param>
+public sealed record FindingQuery(string? Severity, FindingStatus? Status, string? Zone = null, FindingTriage? Triage = null);
 public sealed record TopologyQuery(string? Zone, string? Search);
 
 /// <summary>Read models of the current-state tables, shared by the list and export endpoints.</summary>
@@ -187,9 +188,10 @@ internal sealed class AssetQueries(DiscoveryDbContext db)
         if (!string.IsNullOrWhiteSpace(query.Severity))
         {
             var severity = query.Severity.Trim().ToLowerInvariant();
-            q = q.Where(m => m.Severity == severity);
+            q = q.Where(m => (m.SeverityOverride ?? m.Severity) == severity);
         }
         if (query.Status is not null) q = q.Where(m => m.Status == query.Status);
+        if (query.Triage is not null) q = q.Where(m => m.Triage == query.Triage);
         if (!string.IsNullOrWhiteSpace(query.Zone)) q = q.Where(m => m.Zone == query.Zone);
         var total = await q.CountAsync(ct);
         var items = await q.OrderByDescending(m => m.MatchedAt).ThenBy(m => m.Id).Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(ct);
@@ -223,7 +225,7 @@ internal sealed class AssetQueries(DiscoveryDbContext db)
             await db.Hosts.CountAsync(h => h.Status == HostStatus.Active, ct),
             await db.Services.CountAsync(s => s.State == ServiceState.Open, ct),
             await db.Changes.CountAsync(c => c.DetectedAt >= since, ct),
-            await db.SignatureMatches.CountAsync(m => m.Status == FindingStatus.Open, ct),
+            await db.SignatureMatches.CountAsync(m => m.Status == FindingStatus.Open && m.Triage != FindingTriage.FalsePositive, ct),
             await db.ProcessedBatches.MaxAsync(b => (DateTimeOffset?)b.ProcessedAt, ct));
     }
 
@@ -277,6 +279,9 @@ internal sealed class AssetQueries(DiscoveryDbContext db)
         var fingerprints = services.Select(s => s.CurrentCertFingerprint).OfType<string>().ToList();
         var certificates = (await db.Certificates.AsNoTracking().Where(c => ids.Contains(c.ServiceId) && fingerprints.Contains(c.FingerprintSha256))
             .ToListAsync(ct)).ToDictionary(c => (c.ServiceId, c.FingerprintSha256));
+        var addresses = services.Select(s => s.Address).Distinct().ToList();
+        var annotations = await db.ServiceAnnotations.AsNoTracking().Where(a => addresses.Contains(a.Address))
+            .ToDictionaryAsync(a => (a.Zone, a.Address, a.Port, a.Transport), ct);
 
         return services.Select(s =>
         {
@@ -285,7 +290,8 @@ internal sealed class AssetQueries(DiscoveryDbContext db)
                 s.HttpUrl is null ? null : new HttpInfoDto(s.HttpUrl, s.HttpStatusCode, s.HttpTitle, s.HttpWebServer),
                 cert is null ? null : new TlsInfoDto(cert.SubjectCommonName, cert.Issuer, cert.NotAfter, cert.FingerprintSha256),
                 technologies[s.Id].Distinct().Order().ToList(), s.Confidence, s.ConfidenceMethod, s.TimeOfDayVariance, s.FirstSeenAt, s.LastSeenAt,
-                Topology.ServiceUrl(s.Address, s.Port, s.ServiceName, s.Tunnel, s.HttpUrl, s.CurrentCertFingerprint is not null), s.Zone);
+                Topology.ServiceUrl(s.Address, s.Port, s.ServiceName, s.Tunnel, s.HttpUrl, s.CurrentCertFingerprint is not null), s.Zone,
+                annotations.GetValueOrDefault((s.Zone, s.Address, s.Port, s.Transport)).ToDto());
         }).ToList();
     }
 

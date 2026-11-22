@@ -35,6 +35,8 @@ public sealed class RbacTests(PostgresFixture postgres) : Scenario(postgres)
         Assert.Equal(HttpStatusCode.Forbidden, await viewer.StatusOfAsync(HttpMethod.Post, "/api/scans", scan));
         Assert.Equal(HttpStatusCode.Forbidden, await viewer.StatusOfAsync(HttpMethod.Get, "/api/users"));
         Assert.Equal(HttpStatusCode.Forbidden, await viewer.StatusOfAsync(HttpMethod.Get, "/api/audit"));
+        Assert.Equal(HttpStatusCode.Forbidden, await viewer.StatusOfAsync(HttpMethod.Put, $"/api/findings/{Guid.NewGuid()}", new { triage = "FalsePositive" }));
+        Assert.Equal(HttpStatusCode.Forbidden, await viewer.StatusOfAsync(HttpMethod.Put, $"/api/scans/{Guid.NewGuid()}", new { name = "x" }));
 
         // Editor: modify existing + run scans, but no create/delete.
         Assert.Equal(HttpStatusCode.OK, await editor.StatusOfAsync(HttpMethod.Put, $"/api/networks/{net}", update));
@@ -148,5 +150,13 @@ public sealed class ImportExportTests(PostgresFixture postgres) : Scenario(postg
         await editor.LoginAsync("import-editor", "Role-Password-123");
         Assert.Equal(HttpStatusCode.Forbidden, await editor.StatusOfAsync(HttpMethod.Post, "/api/scans/import?format=csv&zone=imp"));
         Assert.Equal(HttpStatusCode.UnprocessableEntity, await Admin.StatusOfAsync(HttpMethod.Post, "/api/scans/import?format=exe&zone=imp"));
+
+        // Editors triage imported findings; importing the same finding again keeps the triage.
+        var findingId = (await Admin.GetAsync("/api/findings")).Items().First(f => f.Str("signatureId") == "ext-admin-panel").Str("id");
+        Assert.Equal(HttpStatusCode.OK,
+            await editor.StatusOfAsync(HttpMethod.Put, $"/api/findings/{findingId}", new { triage = "FalsePositive", severityOverride = "low", notes = "WAF test page" }));
+        await Admin.PostRawAsync("/api/scans/import?format=csv&zone=imp", first, "text/csv");
+        var triaged = (await Admin.GetAsync("/api/findings?triage=FalsePositive")).Items().Single(f => f.Str("id") == findingId);
+        Assert.Equal(("medium", "low", "WAF test page"), (triaged.Str("severity"), triaged.Str("effectiveSeverity"), triaged.Str("notes")));
     }
 }

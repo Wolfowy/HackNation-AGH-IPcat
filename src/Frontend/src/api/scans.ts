@@ -8,11 +8,14 @@ import {
   type PlannerStats,
   type ScanDiff,
   type ScanExecutionEvent,
+  type ScanImportFormat,
+  type ScanImportResult,
   type ScanJob,
   type ScanLimits,
   type ScanRun,
   type ScanRunDetail,
   type ScanRunStatus,
+  type ScanRunUpdate,
   type ScanStartRequest,
 } from './types'
 
@@ -60,6 +63,42 @@ export const useStartScan = () =>
   useApiMutation((body: ScanStartRequest) => api<ScanRun>('/api/scans', { method: 'POST', body }), [['scans'], ['dashboard']], {
     inlineValidation: true,
   })
+
+export const useUpdateScan = () =>
+  useApiMutation(({ id, ...body }: ScanRunUpdate & { id: string }) => api<ScanRun>(`/api/scans/${id}`, { method: 'PUT', body }), [['scans']], {
+    inlineValidation: true,
+  })
+
+export interface ScanImportParams {
+  file: File
+  format: ScanImportFormat
+  zone: string
+  name?: string
+  snapshot: boolean
+}
+
+const importContentTypes: Record<ScanImportFormat, string> = {
+  json: 'application/json',
+  csv: 'text/csv',
+  'nmap-xml': 'application/xml',
+  'httpx-jsonl': 'application/x-ndjson',
+  'naabu-jsonl': 'application/x-ndjson',
+  'nuclei-jsonl': 'application/x-ndjson',
+}
+
+/** Imports scan results as a finished "import" run (same pipeline as agent results: assets, findings, change detection). */
+export const useImportScan = () =>
+  useApiMutation(
+    ({ file, format, zone, name, snapshot }: ScanImportParams) =>
+      api<ScanImportResult>('/api/scans/import', {
+        method: 'POST',
+        query: { format, zone, name, snapshot },
+        rawBody: file,
+        contentType: importContentTypes[format],
+      }),
+    [['scans'], ['hosts'], ['services'], ['findings'], ['changes'], ['dashboard']],
+    { inlineValidation: true },
+  )
 
 export const useCancelScan = () =>
   useApiMutation((id: string) => api(`/api/scans/${id}/cancel`, { method: 'POST' }), [['scans'], ['jobs']])

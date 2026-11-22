@@ -2,13 +2,16 @@
 import { http, HttpResponse, type PathParams } from 'msw'
 import type {
   Change,
+  FindingTriageInput,
   HostDetail,
   Network,
   NetworkDevice,
   NetworkInput,
+  ScanRunUpdate,
   ScanStartRequest,
   ScanWorkflowDefinition,
   ScheduleInput,
+  ServiceAnnotation,
   Severity,
   SignatureKind,
   Topology,
@@ -16,6 +19,7 @@ import type {
   User,
   ValidationResult,
 } from '@/api/types'
+import { CRITICALITIES, SCAN_IMPORT_FORMATS, SEVERITIES } from '@/api/types'
 import { hasPermission, type Permission } from '@/auth/roles'
 import { dagLevels } from '@/features/workflows/dag'
 import { validateTarget } from '@/lib/targets'
@@ -352,6 +356,7 @@ function createRun(user: MockUser, req: ScanStartRequest, triggeredBy: string): 
     notAfter: req.windowMinutes ? new Date(Date.now() + req.windowMinutes * 60_000).toISOString() : undefined,
     progress: { jobsTotal: 0, jobsQueued: 0, jobsRunning: 0, jobsCompleted: 0, jobsFailed: 0, percent: 0 },
     coverageComplete: false,
+    tags: [],
     steps: [],
   }
   const plan = buildRunPlan(db, run, Math.max(2, req.networkIds.length * 2))
@@ -780,6 +785,58 @@ export const handlers = [
       return HttpResponse.json(runView(createRun(user, req, `manual:${user.userName}`)), { status: 201 })
     }),
   ),
+  http.post(
+    '*/api/scans/import',
+    route('manage', async ({ request, url, user }) => {
+      const format = url.searchParams.get('format') ?? ''
+      const zone = url.searchParams.get('zone') ?? ''
+      const errors: Record<string, string[]> = {}
+      if (!(SCAN_IMPORT_FORMATS as readonly string[]).includes(format)) errors.format = [`format must be one of: ${SCAN_IMPORT_FORMATS.join(', ')}.`]
+      if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,63}$/.test(zone)) errors.zone = ["zone is required (1-64 letters, digits, '_', '.', '-')."]
+      if (Object.keys(errors).length) return validationProblem(errors)
+      // shortcut: counts non-empty lines as records instead of parsing the formats like the server does.
+      const lines = (await request.text()).split(/\r?\n/).filter((l) => l.trim())
+      const rows = format === 'csv' ? Math.max(0, lines.length - 1) : lines.length
+      if (rows === 0) return validationProblem({ file: ['The file contains no importable results.'] })
+      const now = new Date().toISOString()
+      const run: MockRun = {
+        id: randomGuid(),
+        name: url.searchParams.get('name')?.trim() || `Import ${format} ${now.slice(0, 16).replace('T', ' ')}`,
+        status: 'Completed',
+        workflowKey: 'import',
+        workflowVersion: 1,
+        networkIds: [],
+        triggeredBy: `import:${user.userName}`,
+        priority: 50,
+        createdAt: now,
+        startedAt: now,
+        finishedAt: now,
+        progress: { jobsTotal: 0, jobsQueued: 0, jobsRunning: 0, jobsCompleted: 0, jobsFailed: 0, percent: 100 },
+        coverageComplete: url.searchParams.get('snapshot') === 'true',
+        tags: [],
+        steps: [],
+      }
+      db.runs.unshift(run)
+      audit(user, 'scan.imported', 'ScanRun', run.id)
+      return HttpResponse.json({ scanRunId: run.id, rows, observations: rows * 2, changesDetected: 0, errors: [] }, { status: 201 })
+    }),
+  ),
+  http.put(
+    '*/api/scans/:id',
+    route('edit', async ({ request, params, user }) => {
+      const run = db.runs.find((r) => r.id === p(params, 'id'))
+      if (!run) return notFound('Scan')
+      const req = await body<ScanRunUpdate>(request)
+      const tags = [...new Set((req.tags ?? []).map((tag) => tag.trim()).filter(Boolean))]
+      const errors: Record<string, string[]> = {}
+      if (!req.name?.trim() || req.name.trim().length > 200) errors.name = ['Name is required (max 200 characters).']
+      if (tags.length > 20) errors.tags = ['Max 20 tags.']
+      if (Object.keys(errors).length) return validationProblem(errors)
+      Object.assign(run, { name: req.name.trim(), notes: req.notes?.trim() || undefined, tags })
+      audit(user, 'scan.updated', 'ScanRun', run.id)
+      return HttpResponse.json(runView(run))
+    }),
+  ),
   http.get(
     '*/api/scans/:id',
     route('read', ({ params }) => {
@@ -929,7 +986,7 @@ export const handlers = [
         hostsActive: db.hosts.filter((h) => h.status === 'Active').length,
         servicesTotal: db.services.filter((s) => s.state === 'Open').length,
         changesLast24h: db.changes.filter((c) => c.detectedAt > dayAgo).length,
-        findingsOpen: db.findings.filter((f) => f.status === 'Open').length,
+        findingsOpen: db.findings.filter((f) => f.status === 'Open' && f.triage !== 'FalsePositive').length,
         lastScanAt: db.runs.find((r) => r.finishedAt)?.finishedAt,
       })
     }),
@@ -980,6 +1037,19 @@ export const handlers = [
       host.annotation = await body<NonNullable<typeof host.annotation>>(request)
       audit(user, 'asset.annotated', 'host', host.id)
       return noContent()
+    }),
+  ),
+  http.put(
+    '*/api/assets/services/:id/annotation',
+    route('edit', async ({ request, params, user }) => {
+      const service = db.services.find((s) => s.id === p(params, 'id'))
+      if (!service) return notFound('Service')
+      const req = await body<ServiceAnnotation>(request)
+      if (req.criticality && !(CRITICALITIES as readonly string[]).includes(req.criticality))
+        return validationProblem({ annotation: [`criticality: must be one of ${CRITICALITIES.join(', ')}.`] })
+      service.annotation = { ...req, tags: req.tags ?? [], updatedAt: new Date().toISOString(), updatedBy: user.userName }
+      audit(user, 'service.annotation_updated', 'service', service.id)
+      return HttpResponse.json(service.annotation)
     }),
   ),
   http.get(
@@ -1104,9 +1174,40 @@ export const handlers = [
       const severity = url.searchParams.get('severity')
       const status = url.searchParams.get('status')
       const zone = url.searchParams.get('zone')
+      const triage = url.searchParams.get('triage')
       return HttpResponse.json(
-        paged(db.findings.filter((f) => (!severity || f.severity === severity) && (!status || f.status === status) && (!zone || f.zone === zone)), url),
+        paged(
+          db.findings.filter(
+            (f) => (!severity || f.effectiveSeverity === severity) && (!status || f.status === status) && (!zone || f.zone === zone) && (!triage || f.triage === triage),
+          ),
+          url,
+        ),
       )
+    }),
+  ),
+  http.put(
+    '*/api/findings/:id',
+    route('edit', async ({ request, params, user }) => {
+      const f = db.findings.find((x) => x.id === p(params, 'id'))
+      if (!f) return notFound('Finding')
+      const req = await body<FindingTriageInput>(request)
+      const userTags = [...new Set((req.userTags ?? []).map((tag) => tag.trim()).filter(Boolean))]
+      const errors: Record<string, string[]> = {}
+      if (req.severityOverride && !(SEVERITIES as readonly string[]).includes(req.severityOverride)) errors.severityOverride = [`Must be one of ${SEVERITIES.join(', ')}.`]
+      if ((req.notes ?? '').length > 4000) errors.notes = ['Max 4000 characters.']
+      if (userTags.length > 20) errors.userTags = ['Max 20 tags.']
+      if (Object.keys(errors).length) return validationProblem(errors)
+      Object.assign(f, {
+        triage: req.triage ?? 'None',
+        severityOverride: req.severityOverride || undefined,
+        effectiveSeverity: req.severityOverride || f.severity,
+        notes: req.notes?.trim() || undefined,
+        userTags,
+        triagedBy: user.userName,
+        triagedAt: new Date().toISOString(),
+      })
+      audit(user, 'finding.triaged', 'finding', f.id)
+      return HttpResponse.json(f)
     }),
   ),
   http.get(

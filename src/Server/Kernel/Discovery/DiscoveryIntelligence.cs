@@ -98,7 +98,15 @@ public sealed record FindingRecord
     public required string SignatureId { get; init; }
     public int? SignatureVersion { get; init; }
     public required string Name { get; init; }
+
+    /// <summary>Effective severity: the user's override, else the detected severity.</summary>
     public required string Severity { get; init; }
+
+    /// <summary>User triage ("None", "Confirmed", "FalsePositive", "AcceptedRisk"); false positives are never published.</summary>
+    public string Triage { get; init; } = "None";
+
+    public bool IsFalsePositive => Triage == "FalsePositive";
+
     public required string Address { get; init; }
     public string? Hostname { get; init; }
     public int? Port { get; init; }

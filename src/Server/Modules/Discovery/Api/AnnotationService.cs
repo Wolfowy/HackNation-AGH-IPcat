@@ -51,5 +51,36 @@ internal sealed class AnnotationService(DiscoveryDbContext db, ICurrentUser user
         return (created, true, annotation);
     }
 
+    public static readonly IReadOnlyList<string> Criticalities = ["low", "medium", "high", "critical"];
+
+    public static List<string> Validate(ServiceAnnotationRequest r)
+    {
+        var errors = new List<string>();
+        if (r.Notes?.Length > 4000) errors.Add("notes: max 4000 characters.");
+        if (r.Owner?.Length > 200) errors.Add("owner: max 200 characters.");
+        if (Clean(r.Criticality) is { } c && !Criticalities.Contains(c.ToLowerInvariant()))
+            errors.Add($"criticality: must be one of {string.Join(", ", Criticalities)}.");
+        if (r.Tags is { Count: > 50 }) errors.Add("tags: max 50 tags.");
+        if (r.Tags?.Any(t => t.Length > 64) == true) errors.Add("tags: max 64 characters per tag.");
+        return errors;
+    }
+
+    /// <summary>Creates or replaces the annotation of the endpoint of <paramref name="service"/> (caller saves).</summary>
+    public async Task<(bool Created, ServiceAnnotation Annotation)> UpsertAsync(Service service, ServiceAnnotationRequest r, CancellationToken ct)
+    {
+        var annotation = await db.ServiceAnnotations.FirstOrDefaultAsync(a => a.Zone == service.Zone && a.Address == service.Address
+            && a.Port == service.Port && a.Transport == service.Transport, ct);
+        var created = annotation is null;
+        annotation ??= db.ServiceAnnotations.Add(new ServiceAnnotation
+            { Zone = service.Zone, Address = service.Address, Port = service.Port, Transport = service.Transport }).Entity;
+        annotation.Notes = Clean(r.Notes);
+        annotation.Tags = (r.Tags ?? []).Select(t => t.Trim()).Where(t => t.Length > 0).Distinct().ToList();
+        annotation.Criticality = Clean(r.Criticality)?.ToLowerInvariant();
+        annotation.Owner = Clean(r.Owner);
+        annotation.UpdatedAt = time.GetUtcNow();
+        annotation.UpdatedBy = user.UserName ?? user.UserId;
+        return (created, annotation);
+    }
+
     private static string? Clean(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
 }

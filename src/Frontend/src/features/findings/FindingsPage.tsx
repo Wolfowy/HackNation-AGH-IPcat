@@ -4,7 +4,7 @@ import { toast } from 'sonner'
 import { formatValidationMessage } from '@/api/client'
 import { useExportToDefectDojo } from '@/api/admin'
 import { useFindings } from '@/api/assets'
-import { SEVERITIES, type Severity } from '@/api/types'
+import { FINDING_TRIAGES, SEVERITIES, type FindingTriage, type Severity } from '@/api/types'
 import { Can, useCan } from '@/auth/AuthProvider'
 import { ExportButtons } from '@/components/actions'
 import { Loadable } from '@/components/feedback'
@@ -13,15 +13,17 @@ import { Filters, PageHeader, Pagination } from '@/components/page'
 import { Button } from '@/components/ui/button'
 import { NativeSelect } from '@/components/ui/input'
 import { t } from '@/i18n/strings'
+import { triageLabels } from './FindingEditDialog'
 import { FindingsTable } from './FindingsTable'
 
 export function FindingsPage() {
   const [severity, setSeverity] = useState<Severity | ''>('')
   const [status, setStatus] = useState('Open')
+  const [triage, setTriage] = useState<FindingTriage | ''>('')
   const [page, setPage] = useState(1)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const pageSize = 50
-  const findings = useFindings({ severity, status, page, pageSize })
+  const findings = useFindings({ severity, status, triage, page, pageSize })
   const exportDojo = useExportToDefectDojo()
   const canManage = useCan('manage')
 
@@ -66,6 +68,16 @@ export function FindingsPage() {
             <option value="">{t.common.all}</option>
             <option>Open</option>
             <option>Resolved</option>
+          </NativeSelect>
+        </FormField>
+        <FormField label="Triage">
+          <NativeSelect value={triage} onChange={(e) => resetSelection(setTriage)(e.target.value as FindingTriage | '')}>
+            <option value="">{t.common.all}</option>
+            {FINDING_TRIAGES.map((v) => (
+              <option key={v} value={v}>
+                {triageLabels[v]}
+              </option>
+            ))}
           </NativeSelect>
         </FormField>
       </Filters>

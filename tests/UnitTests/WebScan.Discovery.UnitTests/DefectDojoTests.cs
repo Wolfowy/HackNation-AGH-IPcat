@@ -148,6 +148,30 @@ public class DefectDojoTests(TestApp app) : IAsyncLifetime
     }
 
     [Fact]
+    public async Task False_positives_are_never_published_and_overrides_set_the_exported_severity()
+    {
+        await ConfigureAsync(minimumSeverity: "medium");
+        var ids = await SeedFindingsAsync(); // [exposed-git (high), server-banner (info)]
+        var editor = app.Client(Roles.Editor);
+        await editor.PutAsJsonAsync($"/api/findings/{ids[0]}", new { triage = "FalsePositive" }, Json);
+        await editor.PutAsJsonAsync($"/api/findings/{ids[1]}", new { triage = "Confirmed", severityOverride = "high" }, Json);
+
+        var internalResult = await app.WithScopeAsync(sp => sp.GetRequiredService<IFindingPublisher>().PublishAsync(_s.RunId, "internal", "medium"));
+        Assert.Equal((1, 1), (internalResult.Published, internalResult.Skipped));
+        Assert.Equal([ids[1]], await _s.QueryAsync(db => db.SignatureMatches.Where(m => m.PublishedAt != null).Select(m => m.Id).ToListAsync()));
+
+        app.DefectDojo.Enqueue(HttpStatusCode.OK, """{ "results": [{ "id": 12 }] }""");
+        app.DefectDojo.Enqueue(HttpStatusCode.Created, """{ "id": 55 }""");
+        app.DefectDojo.Enqueue(HttpStatusCode.Created, """{ "id": 902 }""");
+        var result = await (await app.Client(Roles.Manager).PostAsJsonAsync("/api/integrations/defectdojo/export", new { findingIds = ids }, Json))
+            .Content.ReadFromJsonAsync<ExportResult>(Json);
+        Assert.Equal((1, 1), (result!.Exported, result.Skipped)); // the false positive is skipped although selected
+        using var finding = JsonDocument.Parse(app.DefectDojo.Requests[^1].Body!);
+        Assert.Equal((ids[1].ToString(), "High"),
+            (finding.RootElement.GetProperty("unique_id_from_tool").GetString(), finding.RootElement.GetProperty("severity").GetString()));
+    }
+
+    [Fact]
     public async Task Export_requires_enabled_integration_and_test_reports_failures()
     {
         await ConfigureAsync(enabled: false);

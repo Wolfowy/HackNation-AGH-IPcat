@@ -1,20 +1,25 @@
 import { useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router'
-import { CheckCircle2, Circle, CircleDashed, CircleSlash, Loader2, XCircle } from 'lucide-react'
+import { useForm } from 'react-hook-form'
+import { CheckCircle2, Circle, CircleDashed, CircleSlash, Loader2, Pencil, XCircle } from 'lucide-react'
+import { toast } from 'sonner'
 import { useNetworks } from '@/api/networks'
 import { useScanEventListener } from '@/api/scanHub'
-import { useCancelScan, useScan, useScanEvents, useScanJobs } from '@/api/scans'
-import { ACTIVE_RUN_STATUSES, type ScanExecutionEvent, type ScanStep, type StepStatus } from '@/api/types'
+import { useCancelScan, useScan, useScanEvents, useScanJobs, useUpdateScan } from '@/api/scans'
+import { ACTIVE_RUN_STATUSES, type ScanExecutionEvent, type ScanRun, type ScanStep, type StepStatus } from '@/api/types'
 import { Can } from '@/auth/AuthProvider'
 import { ConfirmButton } from '@/components/actions'
 import { EmptyState, Loadable } from '@/components/feedback'
+import { FormField, submitHandler } from '@/components/form'
 import { Chips, KeyValues, PageHeader, Pagination, StatusBadge } from '@/components/page'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+import { Input, Textarea } from '@/components/ui/input'
 import { Progress } from '@/components/ui/progress'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { t } from '@/i18n/strings'
-import { formatDateTime, formatDuration } from '@/lib/format'
+import { formatDateTime, formatDuration, splitList } from '@/lib/format'
 import { JobsTable } from './JobsTable'
 
 const stepIcons: Record<StepStatus, React.ReactNode> = {
@@ -71,6 +76,67 @@ function EventsLog({ events }: { events: ScanExecutionEvent[] }) {
   )
 }
 
+interface ScanEditValues {
+  name: string
+  notes: string
+  tags: string
+}
+
+/** Name, notes and tags of a run: user metadata, editable whatever the run state. */
+function ScanEditDialog({ run }: { run: ScanRun }) {
+  const [open, setOpen] = useState(false)
+  const update = useUpdateScan()
+  const form = useForm<ScanEditValues>()
+  const { register, formState, reset } = form
+  const errors = formState.errors
+  const submit = submitHandler(form, async (v) => {
+    await update.mutateAsync({ id: run.id, name: v.name.trim(), notes: v.notes.trim() || undefined, tags: splitList(v.tags) })
+    toast.success(t.common.saved)
+    setOpen(false)
+  })
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (next) reset({ name: run.name, notes: run.notes ?? '', tags: run.tags.join(', ') })
+        setOpen(next)
+      }}
+    >
+      <DialogTrigger asChild>
+        <Button variant="outline">
+          <Pencil /> {t.scans.edit}
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{t.scans.edit}</DialogTitle>
+        </DialogHeader>
+        <form className="grid gap-4" onSubmit={submit} noValidate>
+          <FormField label="Name" error={errors.name?.message}>
+            <Input
+              {...register('name', {
+                validate: (v) => !!v.trim() || 'Name is required.',
+                maxLength: { value: 200, message: 'Max 200 characters.' },
+              })}
+            />
+          </FormField>
+          <FormField label="Notes" error={errors.notes?.message}>
+            <Textarea rows={4} {...register('notes', { maxLength: { value: 4000, message: 'Max 4000 characters.' } })} />
+          </FormField>
+          <FormField label="Tags" hint="Comma separated, up to 20" error={errors.tags?.message}>
+            <Input {...register('tags', { validate: (v) => splitList(v).length <= 20 || 'Max 20 tags.' })} />
+          </FormField>
+          <DialogFooter>
+            <Button type="submit" disabled={formState.isSubmitting}>
+              {formState.isSubmitting ? t.common.saving : t.common.save}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 export function ScanDetailPage() {
   const { id = '' } = useParams()
   const scan = useScan(id)
@@ -113,6 +179,9 @@ export function ScanDetailPage() {
               }
               actions={
                 <>
+                  <Can permission="edit">
+                    <ScanEditDialog run={run} />
+                  </Can>
                   <Button variant="outline" asChild>
                     <Link to={`/changes/diff?run=${run.id}`}>{t.scans.diff}</Link>
                   </Button>
@@ -171,6 +240,8 @@ export function ScanDetailPage() {
                       ['Started', formatDateTime(run.startedAt)],
                       ['Finished', formatDateTime(run.finishedAt)],
                       ['Window ends', formatDateTime(run.notAfter)],
+                      ['Tags', <Chips values={run.tags} />],
+                      ['Notes', <span className="whitespace-pre-wrap">{run.notes ?? '—'}</span>],
                     ]}
                   />
                 </CardContent>

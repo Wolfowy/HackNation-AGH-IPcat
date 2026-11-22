@@ -9,6 +9,7 @@ using WebScan.Discovery.UnitTests.Infrastructure;
 using WebScan.Server.Kernel.Security;
 using WebScan.Server.Modules.Analytics;
 using WebScan.Server.Modules.Discovery.Api;
+using WebScan.Server.Modules.Discovery.Domain;
 
 namespace WebScan.Discovery.UnitTests;
 
@@ -60,6 +61,79 @@ public class ApiTests(TestApp app) : IAsyncLifetime
         Assert.Equal(2, await _s.QueryAsync(db => db.AnnotationRevisions.CountAsync()));
         Assert.Equal(["asset.annotation_created", "asset.annotation_updated"], app.Audit.Entries.Select(e => e.Action));
         Assert.Equal(HttpStatusCode.NotFound, (await app.Client(Roles.Editor).PutAsJsonAsync($"/api/assets/hosts/{Guid.NewGuid()}/annotation", body, Json)).StatusCode);
+    }
+
+    [Fact]
+    public async Task Finding_triage_survives_redetection_and_drives_effective_severity()
+    {
+        await SeedHostAsync();
+        var id = await _s.QueryAsync(db => db.SignatureMatches.Select(m => m.Id).SingleAsync());
+        var body = new { triage = "FalsePositive", severityOverride = "Critical", notes = "Lab honeypot", userTags = new[] { "lab", " lab ", "honeypot" } };
+
+        Assert.Equal(HttpStatusCode.Forbidden, (await app.Client(Roles.Viewer).PutAsJsonAsync($"/api/findings/{id}", body, Json)).StatusCode);
+        var editor = app.Client(Roles.Editor);
+        var invalid = await editor.PutAsJsonAsync($"/api/findings/{id}", new { severityOverride = "urgent", userTags = Enumerable.Range(0, 21).Select(i => $"t{i}") }, Json);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, invalid.StatusCode);
+        var problem = await invalid.Content.ReadFromJsonAsync<JsonElement>(Json);
+        Assert.True(problem.GetProperty("errors").TryGetProperty("severityOverride", out _));
+        Assert.True(problem.GetProperty("errors").TryGetProperty("userTags", out _));
+        Assert.Equal(HttpStatusCode.NotFound, (await editor.PutAsJsonAsync($"/api/findings/{Guid.NewGuid()}", body, Json)).StatusCode);
+
+        var saved = await (await editor.PutAsJsonAsync($"/api/findings/{id}", body, Json)).Content.ReadFromJsonAsync<FindingDto>(Json);
+        Assert.Equal(("medium", "critical", "critical"), (saved!.Severity, saved.SeverityOverride, saved.EffectiveSeverity));
+        Assert.Equal(["lab", "honeypot"], saved.UserTags);
+        Assert.Contains(app.Audit.Entries, e => e.Action == "finding.triaged" && e.EntityId == id.ToString());
+
+        // A later scan detects the same finding again: detection fields are refreshed, the triage is kept.
+        _s.NextRun();
+        await _s.RunAsync(Scenario.Coverage(["10.4.0.0/24"]), 3, _s.HostUp("10.4.0.1"), _s.Port("10.4.0.1", 443),
+            _s.Signature("10.4.0.1", 443, "exposed-panel", "medium", "still there"));
+        var viewer = app.Client(Roles.Viewer);
+        var finding = Assert.Single((await viewer.GetFromJsonAsync<PagedResult<FindingDto>>("/api/findings?severity=critical", Json))!.Items);
+        Assert.Equal((FindingStatus.Open, FindingTriage.FalsePositive, "Lab honeypot", "still there", "test-editor"),
+            (finding.Status, finding.Triage, finding.Notes, finding.Evidence, finding.TriagedBy));
+        Assert.Empty((await viewer.GetFromJsonAsync<PagedResult<FindingDto>>("/api/findings?severity=medium", Json))!.Items);
+        Assert.Single((await viewer.GetFromJsonAsync<PagedResult<FindingDto>>("/api/findings?triage=FalsePositive", Json))!.Items);
+        Assert.Empty((await viewer.GetFromJsonAsync<PagedResult<FindingDto>>("/api/findings?triage=Confirmed", Json))!.Items);
+        Assert.Equal(0, (await viewer.GetFromJsonAsync<DashboardSummaryDto>("/api/dashboard/summary", Json))!.FindingsOpen);
+
+        var csv = Csv.Parse(await viewer.GetStringAsync("/api/export/findings?format=csv"));
+        var col = (string name) => csv[0].IndexOf(name);
+        Assert.Equal(("medium", "critical", "FalsePositive", "lab;honeypot"),
+            (csv[1][col("severity")], csv[1][col("effectiveSeverity")], csv[1][col("triage")], csv[1][col("userTags")]));
+
+        // Clearing the triage restores the detected severity.
+        var cleared = await (await editor.PutAsJsonAsync($"/api/findings/{id}", new { }, Json)).Content.ReadFromJsonAsync<FindingDto>(Json);
+        Assert.Equal((FindingTriage.None, null, "medium"), (cleared!.Triage, cleared.SeverityOverride, cleared.EffectiveSeverity));
+        Assert.Equal(1, (await viewer.GetFromJsonAsync<DashboardSummaryDto>("/api/dashboard/summary", Json))!.FindingsOpen);
+    }
+
+    [Fact]
+    public async Task Service_annotation_is_kept_across_scans_and_exported()
+    {
+        var hostId = await SeedHostAsync();
+        var serviceId = await _s.QueryAsync(db => db.Services.Where(s => s.HostId == hostId).Select(s => s.Id).SingleAsync());
+        var body = new { notes = "Customer portal", tags = new[] { "pci" }, criticality = "High", owner = "team-web" };
+
+        Assert.Equal(HttpStatusCode.Forbidden, (await app.Client(Roles.Viewer).PutAsJsonAsync($"/api/assets/services/{serviceId}/annotation", body, Json)).StatusCode);
+        var editor = app.Client(Roles.Editor);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity,
+            (await editor.PutAsJsonAsync($"/api/assets/services/{serviceId}/annotation", body with { criticality = "extreme" }, Json)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await editor.PutAsJsonAsync($"/api/assets/services/{Guid.NewGuid()}/annotation", body, Json)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await editor.PutAsJsonAsync($"/api/assets/services/{serviceId}/annotation", body, Json)).StatusCode);
+
+        _s.NextRun();
+        await _s.RunAsync(Scenario.Coverage(["10.4.0.0/24"]), 3, _s.HostUp("10.4.0.1"), _s.Port("10.4.0.1", 443), _s.Service("10.4.0.1", 443, "https"));
+
+        var viewer = app.Client(Roles.Viewer);
+        var service = (await viewer.GetFromJsonAsync<PagedResult<ServiceDto>>("/api/assets/services?port=443", Json))!.Items.Single();
+        Assert.Equal(("Customer portal", "high", "team-web", "test-editor"), (service.Annotation!.Notes, service.Annotation.Criticality, service.Annotation.Owner,
+            service.Annotation.UpdatedBy));
+        Assert.Equal("https", service.ServiceName);
+        Assert.Equal("high", (await viewer.GetFromJsonAsync<HostDetailDto>($"/api/assets/hosts/{hostId}", Json))!.Services.Single().Annotation!.Criticality);
+        var csv = Csv.Parse(await viewer.GetStringAsync("/api/export/services?format=csv"));
+        Assert.Equal(("high", "pci"), (csv[1][csv[0].IndexOf("criticality")], csv[1][csv[0].IndexOf("tags")]));
+        Assert.Contains(app.Audit.Entries, e => e.Action == "service.annotation_created");
     }
 
     [Fact]

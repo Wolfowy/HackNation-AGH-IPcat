@@ -519,6 +519,7 @@ export function createDb(): MockDb {
       finishedAt: ago(minutesAgo - int(12, 55)),
       progress: { jobsTotal: 0, jobsQueued: 0, jobsRunning: 0, jobsCompleted: 0, jobsFailed: 0, percent: 0 },
       coverageComplete: status === 'Completed',
+      tags: [],
       steps: [],
     }
     const plan = buildRunPlan({ workflows, agents }, run)
@@ -570,6 +571,7 @@ export function createDb(): MockDb {
     startedAt: ago(6),
     progress: { jobsTotal: 0, jobsQueued: 0, jobsRunning: 0, jobsCompleted: 0, jobsFailed: 0, percent: 0 },
     coverageComplete: false,
+    tags: [],
     steps: [],
   }
   const livePlan = buildRunPlan({ workflows, agents }, live)
@@ -649,6 +651,9 @@ export function createDb(): MockDb {
       matchedAt: firstSeenAt,
       lastSeenAt: ago(int(10, 60 * 24)),
       externalRefs: i % 5 === 0 ? [{ system: 'defectdojo', externalId: String(1200 + i) }] : [],
+      triage: 'None',
+      effectiveSeverity: severity,
+      userTags: [],
     })
   }
 

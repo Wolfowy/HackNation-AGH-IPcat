@@ -7,12 +7,15 @@ import type {
   ChangeType,
   DashboardSummary,
   Finding,
+  FindingTriage,
+  FindingTriageInput,
   Host,
   HostDetail,
   HostStatus,
   ImportResult,
   Paged,
   Service,
+  ServiceAnnotation,
   Severity,
   TechnologySummary,
 } from './types'
@@ -48,6 +51,14 @@ export const useUpdateAnnotation = () =>
     ({ hostId, ...body }: AssetAnnotation & { hostId: string }) =>
       api(`/api/assets/hosts/${hostId}/annotation`, { method: 'PUT', body }),
     [['hosts']],
+  )
+
+export const useUpdateServiceAnnotation = () =>
+  useApiMutation(
+    ({ serviceId, ...body }: Omit<ServiceAnnotation, 'updatedAt' | 'updatedBy'> & { serviceId: string }) =>
+      api<ServiceAnnotation>(`/api/assets/services/${serviceId}/annotation`, { method: 'PUT', body }),
+    [['services'], ['hosts']],
+    { inlineValidation: true },
   )
 
 export interface ServiceListParams {
@@ -90,6 +101,7 @@ export const useChanges = (params: ChangeListParams) =>
 export interface FindingListParams {
   severity?: Severity | ''
   status?: string
+  triage?: FindingTriage | ''
   page: number
   pageSize: number
 }
@@ -100,6 +112,13 @@ export const useFindings = (params: FindingListParams) =>
     queryFn: ({ signal }) => api<Paged<Finding>>('/api/findings', { query: { ...params }, signal }),
     placeholderData: keepPreviousData,
   })
+
+export const useUpdateFindingTriage = () =>
+  useApiMutation(
+    ({ id, ...body }: FindingTriageInput & { id: string }) => api<Finding>(`/api/findings/${id}`, { method: 'PUT', body }),
+    [['findings'], ['hosts'], ['dashboard']],
+    { inlineValidation: true },
+  )
 
 export const useImportAssets = () =>
   useApiMutation(

@@ -69,11 +69,15 @@ internal static class DiscoveryEndpoints
             return q.ChangesAsync(new ChangeQuery(since, type, hostId, scanRunId, zone), p, size, ct);
         }).RequireAuthorization(Policies.CanRead);
 
-        api.MapGet("/findings", (AssetQueries q, string? severity, FindingStatus? status, string? zone, int? page, int? pageSize, CancellationToken ct) =>
+        api.MapGet("/findings", (AssetQueries q, string? severity, FindingStatus? status, string? zone, FindingTriage? triage, int? page, int? pageSize,
+            CancellationToken ct) =>
         {
             var (p, size) = AssetQueries.Paging(page, pageSize);
-            return q.FindingsAsync(new FindingQuery(severity, status, zone), p, size, ct);
+            return q.FindingsAsync(new FindingQuery(severity, status, zone, triage), p, size, ct);
         }).RequireAuthorization(Policies.CanRead);
+
+        api.MapPut("/findings/{id:guid}", PutFindingTriage).RequireAuthorization(Policies.CanEdit);
+        api.MapPut("/assets/services/{id:guid}/annotation", PutServiceAnnotation).RequireAuthorization(Policies.CanEdit);
 
         api.MapGet("/export/{dataset}", Export).RequireAuthorization(Policies.CanRead);
         api.MapPost("/import/assets", Import).RequireAuthorization(Policies.CanManage);
@@ -94,6 +98,48 @@ internal static class DiscoveryEndpoints
             await audit.WriteAsync(new AuditEntry(created ? "asset.annotation_created" : "asset.annotation_updated", "host", id.ToString(),
                 new { host.Zone, host.Address, annotation.Classification, annotation.BusinessState, annotation.Owner, annotation.Tags }), ct);
         }
+        return Results.Ok(annotation.ToDto());
+    }
+
+    /// <summary>Replaces the user triage of a finding; detection fields (severity, status, evidence) stay as scanned.</summary>
+    private static async Task<IResult> PutFindingTriage(Guid id, FindingTriageRequest request, DiscoveryDbContext db, ICurrentUser user, TimeProvider time,
+        IAuditLog audit, CancellationToken ct)
+    {
+        var tags = (request.UserTags ?? []).Select(t => t.Trim()).Where(t => t.Length > 0).Distinct().ToList();
+        var severityOverride = string.IsNullOrWhiteSpace(request.SeverityOverride) ? null : request.SeverityOverride.Trim().ToLowerInvariant();
+        var errors = new Dictionary<string, string[]>();
+        if (severityOverride is not null && !Severities.IsValid(severityOverride)) errors["severityOverride"] = [$"Must be one of {string.Join(", ", Severities.All)}."];
+        if (request.Notes?.Length > 4000) errors["notes"] = ["Max 4000 characters."];
+        if (tags.Count > 20) errors["userTags"] = ["Max 20 tags."];
+        else if (tags.Any(t => t.Length > 64)) errors["userTags"] = ["Max 64 characters per tag."];
+        if (errors.Count > 0) return Results.ValidationProblem(errors, statusCode: StatusCodes.Status422UnprocessableEntity);
+
+        var match = await db.SignatureMatches.FirstOrDefaultAsync(m => m.Id == id, ct);
+        if (match is null) return Results.NotFound();
+        match.Triage = request.Triage ?? FindingTriage.None;
+        match.SeverityOverride = severityOverride;
+        match.Notes = string.IsNullOrWhiteSpace(request.Notes) ? null : request.Notes.Trim();
+        match.UserTags = tags;
+        match.TriagedBy = user.UserName ?? user.UserId;
+        match.TriagedAt = time.GetUtcNow();
+        await db.SaveChangesAsync(ct);
+        await audit.WriteAsync(new AuditEntry("finding.triaged", "finding", id.ToString(),
+            new { match.SignatureId, match.Zone, match.Address, match.Port, triage = match.Triage.ToString(), match.SeverityOverride, match.UserTags }), ct);
+        return Results.Ok(match.ToDto());
+    }
+
+    private static async Task<IResult> PutServiceAnnotation(Guid id, ServiceAnnotationRequest request, DiscoveryDbContext db, AnnotationService annotations,
+        IAuditLog audit, CancellationToken ct)
+    {
+        var errors = AnnotationService.Validate(request);
+        if (errors.Count > 0) return Results.ValidationProblem(new Dictionary<string, string[]> { ["annotation"] = [.. errors] }, statusCode: StatusCodes.Status422UnprocessableEntity);
+        var service = await db.Services.AsNoTracking().FirstOrDefaultAsync(s => s.Id == id, ct);
+        if (service is null) return Results.NotFound();
+
+        var (created, annotation) = await annotations.UpsertAsync(service, request, ct);
+        await db.SaveChangesAsync(ct);
+        await audit.WriteAsync(new AuditEntry(created ? "service.annotation_created" : "service.annotation_updated", "service", id.ToString(),
+            new { service.Zone, service.Address, service.Port, transport = service.Transport.ToString(), annotation.Criticality, annotation.Owner, annotation.Tags }), ct);
         return Results.Ok(annotation.ToDto());
     }
 
@@ -238,12 +284,14 @@ internal static class DiscoveryEndpoints
 
     private static (IReadOnlyList<string>, Func<IEnumerable<IReadOnlyList<string?>>>, object) ServicesExport(IReadOnlyList<ServiceDto> items) =>
     (["id", "hostId", "zone", "address", "port", "transport", "state", "serviceName", "product", "version", "httpUrl", "httpStatusCode", "httpTitle",
-            "webServer", "tlsSubjectCommonName", "tlsIssuer", "tlsNotAfter", "tlsFingerprintSha256", "technologies", "confidence", "firstSeenAt", "lastSeenAt"],
+            "webServer", "tlsSubjectCommonName", "tlsIssuer", "tlsNotAfter", "tlsFingerprintSha256", "technologies", "confidence", "firstSeenAt", "lastSeenAt",
+            "criticality", "owner", "notes", "tags"],
         () => items.Select(s => (IReadOnlyList<string?>)
         [
             s.Id.ToString(), s.HostId.ToString(), s.Zone, s.Address, I(s.Port), s.Transport.ToString(), s.State.ToString(), s.ServiceName, s.Product,
             s.Version, s.Http?.Url, I(s.Http?.StatusCode), s.Http?.Title, s.Http?.WebServer, s.Tls?.SubjectCommonName, s.Tls?.Issuer,
             D(s.Tls?.NotAfter), s.Tls?.FingerprintSha256, string.Join(';', s.Technologies), N(s.Confidence), D(s.FirstSeenAt), D(s.LastSeenAt),
+            s.Annotation?.Criticality, s.Annotation?.Owner, s.Annotation?.Notes, string.Join(';', s.Annotation?.Tags ?? []),
         ]), items);
 
     private static (IReadOnlyList<string>, Func<IEnumerable<IReadOnlyList<string?>>>, object) ChangesExport(IReadOnlyList<ChangeDto> items) =>
@@ -256,11 +304,13 @@ internal static class DiscoveryEndpoints
 
     private static (IReadOnlyList<string>, Func<IEnumerable<IReadOnlyList<string?>>>, object) FindingsExport(IReadOnlyList<FindingDto> items) =>
     (["id", "signatureId", "signatureVersion", "name", "severity", "status", "hostId", "zone", "address", "port", "matchedAt", "firstSeenAt", "lastSeenAt",
-            "source", "confidence", "confidenceMethod", "matchedUrl", "evidence", "externalRefs"],
+            "source", "confidence", "confidenceMethod", "matchedUrl", "evidence", "externalRefs", "effectiveSeverity", "severityOverride", "triage", "notes",
+            "userTags", "triagedBy", "triagedAt"],
         () => items.Select(f => (IReadOnlyList<string?>)
         [
             f.Id.ToString(), f.SignatureId, I(f.SignatureVersion), f.Name, f.Severity, f.Status.ToString(), f.HostId.ToString(), f.Zone, f.Address, I(f.Port),
             D(f.MatchedAt), D(f.FirstSeenAt), D(f.LastSeenAt), f.Source, N(f.Confidence), f.ConfidenceMethod, f.MatchedUrl, f.Evidence,
-            string.Join(';', f.ExternalRefs.Select(r => $"{r.System}:{r.ExternalId}")),
+            string.Join(';', f.ExternalRefs.Select(r => $"{r.System}:{r.ExternalId}")), f.EffectiveSeverity, f.SeverityOverride, f.Triage.ToString(), f.Notes,
+            string.Join(';', f.UserTags), f.TriagedBy, D(f.TriagedAt),
         ]), items);
 }

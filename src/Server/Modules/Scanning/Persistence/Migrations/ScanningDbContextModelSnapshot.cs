@@ -458,6 +458,11 @@ namespace WebScan.Server.Modules.Scanning.Persistence.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("not_after");
 
+                    b.Property<string>("Notes")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)")
+                        .HasColumnName("notes");
+
                     b.Property<int>("Priority")
                         .HasColumnType("integer")
                         .HasColumnName("priority");
@@ -479,6 +484,11 @@ namespace WebScan.Server.Modules.Scanning.Persistence.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)")
                         .HasColumnName("status");
+
+                    b.PrimitiveCollection<List<string>>("Tags")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("tags");
 
                     b.Property<string>("TriggeredBy")
                         .IsRequired()

@@ -644,6 +644,45 @@ namespace WebScan.Server.Modules.Discovery.Persistence.Migrations
                     b.ToTable("services", "discovery");
                 });
 
+            modelBuilder.Entity("WebScan.Server.Modules.Discovery.Domain.ServiceAnnotation", b =>
+                {
+                    b.Property<string>("Zone")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Address")
+                        .HasColumnType("text");
+
+                    b.Property<int>("Port")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Transport")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("Criticality")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Owner")
+                        .HasColumnType("text");
+
+                    b.PrimitiveCollection<List<string>>("Tags")
+                        .IsRequired()
+                        .HasColumnType("text[]");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("text");
+
+                    b.HasKey("Zone", "Address", "Port", "Transport");
+
+                    b.ToTable("service_annotations", "discovery");
+                });
+
             modelBuilder.Entity("WebScan.Server.Modules.Discovery.Domain.SignatureMatch", b =>
                 {
                     b.Property<Guid>("Id")
@@ -698,6 +737,10 @@ namespace WebScan.Server.Modules.Discovery.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<string>("Notes")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
                     b.Property<int?>("Port")
                         .HasColumnType("integer");
 
@@ -713,6 +756,10 @@ namespace WebScan.Server.Modules.Discovery.Persistence.Migrations
                     b.Property<string>("Severity")
                         .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<string>("SeverityOverride")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
 
                     b.Property<string>("SignatureId")
                         .IsRequired()
@@ -737,6 +784,21 @@ namespace WebScan.Server.Modules.Discovery.Persistence.Migrations
                     b.Property<string>("Transport")
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)");
+
+                    b.Property<string>("Triage")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateTimeOffset?>("TriagedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("TriagedBy")
+                        .HasColumnType("text");
+
+                    b.PrimitiveCollection<List<string>>("UserTags")
+                        .IsRequired()
+                        .HasColumnType("text[]");
 
                     b.Property<string>("Zone")
                         .IsRequired()

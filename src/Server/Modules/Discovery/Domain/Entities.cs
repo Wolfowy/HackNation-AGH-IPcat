@@ -25,6 +25,15 @@ public enum FindingStatus
     Resolved,
 }
 
+/// <summary>User verdict on a finding, independent of the detection lifecycle (<see cref="FindingStatus"/>).</summary>
+public enum FindingTriage
+{
+    None,
+    Confirmed,
+    FalsePositive,
+    AcceptedRisk,
+}
+
 /// <summary>Append-only raw observation (masked, as received) plus normalized lookup columns.</summary>
 public sealed class ObservationRecord
 {
@@ -312,6 +321,19 @@ public sealed class SignatureMatch
     public DateTimeOffset? ResolvedAt { get; set; }
     public DateTimeOffset? PublishedAt { get; set; }
     public List<ExternalRefEntry> ExternalRefs { get; set; } = [];
+
+    // User triage: never written by ingestion or change detection, so it survives re-detection of the same finding.
+    public FindingTriage Triage { get; set; }
+
+    /// <summary>User-set severity; <see cref="EffectiveSeverity"/> = override ?? detected <see cref="Severity"/>.</summary>
+    public string? SeverityOverride { get; set; }
+
+    public string? Notes { get; set; }
+    public List<string> UserTags { get; set; } = [];
+    public string? TriagedBy { get; set; }
+    public DateTimeOffset? TriagedAt { get; set; }
+
+    public string EffectiveSeverity => SeverityOverride ?? Severity;
 }
 
 public sealed class ChangeEvent
@@ -343,6 +365,24 @@ public sealed class AssetAnnotation
     public string? BusinessState { get; set; }
     public string? Owner { get; set; }
     public List<string> Tags { get; set; } = [];
+    public DateTimeOffset UpdatedAt { get; set; }
+    public string? UpdatedBy { get; set; }
+}
+
+/// <summary>User-maintained context per endpoint (zone, address, port, transport). Never touched by scans; joined to services by that key.</summary>
+public sealed class ServiceAnnotation
+{
+    public string Zone { get; set; } = "";
+    public required string Address { get; set; }
+    public int Port { get; set; }
+    public TransportProtocol Transport { get; set; }
+    public string? Notes { get; set; }
+    public List<string> Tags { get; set; } = [];
+
+    /// <summary>low | medium | high | critical.</summary>
+    public string? Criticality { get; set; }
+
+    public string? Owner { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
     public string? UpdatedBy { get; set; }
 }

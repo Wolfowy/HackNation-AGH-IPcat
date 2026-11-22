@@ -432,6 +432,27 @@ export interface ScanRun {
   notAfter?: Instant
   progress: ScanProgress
   coverageComplete: boolean
+  /** User metadata, editable in any state (PUT /api/scans/{id}). */
+  notes?: string
+  tags: string[]
+}
+
+export interface ScanRunUpdate {
+  name: string
+  notes?: string
+  tags: string[]
+}
+
+/** Raw tool formats and our flat JSON/CSV rows accepted by POST /api/scans/import. */
+export const SCAN_IMPORT_FORMATS = ['json', 'csv', 'nmap-xml', 'httpx-jsonl', 'naabu-jsonl', 'nuclei-jsonl'] as const
+export type ScanImportFormat = (typeof SCAN_IMPORT_FORMATS)[number]
+
+export interface ScanImportResult {
+  scanRunId: Guid
+  rows: number
+  observations: number
+  changesDetected: number
+  errors: string[]
 }
 
 export type StepStatus = 'Pending' | 'Running' | 'Completed' | 'Skipped' | 'Failed' | 'Cancelled'
@@ -643,6 +664,20 @@ export interface Service {
   lastSeenAt: Instant
   /** Best clickable URL derived by the server (HTTP probe URL, else https/http by TLS/service name); absent for non-web services. */
   url?: string
+  /** User context kept across scans per (zone, address, port, transport). */
+  annotation?: ServiceAnnotation
+}
+
+export const CRITICALITIES = ['low', 'medium', 'high', 'critical'] as const
+export type Criticality = (typeof CRITICALITIES)[number]
+
+export interface ServiceAnnotation {
+  notes?: string
+  tags: string[]
+  criticality?: Criticality
+  owner?: string
+  updatedAt?: Instant
+  updatedBy?: string
 }
 
 export interface TechnologySummary {
@@ -726,6 +761,25 @@ export interface Finding {
   firstSeenAt: Instant
   lastSeenAt: Instant
   externalRefs: { system: string; externalId: string }[]
+  /** User triage; survives re-detection. FalsePositive findings are not counted as open and never published. */
+  triage: FindingTriage
+  severityOverride?: Severity
+  /** severityOverride ?? severity — used by filters, counts and exports. */
+  effectiveSeverity: Severity
+  notes?: string
+  userTags: string[]
+  triagedBy?: string
+  triagedAt?: Instant
+}
+
+export const FINDING_TRIAGES = ['None', 'Confirmed', 'FalsePositive', 'AcceptedRisk'] as const
+export type FindingTriage = (typeof FINDING_TRIAGES)[number]
+
+export interface FindingTriageInput {
+  triage: FindingTriage
+  severityOverride?: Severity
+  notes?: string
+  userTags: string[]
 }
 
 // ---------- Signatures & integrations ----------

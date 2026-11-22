@@ -20,6 +20,7 @@ public sealed class DiscoveryDbContext(DbContextOptions<DiscoveryDbContext> opti
     public DbSet<ChangeEvent> Changes => Set<ChangeEvent>();
     public DbSet<AssetAnnotation> Annotations => Set<AssetAnnotation>();
     public DbSet<AssetAnnotationRevision> AnnotationRevisions => Set<AssetAnnotationRevision>();
+    public DbSet<ServiceAnnotation> ServiceAnnotations => Set<ServiceAnnotation>();
 
     protected override void ConfigureConventions(ModelConfigurationBuilder c)
     {
@@ -100,6 +101,9 @@ public sealed class DiscoveryDbContext(DbContextOptions<DiscoveryDbContext> opti
             e.HasIndex(x => new { x.Status, x.Severity });
             e.HasIndex(x => x.LastSeenRunId);
             e.OwnsMany(x => x.ExternalRefs, o => o.ToJson());
+            e.Ignore(x => x.EffectiveSeverity);
+            e.Property(x => x.SeverityOverride).HasMaxLength(16);
+            e.Property(x => x.Notes).HasMaxLength(4000);
         });
 
         b.Entity<ChangeEvent>(e =>
@@ -114,6 +118,12 @@ public sealed class DiscoveryDbContext(DbContextOptions<DiscoveryDbContext> opti
         {
             e.ToTable("asset_annotations");
             e.HasKey(x => new { x.Zone, x.Address });
+        });
+
+        b.Entity<ServiceAnnotation>(e =>
+        {
+            e.ToTable("service_annotations");
+            e.HasKey(x => new { x.Zone, x.Address, x.Port, x.Transport });
         });
 
         b.Entity<AssetAnnotationRevision>(e =>

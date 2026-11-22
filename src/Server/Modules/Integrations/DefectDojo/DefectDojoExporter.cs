@@ -47,7 +47,7 @@ internal sealed class DefectDojoExporter(
             var existing = finding.ExternalRefs.FirstOrDefault(r => r.System == System);
             var body = FindingBody(finding);
             var hash = ContentHash(body);
-            if (Severities.Rank(finding.Severity) < Severities.Rank(min) || existing?.ContentHash == hash)
+            if (finding.IsFalsePositive || Severities.Rank(finding.Severity) < Severities.Rank(min) || existing?.ContentHash == hash)
             {
                 skipped++;
                 continue;

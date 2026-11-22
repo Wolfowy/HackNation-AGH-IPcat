@@ -30,6 +30,10 @@ public sealed class ScanRun
     public DateTimeOffset? FinishedAt { get; set; }
     public bool CoverageComplete { get; set; }
     public string? Message { get; set; }
+
+    // User metadata, editable in any run state (PUT /api/scans/{id}); the scan pipeline never writes it.
+    public string? Notes { get; set; }
+    public List<string> Tags { get; set; } = [];
 }
 
 /// <summary>Persistent queue entry for one <see cref="ScanJob"/> (one batch, one step, one perspective).</summary>

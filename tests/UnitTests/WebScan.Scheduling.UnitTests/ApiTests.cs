@@ -138,6 +138,37 @@ public sealed class ApiTests(TestHost host) : DbTestBase(host)
     }
 
     [Fact]
+    public async Task Scan_metadata_is_editable_in_any_state_by_editors()
+    {
+        var runId = Guid.NewGuid();
+        await Host.DbAsync(db =>
+        {
+            db.ScanRuns.Add(new WebScan.Server.Modules.Scanning.Persistence.ScanRun
+            {
+                Id = runId, Name = "nightly", Status = WebScan.Server.Modules.Scanning.Persistence.ScanRunStatus.Completed, WorkflowKey = "none",
+                WorkflowVersion = 1, TriggeredBy = "test", CreatedAt = Host.Time.GetUtcNow(), FinishedAt = Host.Time.GetUtcNow(),
+            });
+            return db.SaveChangesAsync();
+        });
+        var body = new UpdateScanDto("Nightly DMZ (baseline)", "  Reference run for the audit  ", ["baseline", " dmz ", "baseline"]);
+
+        Assert.Equal(HttpStatusCode.Forbidden, (await Host.UserClient(Roles.Viewer).PutAsync($"/api/scans/{runId}", Json(body))).StatusCode);
+        var editor = Host.UserClient(Roles.Editor);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, (await editor.PutAsync($"/api/scans/{runId}", Json(body with { Name = " " }))).StatusCode);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity,
+            (await editor.PutAsync($"/api/scans/{runId}", Json(body with { Tags = Enumerable.Range(0, 21).Select(i => $"t{i}").ToList() }))).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await editor.PutAsync($"/api/scans/{Guid.NewGuid()}", Json(body))).StatusCode);
+
+        var response = await editor.PutAsync($"/api/scans/{runId}", Json(body));
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var detail = await Host.UserClient(Roles.Viewer).GetFromJsonAsync<ScanRunDto>($"/api/scans/{runId}", ContractJson.Options);
+        Assert.Equal(("Nightly DMZ (baseline)", "Reference run for the audit"), (detail!.Name, detail.Notes));
+        Assert.Equal(["baseline", "dmz"], detail.Tags);
+        Assert.Equal(WebScan.Server.Modules.Scanning.Persistence.ScanRunStatus.Completed, detail.Status);
+        Assert.Contains(Host.Audit.Entries, e => e.Action == "scan.updated" && e.EntityId == runId.ToString());
+    }
+
+    [Fact]
     public async Task Scan_limits_are_admin_only_and_validated()
     {
         var admin = Host.UserClient(Roles.Administrator);

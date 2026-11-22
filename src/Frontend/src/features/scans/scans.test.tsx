@@ -172,3 +172,99 @@ describe('scan jobs', () => {
     server.events.removeAllListeners()
   })
 })
+
+describe('scan metadata', () => {
+  it('lets an editor rename a finished run and add notes and tags', async () => {
+    const run = getDb().runs.find((r) => r.status === 'Completed')!
+    const { user } = renderApp(`/scans/${run.id}`, { role: 'Editor' })
+
+    await user.click(await screen.findByRole('button', { name: 'Edit details' }))
+    const dialog = await screen.findByRole('dialog')
+    const name = within(dialog).getByLabelText('Name')
+    expect(name).toHaveValue(run.name)
+    await user.clear(name)
+    await user.type(name, 'Baseline before migration')
+    await user.type(within(dialog).getByLabelText('Notes'), 'Reference for the Q3 audit')
+    await user.type(within(dialog).getByLabelText('Tags'), 'baseline, q3')
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }))
+
+    expect(await screen.findByRole('heading', { name: /Baseline before migration/ })).toBeInTheDocument()
+    expect(getDb().runs.find((r) => r.id === run.id)).toMatchObject({ notes: 'Reference for the Q3 audit', tags: ['baseline', 'q3'], status: 'Completed' })
+    expect(screen.getByText('Reference for the Q3 audit')).toBeInTheDocument()
+    expect(screen.getByText('q3')).toBeInTheDocument()
+  })
+
+  it('requires a name and is not offered to viewers', async () => {
+    const run = getDb().runs.find((r) => r.status === 'Failed')!
+    const { user, unmount } = renderApp(`/scans/${run.id}`, { role: 'Editor' })
+    await user.click(await screen.findByRole('button', { name: 'Edit details' }))
+    await user.clear(within(await screen.findByRole('dialog')).getByLabelText('Name'))
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    expect(await screen.findByText('Name is required.')).toBeInTheDocument()
+    unmount()
+
+    renderApp(`/scans/${run.id}`, { role: 'Viewer' })
+    await screen.findByRole('heading', { name: new RegExp(run.name) })
+    expect(screen.queryByRole('button', { name: 'Edit details' })).not.toBeInTheDocument()
+  })
+})
+
+describe('import results', () => {
+  it('detects the format from the extension, sends the raw file and opens the new run', async () => {
+    let sent: { query: Record<string, string>; body: string; contentType: string | null } | undefined
+    server.events.on('request:start', async ({ request }) => {
+      const url = new URL(request.url)
+      if (request.method === 'POST' && url.pathname === '/api/scans/import')
+        sent = { query: Object.fromEntries(url.searchParams), body: await request.clone().text(), contentType: request.headers.get('Content-Type') }
+    })
+    const { user, router } = renderApp('/scans', { role: 'Manager' })
+
+    await user.click(await screen.findByRole('button', { name: 'Import results' }))
+    const dialog = await screen.findByRole('dialog')
+    const xml = '<nmaprun><host><address addr="10.10.0.7"/></host></nmaprun>\n'
+    await user.upload(within(dialog).getByLabelText('File'), new File([xml], 'perimeter.xml', { type: 'text/xml' }))
+    expect(within(dialog).getByLabelText('Format')).toHaveValue('nmap-xml')
+    await within(dialog).findByRole('option', { name: 'dmz' })
+    await user.selectOptions(within(dialog).getByLabelText('Zone'), 'dmz')
+    await user.type(within(dialog).getByLabelText('Name'), 'Perimeter pentest')
+    await user.click(within(dialog).getByLabelText('Snapshot'))
+    expect(within(dialog).getByText(/also count services missing on the imported hosts/i)).toBeInTheDocument()
+    await user.click(within(dialog).getByRole('button', { name: 'Import' }))
+
+    await waitFor(() => expect(router.state.location.pathname).toMatch(/^\/scans\/[0-9a-f-]{36}$/))
+    expect(sent).toEqual({
+      query: { format: 'nmap-xml', zone: 'dmz', name: 'Perimeter pentest', snapshot: 'true' },
+      body: xml,
+      contentType: 'application/xml',
+    })
+    expect(getDb().runs[0]).toMatchObject({ name: 'Perimeter pentest', workflowKey: 'import', status: 'Completed' })
+    server.events.removeAllListeners()
+  })
+
+  it('asks which tool wrote a JSONL file and shows server validation errors', async () => {
+    server.use(
+      http.post('*/api/scans/import', () =>
+        HttpResponse.json({ title: 'One or more validation errors occurred.', status: 422, errors: { file: ['Record 1: address is required.'] } }, { status: 422 }),
+      ),
+    )
+    const { user } = renderApp('/scans', { role: 'Manager' })
+    await user.click(await screen.findByRole('button', { name: 'Import results' }))
+    const dialog = await screen.findByRole('dialog')
+    await user.upload(within(dialog).getByLabelText('File'), new File(['{"host":"x"}\n'], 'results.jsonl'))
+    expect(within(dialog).getByLabelText('Format')).toHaveValue('')
+    await within(dialog).findByRole('option', { name: 'dmz' })
+    await user.selectOptions(within(dialog).getByLabelText('Zone'), 'dmz')
+    await user.click(within(dialog).getByRole('button', { name: 'Import' }))
+    expect(await within(dialog).findByText('Choose the file format.')).toBeInTheDocument()
+
+    await user.selectOptions(within(dialog).getByLabelText('Format'), 'nuclei-jsonl')
+    await user.click(within(dialog).getByRole('button', { name: 'Import' }))
+    expect(await within(dialog).findByText('Record 1: address is required.')).toBeInTheDocument()
+  })
+
+  it('is offered to managers only', async () => {
+    renderApp('/scans', { role: 'Editor' })
+    expect(await screen.findByRole('link', { name: /Start scan/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Import results' })).not.toBeInTheDocument()
+  })
+})

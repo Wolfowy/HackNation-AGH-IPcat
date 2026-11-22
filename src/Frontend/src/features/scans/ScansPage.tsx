@@ -7,12 +7,13 @@ import { SCAN_RUN_STATUSES, type ScanRunStatus } from '@/api/types'
 import { Can } from '@/auth/AuthProvider'
 import { EmptyState, Loadable } from '@/components/feedback'
 import { FormField } from '@/components/form'
-import { Filters, PageHeader, Pagination, ProgressCell, StatusBadge } from '@/components/page'
+import { Chips, Filters, PageHeader, Pagination, ProgressCell, StatusBadge } from '@/components/page'
 import { Button } from '@/components/ui/button'
 import { NativeSelect } from '@/components/ui/input'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { t } from '@/i18n/strings'
 import { formatDateTime, formatRelative } from '@/lib/format'
+import { ScanImportDialog } from './ScanImportDialog'
 
 export function ScansPage() {
   const [status, setStatus] = useState<ScanRunStatus | ''>('')
@@ -26,13 +27,18 @@ export function ScansPage() {
       <PageHeader
         title={t.scans.title}
         actions={
-          <Can permission="edit">
-            <Button asChild>
-              <Link to="/scans/new">
-                <Play /> {t.scans.start}
-              </Link>
-            </Button>
-          </Can>
+          <>
+            <Can permission="manage">
+              <ScanImportDialog />
+            </Can>
+            <Can permission="edit">
+              <Button asChild>
+                <Link to="/scans/new">
+                  <Play /> {t.scans.start}
+                </Link>
+              </Button>
+            </Can>
+          </>
         }
       />
       <Filters>
@@ -80,6 +86,7 @@ export function ScansPage() {
                         {!run.coverageComplete && run.finishedAt && (
                           <div className="text-xs text-amber-600">Coverage incomplete</div>
                         )}
+                        {run.tags.length > 0 && <Chips values={run.tags} />}
                       </TableCell>
                       <TableCell>
                         <StatusBadge status={run.status} />
