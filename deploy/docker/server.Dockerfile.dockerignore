@@ -7,5 +7,8 @@
 .idea
 src/Frontend
 src/Agent
+# ...except the pure tool-output parsers reused by the result import (and their abstractions).
+!src/Agent/Tools.Abstractions
+!src/Agent/Tools.Parsers
 tests
 deploy

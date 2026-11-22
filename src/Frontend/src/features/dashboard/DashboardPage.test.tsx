@@ -9,7 +9,7 @@ const insights: DashboardInsights = {
     {
       id: 'f1', signatureId: 'mysql-exposed', name: 'MySQL reachable from DMZ', severity: 'high', hostId: 'h1', zone: 'dmz', address: '10.10.0.7',
       port: 3306, matchedAt: new Date().toISOString(), status: 'Open', firstSeenAt: new Date().toISOString(), lastSeenAt: new Date().toISOString(),
-      externalRefs: [],
+      externalRefs: [], triage: 'None', effectiveSeverity: 'high', userTags: [],
     },
   ],
   topServices: [
