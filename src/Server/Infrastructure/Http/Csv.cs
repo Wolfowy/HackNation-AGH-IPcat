@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace WebScan.Server.Modules.Discovery.Api;
+namespace WebScan.Server.Infrastructure.Http;
 
 /// <summary>RFC 4180 CSV (CRLF, quoted fields) with spreadsheet formula-injection protection.</summary>
 public static class Csv

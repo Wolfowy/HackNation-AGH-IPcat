@@ -10,6 +10,7 @@ WORKDIR /src
 COPY global.json Directory.Build.props Directory.Packages.props ./
 COPY src/Shared/Contracts/WebScan.Contracts.csproj src/Shared/Contracts/
 COPY src/Agent/Tools.Abstractions/WebScan.Agent.Tools.Abstractions.csproj src/Agent/Tools.Abstractions/
+COPY src/Agent/Tools.Parsers/WebScan.Agent.Tools.Parsers.csproj src/Agent/Tools.Parsers/
 COPY src/Agent/Core/WebScan.Agent.Core.csproj src/Agent/Core/
 COPY src/Agent/Worker/WebScan.Agent.Worker.csproj src/Agent/Worker/
 RUN RID="linux-$([ "$TARGETARCH" = "arm64" ] && echo arm64 || echo x64)" \

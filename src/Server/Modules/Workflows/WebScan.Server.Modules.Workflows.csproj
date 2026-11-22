@@ -8,6 +8,7 @@
     <ProjectReference Include="..\..\Infrastructure\WebScan.Server.Infrastructure.csproj" />
     <!-- Workflows drives the Scanning module's planner and job queue directly (same stream, documented exception). -->
     <ProjectReference Include="..\Scanning\WebScan.Server.Modules.Scanning.csproj" />
+    <ProjectReference Include="..\..\..\Agent\Tools.Parsers\WebScan.Agent.Tools.Parsers.csproj" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />

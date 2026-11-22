@@ -1,3 +1,4 @@
+using WebScan.Server.Infrastructure.Http;
 using System.Globalization;
 using System.Text.Json;
 using Microsoft.AspNetCore.Builder;

@@ -106,4 +106,47 @@ public sealed class ImportExportTests(PostgresFixture postgres) : Scenario(postg
         Assert.Equal("Payroll server", host["annotation"]!.Str("description"));
         Assert.Equal("Active", host.Str("status"));
     }
+    [Fact]
+    public async Task Scan_results_and_findings_import_through_the_scan_pipeline()
+    {
+        // First import (merge): one host, SSH + a web panel, and a finding from another tool.
+        const string first = "address,port,transport,serviceName,product,version,httpTitle,httpStatusCode,signatureId,name,severity,evidence\n" +
+                             "10.70.1.5,22,Tcp,ssh,OpenSSH,8.9,,,,,,\n" +
+                             "10.70.1.5,80,Tcp,http,nginx,1.24,Admin login,200,ext-admin-panel,Exposed admin panel,medium,title=Admin login\n";
+        var created = await Admin.PostRawAsync("/api/scans/import?format=csv&zone=imp&name=external-scan-1", first, "text/csv");
+        var run1 = created!.Str("scanRunId");
+        Assert.Empty(created["errors"]!.AsArray());
+        var run = await Admin.GetAsync($"/api/scans/{run1}");
+        Assert.Equal(("Completed", "import"), (run.Str("status"), run.Str("workflowKey")));
+
+        var services = (await Admin.GetAsync("/api/assets/services?search=10.70.1.5")).Items().ToList();
+        Assert.Equal(2, services.Count);
+        Assert.Contains((await Admin.GetAsync("/api/findings")).Items(), f => f.Str("signatureId") == "ext-admin-panel" && f.Str("address") == "10.70.1.5");
+        Assert.Contains((await Admin.GetAsync($"/api/changes?scanRunId={run1}")).Items(), c => c.Str("type") == "NewHost");
+
+        // Second import (JSON snapshot): SSH upgraded, HTTPS added → change events like a second scan.
+        const string second = """
+            [{ "address": "10.70.1.5", "zone": "imp", "port": 22, "serviceName": "ssh", "product": "OpenSSH", "version": "9.6" },
+             { "address": "10.70.1.5", "zone": "imp", "port": 443, "serviceName": "https", "product": "nginx", "tlsFingerprintSha256": "ab12" }]
+            """;
+        var run2 = (await Admin.PostRawAsync("/api/scans/import?format=json&zone=imp&snapshot=true", second, "application/json"))!.Str("scanRunId");
+        var changes = (await Admin.GetAsync($"/api/changes?scanRunId={run2}")).Items().ToList();
+        Assert.Contains(changes, c => c.Str("type") == "NewPort" && c["port"]!.GetValue<int>() == 443);
+        Assert.Contains(changes, c => c.Str("type") == "ServiceChanged" && c["port"]!.GetValue<int>() == 22);
+
+        // Raw nmap XML goes through the agent's own parser.
+        const string nmap = """
+            <?xml version="1.0"?><nmaprun><host><status state="up"/><address addr="10.70.1.9" addrtype="ipv4"/>
+            <ports><port protocol="tcp" portid="8080"><state state="open"/><service name="http" product="Jetty" version="9.4" method="probed" conf="10"/></port></ports></host></nmaprun>
+            """;
+        await Admin.PostRawAsync("/api/scans/import?format=nmap-xml&zone=imp", nmap, "application/xml");
+        Assert.Contains((await Admin.GetAsync("/api/assets/services?search=10.70.1.9")).Items(), s => s["port"]!.GetValue<int>() == 8080 && s.Str("product") == "Jetty");
+
+        // Importing results adds data: Editors may not, invalid input is rejected without creating a run.
+        await Admin.PostAsync("/api/users", new { userName = "import-editor", displayName = "Editor", password = "Role-Password-123", roles = new[] { "Editor" }, isActive = true });
+        var editor = new ApiClient(Server.CreateClient());
+        await editor.LoginAsync("import-editor", "Role-Password-123");
+        Assert.Equal(HttpStatusCode.Forbidden, await editor.StatusOfAsync(HttpMethod.Post, "/api/scans/import?format=csv&zone=imp"));
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, await Admin.StatusOfAsync(HttpMethod.Post, "/api/scans/import?format=exe&zone=imp"));
+    }
 }

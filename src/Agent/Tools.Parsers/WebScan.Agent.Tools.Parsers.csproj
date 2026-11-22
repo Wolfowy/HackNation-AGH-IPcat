@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Built-in tool output parsers (nmap XML, ProjectDiscovery JSONL, generic JSONL). Pure: shared by the agent and by the server's result import. -->
+  <PropertyGroup>
+    <RootNamespace>WebScan.Agent.Tools.Parsers</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Tools.Abstractions\WebScan.Agent.Tools.Abstractions.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="WebScan.Agent.UnitTests" />
+  </ItemGroup>
+</Project>

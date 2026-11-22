@@ -1,3 +1,4 @@
+using Csv = WebScan.Server.Modules.Networks.Csv;
 using Microsoft.Extensions.Configuration;
 using WebScan.Contracts;
 using WebScan.Server.Infrastructure.Http;
@@ -7,6 +8,7 @@ using WebScan.Server.Modules.Identity.Persistence;
 using WebScan.Server.Kernel.Ports;
 using WebScan.Server.Modules.Networks;
 using WebScan.Server.Modules.Networks.Persistence;
+using AgentEntity = WebScan.Server.Modules.Agents.Persistence.Agent;
 
 namespace WebScan.Server.UnitTests;
 
@@ -132,7 +134,7 @@ public sealed class AgentLogicTests
     [Fact]
     public void Effective_limits_are_the_minimum_of_reported_and_override()
     {
-        var agent = new Agent
+        var agent = new AgentEntity
         {
             AgentId = "a1", Hostname = "h", OsPlatform = "linux", OsDescription = "", AgentVersion = "1",
             ReportedMaxConcurrentJobs = 4, ReportedMaxRatePerSecond = 1000, MaxConcurrentJobsOverride = 8, MaxRatePerSecondOverride = 200,
@@ -144,7 +146,7 @@ public sealed class AgentLogicTests
     public void Online_requires_flag_and_recent_heartbeat()
     {
         var now = DateTimeOffset.UtcNow;
-        var agent = new Agent { AgentId = "a1", Hostname = "h", OsPlatform = "linux", OsDescription = "", AgentVersion = "1", IsOnline = true, LastHeartbeatAt = now.AddSeconds(-60) };
+        var agent = new AgentEntity { AgentId = "a1", Hostname = "h", OsPlatform = "linux", OsDescription = "", AgentVersion = "1", IsOnline = true, LastHeartbeatAt = now.AddSeconds(-60) };
         Assert.True(agent.IsOnlineAt(now, TimeSpan.FromSeconds(90)));
         Assert.False(agent.IsOnlineAt(now.AddSeconds(31), TimeSpan.FromSeconds(90)));
         agent.IsOnline = false;

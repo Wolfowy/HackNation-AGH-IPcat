@@ -34,6 +34,7 @@ public static class WorkflowsModule
         services.AddHostedService<WorkflowTickerService>();
 
         services.AddScoped<IScanLauncher, ScanLauncher>();
+        services.AddScoped<Import.ResultImporter>();
         return services;
     }
 

@@ -7,6 +7,9 @@
   <Folder Name="/src/Agent/Tools.Abstractions/">
     <Project Path="src/Agent/Tools.Abstractions/WebScan.Agent.Tools.Abstractions.csproj" />
   </Folder>
+  <Folder Name="/src/Agent/Tools.Parsers/">
+    <Project Path="src/Agent/Tools.Parsers/WebScan.Agent.Tools.Parsers.csproj" />
+  </Folder>
   <Folder Name="/src/Agent/Worker/">
     <Project Path="src/Agent/Worker/WebScan.Agent.Worker.csproj" />
   </Folder>

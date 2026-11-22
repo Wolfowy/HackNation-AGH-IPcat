@@ -121,7 +121,7 @@ public sealed class GenericJsonlParser : IToolOutputParser
                 {
                     Http = new HttpDetails
                     {
-                        Url = S("http.url") ?? $"{S("http.scheme") ?? "http"}://{TargetFormatter.HostPart(address)}{(port is null ? "" : $":{port}")}/",
+                        Url = S("http.url") ?? $"{S("http.scheme") ?? "http"}://{HostPart(address)}{(port is null ? "" : $":{port}")}/",
                         Scheme = S("http.scheme") ?? "http", StatusCode = E("http.statusCode").AsInt(), Title = S("http.title"),
                         WebServer = S("http.webServer"), ContentType = S("http.contentType"), ContentLength = E("http.contentLength").AsLong(),
                         FinalUrl = S("http.finalUrl"), FaviconHash = S("http.faviconHash"), BodySha256 = S("http.bodySha256"),
@@ -161,4 +161,7 @@ public sealed class GenericJsonlParser : IToolOutputParser
             };
         }
     }
+
+    private static string HostPart(string address) =>
+        System.Net.IPAddress.TryParse(address, out var ip) && ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6 ? $"[{address}]" : address;
 }

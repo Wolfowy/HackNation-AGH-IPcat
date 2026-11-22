@@ -7,6 +7,9 @@ WORKDIR /src
 COPY Directory.Build.props Directory.Packages.props ./
 COPY src/Shared/Contracts/ src/Shared/Contracts/
 COPY src/Server/ src/Server/
+# The result import reuses the agent's tool output parsers (pure library).
+COPY src/Agent/Tools.Abstractions/ src/Agent/Tools.Abstractions/
+COPY src/Agent/Tools.Parsers/ src/Agent/Tools.Parsers/
 RUN --mount=type=cache,target=/root/.nuget/packages \
     dotnet publish src/Server/Api/WebScan.Server.Api.csproj -c Release -o /app /p:UseAppHost=false
 

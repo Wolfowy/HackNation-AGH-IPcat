@@ -68,6 +68,26 @@ public static class ScanEndpoints
             return Results.Created($"/api/scans/{runId}", ToDto(run, await ProgressAsync(db, [runId], ct)));
         }).RequireAuthorization(Policies.CanEdit);
 
+        scans.MapPost("/import", async (HttpRequest request, string? format, string? zone, string? name, bool? snapshot, ClaimsPrincipal user,
+            Import.ResultImporter importer, IAuditLog audit, CancellationToken ct) =>
+        {
+            const long maxBytes = 25 * 1024 * 1024;
+            var errors = new Dictionary<string, string[]>();
+            format = format?.Trim().ToLowerInvariant();
+            if (format is null || !Import.ImportFormats.All.Contains(format)) errors["format"] = [$"format must be one of: {string.Join(", ", Import.ImportFormats.All)}."];
+            if (zone is null || !Import.ResultImporter.ZonePattern().IsMatch(zone)) errors["zone"] = ["zone is required (1-64 letters, digits, '_', '.', '-')."];
+            if (name is { Length: > 200 }) errors["name"] = ["Max 200 characters."];
+            if (errors.Count > 0) return Results.ValidationProblem(errors, statusCode: StatusCodes.Status422UnprocessableEntity);
+            if (request.ContentLength > maxBytes) return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
+
+            var result = await importer.ImportAsync(request.Body, new Import.ImportOptions(format!, zone!, name, snapshot ?? false, WorkflowEndpoints.UserName(user)), ct);
+            await audit.WriteAsync(new AuditEntry("scan.imported", "ScanRun", result.ScanRunId?.ToString(),
+                new { format, zone, snapshot = snapshot ?? false, result.Rows, result.Observations, errors = result.Errors.Count }), ct);
+            return result.ScanRunId is { } id
+                ? Results.Created($"/api/scans/{id}", result)
+                : Results.ValidationProblem(new Dictionary<string, string[]> { ["file"] = [.. result.Errors.Take(50)] }, statusCode: StatusCodes.Status422UnprocessableEntity);
+        }).RequireAuthorization(Policies.CanManage).DisableAntiforgery();
+
         scans.MapGet("/{id:guid}", async (Guid id, ScanningDbContext db, WorkflowsDbContext wdb, CancellationToken ct) =>
         {
             var run = await db.ScanRuns.AsNoTracking().FirstOrDefaultAsync(r => r.Id == id, ct);
