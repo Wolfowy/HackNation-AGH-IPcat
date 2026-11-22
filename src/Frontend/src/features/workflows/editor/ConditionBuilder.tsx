@@ -1,6 +1,14 @@
 import { useId, useState } from 'react'
 import { Plus, X } from 'lucide-react'
-import { CONDITION_FIELD_VALUES, CONDITION_FIELDS, CONDITION_OPERATORS, type ConditionExpression, type ConditionOperator } from '@/api/types'
+import {
+  CONDITION_FIELD_VALUES,
+  CONDITION_FIELDS,
+  CONDITION_LIST_FIELDS,
+  CONDITION_OPERATORS,
+  HTTP_HEADER_FIELD_PREFIX,
+  type ConditionExpression,
+  type ConditionOperator,
+} from '@/api/types'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input, NativeSelect } from '@/components/ui/input'
@@ -11,7 +19,8 @@ type Change = (value: ConditionExpression | undefined) => void
 
 const newRule = (): ConditionExpression => ({ field: 'service.name', operator: 'In', values: [] })
 const takesNoValues = (op?: ConditionOperator) => op === 'Exists' || op === 'NotExists'
-const takesManyValues = (op?: ConditionOperator) => op === 'In' || op === 'NotIn'
+/** In/NotIn/Contains/StartsWith match when any of their values matches. */
+const takesManyValues = (op?: ConditionOperator) => op === 'In' || op === 'NotIn' || op === 'Contains' || op === 'StartsWith'
 
 /** Structured editor for a ConditionExpression: rules (field/operator/values), AND/OR groups and NOT, max depth 8. */
 export function ConditionBuilder({ label, value, onChange }: { label: string; value?: ConditionExpression; onChange: Change }) {
@@ -112,6 +121,7 @@ function Rule({ value, onChange }: { value: ConditionExpression; onChange: Chang
   const listId = useId()
   const op = value.operator
   const values = value.values ?? []
+  const header = value.field?.startsWith(HTTP_HEADER_FIELD_PREFIX) ? value.field.slice(HTTP_HEADER_FIELD_PREFIX.length) : undefined
   const add = () => {
     const v = draft.trim()
     if (!v) return
@@ -121,12 +131,29 @@ function Rule({ value, onChange }: { value: ConditionExpression; onChange: Chang
   return (
     <div className="grid gap-2">
       <div className="grid gap-2">
-        <NativeSelect aria-label="Field" className="h-8 text-xs" value={value.field ?? ''} onChange={(e) => onChange({ ...value, field: e.target.value })}>
+        <NativeSelect
+          aria-label="Field"
+          className="h-8 text-xs"
+          value={header !== undefined ? HTTP_HEADER_FIELD_PREFIX : (value.field ?? '')}
+          onChange={(e) => onChange({ ...value, field: e.target.value })}
+        >
           {!value.field && <option value="">Field…</option>}
           {CONDITION_FIELDS.map((f) => (
-            <option key={f}>{f}</option>
+            <option key={f} value={f}>
+              {CONDITION_LIST_FIELDS.includes(f) ? `${f} (list: any element)` : f}
+            </option>
           ))}
+          <option value={HTTP_HEADER_FIELD_PREFIX}>http.header.&lt;Name&gt;</option>
         </NativeSelect>
+        {header !== undefined && (
+          <Input
+            aria-label="Header name"
+            className="h-8 font-mono text-xs"
+            placeholder="Header name, e.g. X-Powered-By"
+            value={header}
+            onChange={(e) => onChange({ ...value, field: HTTP_HEADER_FIELD_PREFIX + e.target.value.trim() })}
+          />
+        )}
         <NativeSelect
           aria-label="Operator"
           className="h-8 text-xs"

@@ -1,0 +1,34 @@
+id: owncloud-status-page
+
+info:
+  name: Owncloud StatusPage detection
+  author: myztique,invisiblethreat
+  severity: info
+  classification:
+    cpe: cpe:2.3:a:owncloud:owncloud:*:*:*:*:*:*:*:*
+  metadata:
+    verified: true
+    max-request: 1
+    vendor: owncloud
+    product: owncloud
+    shodan-query: http.html:"owncloud"
+  tags: tech,owncloud,status,discovery,pack-nuclei-safe
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/status.php"
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '"versionstring":'
+          - '"installed":'
+          - '"edition":'
+        condition: and
+
+    extractors:
+      - type: json
+        json:
+          - .version

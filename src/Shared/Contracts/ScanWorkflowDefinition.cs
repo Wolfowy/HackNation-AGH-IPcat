@@ -89,12 +89,15 @@ public sealed record StepInput
 /// </summary>
 public sealed record ConditionExpression
 {
-    /// <summary>One of <see cref="ConditionFields.All"/>.</summary>
+    /// <summary>One of <see cref="ConditionFields.All"/> or <c>http.header.&lt;Name&gt;</c> (see <see cref="ConditionFields.IsValid"/>).</summary>
     public string? Field { get; init; }
 
     public ConditionOperator? Operator { get; init; }
 
-    /// <summary>Comparison values (strings; numeric fields are parsed).</summary>
+    /// <summary>
+    /// Comparison values (strings; numeric fields are parsed). Exists/NotExists take none; Equals, NotEquals, GreaterThan, LessThan
+    /// exactly one; In, NotIn, Contains, StartsWith one or more (matches when any value matches).
+    /// </summary>
     public IReadOnlyList<string>? Values { get; init; }
 
     public IReadOnlyList<ConditionExpression>? All { get; init; }
@@ -142,11 +145,48 @@ public static class ConditionFields
     public const string SignatureId = "signature.signatureId";
     public const string SignatureSeverity = "signature.severity";
     public const string ConfidenceScore = "confidence.score";
+    public const string ServiceBanner = "service.banner";
+    public const string HttpUrl = "http.url";
+    public const string HttpContentType = "http.contentType";
+    public const string HttpFinalUrl = "http.finalUrl";
+    public const string HttpFaviconHash = "http.faviconHash";
+    public const string HttpCookieNames = "http.cookieNames";
+    public const string HttpRedirectChain = "http.redirectChain";
+    public const string HttpTechnologies = "http.technologies";
+    public const string TlsSubjectAlternativeNames = "tls.subjectAlternativeNames";
+
+    /// <summary>
+    /// Dynamic field <c>http.header.&lt;Name&gt;</c>: value of response header <c>Name</c> (case-insensitive lookup).
+    /// <c>Name</c> must be an RFC 7230 token (1–100 chars). Not listed in <see cref="All"/>; use <see cref="IsValid"/>.
+    /// </summary>
+    public const string HttpHeaderPrefix = "http.header.";
 
     public static readonly IReadOnlySet<string> All = new HashSet<string>(StringComparer.Ordinal)
     {
         Kind, Address, Hostname, Port, Transport, ToolId, HostStatus, PortState, ServiceName, ServiceProduct,
         ServiceVersion, ServiceTunnel, HttpScheme, HttpStatusCode, HttpTitle, HttpWebServer, TlsSubjectCn, TlsIssuer,
         TechnologyName, TechnologyCategory, SignatureId, SignatureSeverity, ConfidenceScore,
+        ServiceBanner, HttpUrl, HttpContentType, HttpFinalUrl, HttpFaviconHash, HttpCookieNames, HttpRedirectChain, HttpTechnologies,
+        TlsSubjectAlternativeNames,
     };
+
+    /// <summary>
+    /// List-valued fields. A leaf matches when ANY element matches (Equals, In, Contains, StartsWith); NotEquals/NotIn match
+    /// when NO element matches; Exists = at least one element, NotExists = empty list.
+    /// </summary>
+    public static readonly IReadOnlySet<string> Lists = new HashSet<string>(StringComparer.Ordinal)
+    {
+        HttpCookieNames, HttpRedirectChain, HttpTechnologies, TlsSubjectAlternativeNames,
+    };
+
+    /// <summary>True for a field of <see cref="All"/> or a well-formed <c>http.header.&lt;Name&gt;</c>.</summary>
+    public static bool IsValid(string? field) => field is not null && (All.Contains(field) || HeaderName(field) is not null);
+
+    /// <summary>Header name of an <c>http.header.&lt;Name&gt;</c> field (null when <paramref name="field"/> is not one or the name is not an RFC 7230 token).</summary>
+    public static string? HeaderName(string field)
+    {
+        if (!field.StartsWith(HttpHeaderPrefix, StringComparison.Ordinal)) return null;
+        var name = field[HttpHeaderPrefix.Length..];
+        return name.Length is >= 1 and <= 100 && name.All(c => char.IsAsciiLetterOrDigit(c) || "!#$%&'*+-.^_`|~".Contains(c)) ? name : null;
+    }
 }

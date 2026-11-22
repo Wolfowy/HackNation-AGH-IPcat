@@ -1,0 +1,29 @@
+id: citrix-vpn-detect
+
+info:
+  name: Citrix VPN Panel - Detect
+  author: pdteam
+  severity: info
+  description: Citrix VPN panel was detected.
+  classification:
+    cvss-metrics: CVSS:3.0/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:N
+    cwe-id: CWE-200
+    cpe: cpe:2.3:a:citrix:gateway:*:*:*:*:*:*:*:*
+  metadata:
+    max-request: 1
+    vendor: citrix
+    product: gateway
+    shodan-query: http.title:"citrix gateway"
+    fofa-query: title="citrix gateway"
+    google-query: intitle:"citrix gateway"
+  tags: panel,citrix,discovery,pack-nuclei-safe
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/vpn/index.html"
+
+    matchers:
+      - type: word
+        words:
+          - "<title>Citrix Gateway</title>"

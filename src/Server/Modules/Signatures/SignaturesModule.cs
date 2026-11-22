@@ -19,6 +19,7 @@ public static class SignaturesModule
         services.AddScoped<SignatureCatalog>();
         services.AddScoped<ISignatureCatalog>(sp => sp.GetRequiredService<SignatureCatalog>());
         services.AddScoped<IInterpretationRuleProvider>(sp => sp.GetRequiredService<SignatureCatalog>());
+        services.AddHostedService<SignaturePackSeeder>();
         return services;
     }
 

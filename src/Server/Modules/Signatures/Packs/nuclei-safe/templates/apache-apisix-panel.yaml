@@ -1,0 +1,43 @@
+id: apache-apisix-panel
+
+info:
+  name: Apache APISIX Login Panel - Detect
+  author: pikpikcu,righettod
+  severity: info
+  description: An Apache APISIX login panel was detected.
+  classification:
+    cwe-id: CWE-200
+    cpe: cpe:2.3:a:apache:apisix:*:*:*:*:*:*:*:*
+  metadata:
+    max-request: 1
+    vendor: apache
+    product: apisix
+    fofa-query:
+      - title="Apache APISIX Dashboard"
+      - title="apache apisix dashboard"
+    shodan-query: http.title:"apache apisix dashboard"
+    google-query: intitle:"apache apisix dashboard"
+  tags: apache,apisix,panel,login,detect,discovery,pack-nuclei-safe
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/user/login?redirect=%2F"
+
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '<title>Apache APISIX Dashboard</title>'
+
+      - type: status
+        status:
+          - 200
+
+    extractors:
+      - type: regex
+        part: header
+        group: 1
+        regex:
+          - '(?i)Server:\s+APISIX\/([0-9.]+)'

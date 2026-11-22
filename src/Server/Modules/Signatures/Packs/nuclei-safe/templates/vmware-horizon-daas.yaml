@@ -1,0 +1,37 @@
+id: vmware-horizon-daas
+
+info:
+  name: Desktop Portal VMware Horizon DaaS Trade Platform
+  author: DhiyaneshDK
+  severity: info
+  classification:
+    cpe: cpe:2.3:a:vmware:horizon_daas:*:*:*:*:*:*:*:*
+  metadata:
+    verified: true
+    max-request: 1
+    vendor: vmware
+    product: horizon_daas
+    shodan-query:
+      - title:"Horizon DaaS"
+      - http.title:"horizon daas"
+    fofa-query: title="horizon daas"
+    google-query: intitle:"horizon daas"
+  tags: panel,vmware,discovery,pack-nuclei-safe
+
+http:
+  - method: GET
+    path:
+      - '{{BaseURL}}/index.action'
+
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '<title>Desktop Portal | VMware&reg; Horizon DaaS&trade; Platform</title>'
+          - 'Desktop Portal | VMware Horizon DaaS'
+        condition: or
+
+      - type: status
+        status:
+          - 200

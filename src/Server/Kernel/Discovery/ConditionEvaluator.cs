@@ -42,7 +42,7 @@ public static class ConditionEvaluator
 
         if (e.Not is not null) { Validate(e.Not, $"{path}.not", depth + 1, errors); return; }
 
-        if (!ConditionFields.All.Contains(e.Field!)) { errors.Add($"{path}: unknown field '{e.Field}'."); return; }
+        if (!ConditionFields.IsValid(e.Field)) { errors.Add($"{path}: unknown field '{e.Field}'."); return; }
         if (e.Operator is not { } op) { errors.Add($"{path}: operator is required."); return; }
 
         var values = e.Values ?? [];
@@ -50,8 +50,7 @@ public static class ConditionEvaluator
         {
             case ConditionOperator.Exists or ConditionOperator.NotExists:
                 return;
-            case ConditionOperator.Equals or ConditionOperator.NotEquals or ConditionOperator.Contains
-                or ConditionOperator.StartsWith or ConditionOperator.GreaterThan or ConditionOperator.LessThan:
+            case ConditionOperator.Equals or ConditionOperator.NotEquals or ConditionOperator.GreaterThan or ConditionOperator.LessThan:
                 if (values.Count != 1) errors.Add($"{path}: operator {op} requires exactly one value.");
                 break;
             default:
@@ -66,32 +65,38 @@ public static class ConditionEvaluator
         }
     }
 
-    public static bool Evaluate(ConditionExpression e, DiscoveryObservation o) => Evaluate(e, f => GetField(o, f));
+    public static bool Evaluate(ConditionExpression e, DiscoveryObservation o) => EvaluateValues(e, f => GetValues(o, f));
 
     /// <summary>Evaluates against any field source (e.g. change events mapped onto observation field names).</summary>
-    public static bool Evaluate(ConditionExpression e, Func<string, string?> field)
+    public static bool Evaluate(ConditionExpression e, Func<string, string?> field) => EvaluateValues(e, f => field(f) is { } v ? [v] : []);
+
+    /// <summary>
+    /// Every field yields a list of values (scalars: zero or one). Missing/empty values are ignored. Positive operators match when
+    /// ANY value matches; NotEquals/NotIn match when NO value matches (so a missing field satisfies them). In, NotIn, Contains and
+    /// StartsWith take one or more comparison values (any of them).
+    /// </summary>
+    private static bool EvaluateValues(ConditionExpression e, Func<string, IReadOnlyList<string>> field)
     {
-        if (e.All is not null) return e.All.All(x => Evaluate(x, field));
-        if (e.Any is not null) return e.Any.Any(x => Evaluate(x, field));
-        if (e.Not is not null) return !Evaluate(e.Not, field);
+        if (e.All is not null) return e.All.All(x => EvaluateValues(x, field));
+        if (e.Any is not null) return e.Any.Any(x => EvaluateValues(x, field));
+        if (e.Not is not null) return !EvaluateValues(e.Not, field);
         if (e.Field is null || e.Operator is null) return false;
 
-        var value = field(e.Field);
+        var actual = field(e.Field).Where(v => !string.IsNullOrEmpty(v)).ToList();
         var values = e.Values ?? [];
         var first = values.Count > 0 ? values[0] : "";
         return e.Operator switch
         {
-            ConditionOperator.Exists => !string.IsNullOrEmpty(value),
-            ConditionOperator.NotExists => string.IsNullOrEmpty(value),
-            _ when value is null => e.Operator is ConditionOperator.NotEquals or ConditionOperator.NotIn,
-            ConditionOperator.Equals => Same(value, first),
-            ConditionOperator.NotEquals => !Same(value, first),
-            ConditionOperator.In => values.Any(v => Same(value, v)),
-            ConditionOperator.NotIn => !values.Any(v => Same(value, v)),
-            ConditionOperator.Contains => value.Contains(first, StringComparison.OrdinalIgnoreCase),
-            ConditionOperator.StartsWith => value.StartsWith(first, StringComparison.OrdinalIgnoreCase),
-            ConditionOperator.GreaterThan => TryNumber(value, out var a) && TryNumber(first, out var b) && a > b,
-            ConditionOperator.LessThan => TryNumber(value, out var c) && TryNumber(first, out var d) && c < d,
+            ConditionOperator.Exists => actual.Count > 0,
+            ConditionOperator.NotExists => actual.Count == 0,
+            ConditionOperator.Equals => actual.Any(a => Same(a, first)),
+            ConditionOperator.NotEquals => !actual.Any(a => Same(a, first)),
+            ConditionOperator.In => actual.Any(a => values.Any(v => Same(a, v))),
+            ConditionOperator.NotIn => !actual.Any(a => values.Any(v => Same(a, v))),
+            ConditionOperator.Contains => actual.Any(a => values.Any(v => a.Contains(v, StringComparison.OrdinalIgnoreCase))),
+            ConditionOperator.StartsWith => actual.Any(a => values.Any(v => a.StartsWith(v, StringComparison.OrdinalIgnoreCase))),
+            ConditionOperator.GreaterThan => actual.Any(a => TryNumber(a, out var x) && TryNumber(first, out var y) && x > y),
+            ConditionOperator.LessThan => actual.Any(a => TryNumber(a, out var x) && TryNumber(first, out var y) && x < y),
             _ => false,
         };
     }
@@ -101,6 +106,17 @@ public static class ConditionEvaluator
         (e.All ?? []).Concat(e.Any ?? []).Concat(e.Not is null ? [] : [e.Not]).SelectMany(ReferencedFields)
             .Concat(e.Field is null ? [] : [e.Field]).Distinct();
 
+    /// <summary>Values of a field: the elements of a list field (<see cref="ConditionFields.Lists"/>), else the scalar value (0 or 1 item).</summary>
+    public static IReadOnlyList<string> GetValues(DiscoveryObservation o, string field) => field switch
+    {
+        ConditionFields.HttpCookieNames => o.Http?.CookieNames ?? [],
+        ConditionFields.HttpRedirectChain => o.Http?.RedirectChain ?? [],
+        ConditionFields.HttpTechnologies => o.Http?.Technologies ?? [],
+        ConditionFields.TlsSubjectAlternativeNames => o.Tls?.SubjectAlternativeNames ?? [],
+        _ => GetField(o, field) is { } v ? [v] : [],
+    };
+
+    /// <summary>Scalar value of a field; list fields are joined with ", " (for evidence and version extraction).</summary>
     public static string? GetField(DiscoveryObservation o, string field) => field switch
     {
         ConditionFields.Kind => o.Kind.ToString(),
@@ -116,6 +132,7 @@ public static class ConditionEvaluator
         ConditionFields.ServiceVersion => o.Service?.Version,
         ConditionFields.ServiceTunnel => o.Service?.Tunnel,
         ConditionFields.HttpScheme => o.Http?.Scheme,
+        ConditionFields.HttpUrl => o.Http?.Url,
         ConditionFields.HttpStatusCode => o.Http?.StatusCode?.ToString(CultureInfo.InvariantCulture),
         ConditionFields.HttpTitle => o.Http?.Title,
         ConditionFields.HttpWebServer => o.Http?.WebServer,
@@ -126,6 +143,13 @@ public static class ConditionEvaluator
         ConditionFields.SignatureId => o.Signature?.SignatureId,
         ConditionFields.SignatureSeverity => o.Signature?.Severity,
         ConditionFields.ConfidenceScore => o.Confidence?.Score.ToString(CultureInfo.InvariantCulture),
+        ConditionFields.ServiceBanner => o.Service?.Banner,
+        ConditionFields.HttpContentType => o.Http?.ContentType,
+        ConditionFields.HttpFinalUrl => o.Http?.FinalUrl,
+        ConditionFields.HttpFaviconHash => o.Http?.FaviconHash,
+        _ when ConditionFields.Lists.Contains(field) => GetValues(o, field) is { Count: > 0 } list ? string.Join(", ", list) : null,
+        _ when ConditionFields.HeaderName(field) is { } name =>
+            o.Http?.Headers?.FirstOrDefault(h => string.Equals(h.Key, name, StringComparison.OrdinalIgnoreCase)).Value,
         _ => null,
     };
 

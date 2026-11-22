@@ -1,0 +1,53 @@
+id: jenkins-login
+
+info:
+  name: Jenkins Login Detected
+  author: pdteam,bhutch
+  severity: info
+  description: Jenkins is an open source automation server.
+  remediation: Ensure proper access.
+  reference:
+    - https://www.jenkins.io/doc/book/security/
+  classification:
+    cwe-id: CWE-200
+    cpe: cpe:2.3:a:jenkins:jenkins:*:*:*:*:*:*:*:*
+  metadata:
+    max-request: 1
+    vendor: jenkins
+    product: jenkins
+    shodan-query:
+      - cpe:"cpe:2.3:a:jenkins:jenkins"
+      - http.favicon.hash:81586312
+      - product:"jenkins"
+    fofa-query: icon_hash=81586312
+  tags: panel,jenkins,discovery,pack-nuclei-safe
+
+http:
+  - method: GET
+    path:
+      - '{{BaseURL}}/login'
+
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'j_spring_security_check'
+          - 'j_acegi_security_check'
+        condition: or
+
+      - type: dsl
+        dsl:
+          - "contains(tolower(all_headers), 'x-jenkins')"
+          - "contains_any(body, 'resURL=', 'data-rooturl')"
+        condition: or
+
+      - type: status
+        status:
+          - 200
+
+    extractors:
+      - type: kval
+        name: version
+        kval:
+          - x_jenkins

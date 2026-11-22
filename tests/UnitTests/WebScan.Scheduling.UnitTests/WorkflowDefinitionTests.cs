@@ -122,6 +122,23 @@ public sealed class WorkflowValidatorTests
     }
 
     [Fact]
+    public void Passive_fields_dynamic_headers_and_multi_value_contains_are_validated()
+    {
+        var steps = new Func<ConditionExpression, ScanWorkflowDefinition>(c => Workflow(
+            new() { Id = "a", Operation = ScanOperation.DiscoverHosts },
+            new() { Id = "b", Operation = ScanOperation.ScanPorts, DependsOn = ["a"], Input = new StepInput { FromSteps = ["a"], Filter = c } }));
+
+        Assert.Empty(WorkflowValidator.Validate(steps(Leaf("http.header.X-Powered-By", ConditionOperator.StartsWith, "PHP", "ASP.NET"))));
+        Assert.Empty(WorkflowValidator.Validate(steps(Leaf(ConditionFields.HttpCookieNames, ConditionOperator.In, "PHPSESSID"))));
+        Assert.Empty(WorkflowValidator.Validate(steps(Leaf(ConditionFields.TlsSubjectAlternativeNames, ConditionOperator.Contains, ".staging.", ".dev."))));
+        Assert.Contains(WorkflowValidator.Validate(steps(Leaf("http.header.", ConditionOperator.Exists))), e => e.Contains("unknown field 'http.header.'"));
+        Assert.Contains(WorkflowValidator.Validate(steps(Leaf("http.header.Bad Name", ConditionOperator.Exists))), e => e.Contains("unknown field"));
+        Assert.Contains(WorkflowValidator.Validate(steps(Leaf("http.header.a:b", ConditionOperator.Exists))), e => e.Contains("unknown field"));
+        Assert.Contains(WorkflowValidator.Validate(steps(Leaf(ConditionFields.HttpTitle, ConditionOperator.Contains))), e => e.Contains("needs at least one value"));
+        Assert.Contains(WorkflowValidator.Validate(steps(Leaf(ConditionFields.HttpCookieNames, ConditionOperator.GreaterThan, "1"))), e => e.Contains("numeric field"));
+    }
+
+    [Fact]
     public void Condition_depth_is_limited_to_eight()
     {
         var condition = Leaf(ConditionFields.Port, ConditionOperator.Exists);
@@ -178,6 +195,29 @@ public sealed class ConditionEvaluatorTests
         Assert.True(ConditionEvaluator.Evaluate(Leaf(ConditionFields.HttpTitle, ConditionOperator.NotEquals, "x"), https)); // missing ≠ x
         Assert.False(ConditionEvaluator.Evaluate(Leaf(ConditionFields.HttpTitle, ConditionOperator.Contains, "x"), https));
         Assert.True(ConditionEvaluator.Evaluate(Leaf(ConditionFields.ToolId, ConditionOperator.Equals, "fake"), https));
+    }
+
+    [Fact]
+    public void List_fields_match_any_element_and_headers_are_case_insensitive()
+    {
+        var http = Observations.Make(Job, ObservationKind.HttpResponse, "10.0.0.1", 443) with
+        {
+            Http = new HttpDetails
+            {
+                Url = "https://10.0.0.1/", Scheme = "https", CookieNames = ["lang", "PHPSESSID"], FaviconHash = "-297069493",
+                Headers = new Dictionary<string, string> { ["x-powered-by"] = "PHP/8.2.1" },
+            },
+        };
+
+        Assert.True(ConditionEvaluator.Evaluate(Leaf(ConditionFields.HttpCookieNames, ConditionOperator.In, "phpsessid"), http));
+        Assert.True(ConditionEvaluator.Evaluate(Leaf(ConditionFields.HttpCookieNames, ConditionOperator.Equals, "lang"), http));
+        Assert.False(ConditionEvaluator.Evaluate(Leaf(ConditionFields.HttpCookieNames, ConditionOperator.NotIn, "PHPSESSID"), http)); // no element may match
+        Assert.True(ConditionEvaluator.Evaluate(Leaf(ConditionFields.HttpCookieNames, ConditionOperator.NotEquals, "JSESSIONID"), http));
+        Assert.True(ConditionEvaluator.Evaluate(Leaf(ConditionFields.HttpRedirectChain, ConditionOperator.NotExists), http)); // empty list
+        Assert.True(ConditionEvaluator.Evaluate(Leaf("http.header.X-Powered-By", ConditionOperator.StartsWith, "ASP", "php/"), http));
+        Assert.True(ConditionEvaluator.Evaluate(Leaf(ConditionFields.HttpFaviconHash, ConditionOperator.In, "-297069493"), http));
+        Assert.False(ConditionEvaluator.Evaluate(Leaf("http.header.Server", ConditionOperator.Exists), http));
+        Assert.False(ConditionEvaluator.Evaluate(Leaf("http.header.Server", ConditionOperator.Exists), Observations.Make(Job, ObservationKind.HostUp, "10.0.0.1", null)));
     }
 
     [Fact]

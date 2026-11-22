@@ -745,7 +745,7 @@ ${extra}    matchers:
       tags: ['classification'],
       updatedAt: ago(60 * 24 * 15),
       versions: [
-        sigVersion(1, JSON.stringify({ description: 'Hosts exposing RDP are Windows servers', when: { field: 'port', operator: 'Equals', values: ['3389'] }, assign: { classification: 'windows-server' } }, null, 2), true, 16),
+        sigVersion(1, JSON.stringify({ description: 'Hosts exposing RDP are Windows servers', when: { field: 'port', operator: 'Equals', values: ['3389'] }, outcome: { classificationTag: 'windows-server', confidence: 0.7 } }, null, 2), true, 16),
       ],
     },
     {

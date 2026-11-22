@@ -34,7 +34,8 @@ http:
   ClassificationRule: `{
   "description": "Classify hosts exposing RDP as Windows servers",
   "when": { "field": "port", "operator": "Equals", "values": ["3389"] },
-  "assign": { "classification": "windows-server" }
+  "outcome": { "classificationTag": "windows-server", "confidence": 0.7 },
+  "tags": ["custom"]
 }
 `,
   ChangeRule: `{
