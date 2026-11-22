@@ -59,7 +59,7 @@ export async function ensureNetwork(page: Page): Promise<string> {
   await mainNav(page).getByRole('link', { name: 'Networks' }).click()
 
   await page.getByRole('tab', { name: 'Scope policy' }).click()
-  const allowedField = page.getByLabel('Allowed')
+  const allowedField = page.getByLabel('Allowed', { exact: true })
   const allowed = (await allowedField.inputValue()).split('\n').filter((l) => l.trim())
   let range = rangeInside(allowed)
   if (!range) {
