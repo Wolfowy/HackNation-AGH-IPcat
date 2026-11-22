@@ -107,6 +107,37 @@ public class ParserTests
     }
 
     [Fact]
+    public async Task Nerva_jsonl_maps_services_to_the_planned_endpoints_without_headers()
+    {
+        var job = Jobs.Endpoints(ScanOperation.DetectService, ToolCapabilities.ServiceDetection,
+        [
+            new ScanEndpoint { Address = "172.30.0.10", Port = 80 }, new ScanEndpoint { Address = "203.0.113.7", Port = 443, Hostname = "app.example.com" },
+            new ScanEndpoint { Address = "172.30.0.11", Port = 22 }, new ScanEndpoint { Address = "172.30.0.12", Port = 3389 },
+            new ScanEndpoint { Address = "198.51.100.9", Port = 8080, Hostname = "legacy.example.com" }, new ScanEndpoint { Address = "172.30.0.14", Port = 6379 },
+        ], ["172.30.0.0/24", "app.example.com", "legacy.example.com"]);
+        var observations = await Parsing.ParseFixtureAsync(new NervaJsonlParser(), "nerva.jsonl", Parsing.Context(job));
+        var services = observations.Where(o => o.Kind == ObservationKind.Service).ToDictionary(o => o.Port!.Value);
+
+        Assert.Equal([22, 80, 443, 3389, 6379, 8080], services.Keys.Order()); // the cut-off last line is skipped
+        var nginx = services[80].Service!;
+        Assert.Equal(("http", "Nginx", "1.27.5", null), (nginx.Name, nginx.Product, nginx.Version, nginx.Tunnel));
+        Assert.Equal(["cpe:2.3:a:f5:nginx:1.27.5:*:*:*:*:*:*:*"], nginx.Cpe);
+
+        var vhost = services[443];
+        Assert.Equal(("203.0.113.7", "app.example.com", "https", "ssl", "Grafana", "10.2.3"),
+            (vhost.Address, vhost.Hostname, vhost.Service!.Name, vhost.Service.Tunnel, vhost.Service.Product, vhost.Service.Version));
+        Assert.Equal("Grafana", vhost.Attributes!["nerva.title"]);
+
+        Assert.Equal(("OpenSSH_9.6p1", "SSH-2.0-OpenSSH_9.6p1 Ubuntu-3ubuntu13.5"), (services[22].Service!.Version, services[22].Service!.Banner));
+        Assert.Equal("DC01", services[3389].Attributes!["nerva.netbios_computer_name"]);
+        Assert.Equal("198.51.100.9", services[8080].Address); // nerva reports 0.0.0.0 for late-resolved names: the planned address wins
+        Assert.Equal("true", services[6379].Attributes!["nerva.anonymousAccess"]);
+
+        Assert.Equal(["Go", "Grafana", "Nginx"], observations.Where(o => o.Kind == ObservationKind.Technology).Select(o => o.Technology!.Name).Order());
+        Assert.DoesNotContain("abc123secretvalue", JsonSerializer.Serialize(observations, ContractJson.Options));
+    }
+
+    [Fact]
     public async Task Httpx_jsonl_maps_responses_technologies_tls_and_masks_cookies()
     {
         var observations = await Parsing.ParseFixtureAsync(new HttpxJsonlParser(), "httpx.jsonl");

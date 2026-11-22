@@ -28,6 +28,8 @@ public sealed class FakeNetworkScope : INetworkScopeService
     private readonly ConcurrentDictionary<Guid, ScopeSegment> _segments = new();
     public ConcurrentBag<string> Unauthorized { get; } = [];
     public List<string> GlobalExclusions { get; } = [];
+    public List<string> AllowedPorts { get; } = [];
+    public List<string> ExcludedPorts { get; } = [];
 
     public Guid Add(string zone, string[] include, string[]? exclude = null, int? maxRate = null)
     {
@@ -40,7 +42,7 @@ public sealed class FakeNetworkScope : INetworkScopeService
         Task.FromResult(new ResolvedScope
         {
             Segments = networkIds.Where(_segments.ContainsKey).Select(id => _segments[id]).ToList(),
-            GlobalExclusions = [.. GlobalExclusions],
+            GlobalExclusions = [.. GlobalExclusions], AllowedPorts = [.. AllowedPorts], ExcludedPorts = [.. ExcludedPorts],
         });
 
     public Task<bool> IsAuthorizedAsync(string target, CancellationToken ct = default) => Task.FromResult(!Unauthorized.Contains(target));

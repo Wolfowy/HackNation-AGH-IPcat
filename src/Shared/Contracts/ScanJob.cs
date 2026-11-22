@@ -24,6 +24,12 @@ public sealed record ScanJob
     /// </summary>
     public required IReadOnlyList<string> AuthorizedScope { get; init; }
 
+    /// <summary>
+    /// Ports the scope policy allows ("22,80,443,8000-8100"); null = every port. The agent rejects the job if an endpoint port or
+    /// a port parameter in effect (<see cref="PortScope.ParametersInEffect"/>) falls outside it, or a port parameter is "top-N".
+    /// </summary>
+    public string? AuthorizedPorts { get; init; }
+
     /// <summary>Operation parameters, validated against <see cref="OperationCatalog"/> (string values only).</summary>
     public IReadOnlyDictionary<string, string> Parameters { get; init; } = new Dictionary<string, string>();
 
@@ -69,7 +75,10 @@ public sealed record ScanEndpoint
     public required int Port { get; init; }
     public TransportProtocol Transport { get; init; } = TransportProtocol.Tcp;
 
-    /// <summary>Virtual host / SNI name if known.</summary>
+    /// <summary>
+    /// Virtual host / SNI name if known. When set, tools connect by this name (URL host, SNI, Host header) instead of
+    /// <see cref="Address"/>, so it must itself be inside the authorized scope.
+    /// </summary>
     public string? Hostname { get; init; }
 
     /// <summary>"http" / "https" when known from service detection.</summary>

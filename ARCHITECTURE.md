@@ -90,6 +90,10 @@ Times are `DateTimeOffset` UTC. Use `TimeProvider` (injectable) instead of `Date
 * HTTPS everywhere (Kestrel cert from config; dev script generates a CA + server cert; agent can pin the CA via `Server:CaCertificatePath`).
 * **Scope**: global scope policy (allowed CIDRs/domains + global exclusions, AdminOnly) ⊇ networks ⊇ jobs. Networks outside the
   policy are rejected; the planner re-checks; the agent re-checks every target against `ScanJob.AuthorizedScope`.
+  Endpoints with a `Hostname` are probed by that name (vhost/SNI), so the name itself must be in scope (planner drops other names).
+* **Ports**: the policy's `allowedPorts` (empty = all) minus `excludedPorts` → `ScanJob.AuthorizedPorts`. The planner clips `ports`/
+  `probePorts` (`top-N` → nmap top-N ∩ allowed, embedded `NmapTopPorts`; N > 1000 → the allowlist) and drops endpoints on other
+  ports; the agent rejects jobs whose endpoints or port parameters (incl. unverifiable `top-N`) fall outside `AuthorizedPorts`.
 * **No arbitrary commands**: workflows contain only `ScanOperation` values and schema-validated string parameters
   (`ParameterValidator`, unknown parameters rejected). Agents build argv (no shell) from local manifests.
 * Audit log (`IAuditLog`) for every mutating admin action. Secrets at rest encrypted with `ISecretProtector` (Data Protection, keys in DB,
@@ -124,12 +128,12 @@ Times are `DateTimeOffset` UTC. Use `TimeProvider` (injectable) instead of `Date
 Tools are **data, not code paths**. Nothing on the server switches on tool names.
 
 **Agent side** (stream B):
-* Tool manifests in `tools.d/*.json` (paths from `Agent:ToolManifestPaths`). Shipped manifests: `nmap`, `naabu`, `httpx`, `nuclei`,
+* Tool manifests in `tools.d/*.json` (paths from `Agent:ToolManifestPaths`). Shipped manifests: `nmap`, `naabu`, `httpx`, `nuclei`, `tlsx`, `nerva` (alternative service detection),
   `fake` (disabled unless `Agent:EnableFakeTools=true`). A manifest declares: `id`, `executable`, version detection, **capabilities**,
   `adapter` (`"manifest"` = generic argv-template runner, or a plugin adapter id), `parser` id, input/output mode, an **argv template**
   with whitelisted placeholders (`{input}`, `{output}`, `{rate}`, `{timeout}`, `{parallelism}`, `{interface}`, `{templatesDir}`),
   per-parameter argument mappings for parameters from `OperationCatalog`, concurrency and timeout.
-* Parsers are registered by id (`nmap-xml`, `naabu-jsonl`, `httpx-jsonl`, `nuclei-jsonl`, `generic-jsonl` with a declarative field
+* Parsers are registered by id (`nmap-xml`, `naabu-jsonl`, `httpx-jsonl`, `nuclei-jsonl`, `nerva-jsonl`, `generic-jsonl` with a declarative field
   mapping). Adapters/parsers can also come from plugin assemblies in `Agent:PluginPaths` (built against `WebScan.Agent.Tools.Abstractions`;
   optional SHA-256 allowlist). Plugins/manifests are installed locally by the agent operator — **never pushed by the server**.
 * Agent registers only tools whose executable was found and version detected; the job's `ToolSelection.ToolId` picks the tool,
@@ -140,7 +144,8 @@ Tools are **data, not code paths**. Nothing on the server switches on tool names
 * Tool catalog (Agents module): every reported tool id is recorded; new ids are **unapproved** until an administrator approves them
   (`Tools:AutoApprove` config list may pre-approve, defaults `nmap,naabu,httpx,nuclei`). `IAgentDirectory` exposes only approved tools.
 * Operation → capability mapping: defaults from `OperationCatalog`, overridable in config `Planner:OperationCapabilities`.
-  Tool preference per capability: `Planner:ToolPreference:{capability}` (ordered ids). A workflow step may pin `toolId`.
+  Tool preference per capability: `Planner:ToolPreference:{capability}` (ordered ids; default `service-detection` = `["nmap"]`, so an
+  approved alternative such as `nerva` is used only when configured or pinned). A workflow step may pin `toolId`.
 * `GET /api/operations` exposes catalog + effective mapping for the UI.
 
 ## 8. Task planner, jobs and leases (stream C)
@@ -278,7 +283,9 @@ Role shorthand: R=CanRead, E=CanEdit, M=CanManage, A=AdminOnly.
   `POST /api/networks` (tag `agent-subnet`); widening the policy stays an explicit Admin `PUT /api/scope-policy`.
 * `GET /api/networks/export?format=json|csv` (R); `POST /api/networks/import?format=json|csv` (M, raw body) → {created, updated, errors[]}
 * `GET /api/zones` (R) → [{name, description, networkCount}]; `POST /api/zones` (M); `DELETE /api/zones/{name}` (M)
-* `GET /api/scope-policy` (R) / `PUT` (A) → {allowed[], excluded[], updatedAt}
+* `GET /api/scope-policy` (R) / `PUT` (A) → {allowed[], excluded[], allowedPorts[], excludedPorts[], updatedAt} — port entries
+  "80" / "8000-8100" (max 500 each); `allowedPorts: []` = every port; a PUT without the port fields keeps them. Audited
+  (`scope_policy.updated`); seed: `Networks:SeedScopePolicy:Allowed/Excluded/AllowedPorts/ExcludedPorts`.
 * `GET|PUT /api/settings` (A) → {values:{key:value}}; `GET /api/audit?page&pageSize&action&entityType&userId` (A) → paged
   [{id, occurredAt, userId, userName, action, entityType, entityId, details, ipAddress}]
 

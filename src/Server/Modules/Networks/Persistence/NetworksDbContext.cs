@@ -78,6 +78,13 @@ public sealed class ScopePolicy
     public int Id { get; set; } = SingletonId;
     public List<string> Allowed { get; set; } = [];
     public List<string> Excluded { get; set; } = [];
+
+    /// <summary>Port allowlist ("80", "8000-8100"); empty = every port.</summary>
+    public List<string> AllowedPorts { get; set; } = [];
+
+    /// <summary>Ports never scanned, also when inside <see cref="AllowedPorts"/>.</summary>
+    public List<string> ExcludedPorts { get; set; } = [];
+
     public DateTimeOffset UpdatedAt { get; set; }
 }
 

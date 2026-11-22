@@ -209,6 +209,10 @@ export interface AgentSubnet {
 export interface ScopePolicy {
   allowed: string[]
   excluded: string[]
+  /** Port allowlist ("80", "8000-8100"); empty = every port. */
+  allowedPorts: string[]
+  /** Ports never scanned, even when allowed. */
+  excludedPorts: string[]
   updatedAt?: Instant
 }
 

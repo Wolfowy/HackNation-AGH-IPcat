@@ -26,7 +26,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { t } from '@/i18n/strings'
 import { formatDateTime, formatNumber, splitLines } from '@/lib/format'
-import { validateTargetLines } from '@/lib/targets'
+import { validatePortLines, validateTargetLines } from '@/lib/targets'
 import { AgentSubnetsTab } from './AgentSubnetsTab'
 import { NetworkFormDialog } from './NetworkFormDialog'
 
@@ -186,15 +186,19 @@ function ScopePolicyForm({ policy }: { policy: ScopePolicy }) {
   const update = useUpdateScopePolicy()
   const [allowed, setAllowed] = useState(policy.allowed.join('\n'))
   const [excluded, setExcluded] = useState(policy.excluded.join('\n'))
+  const [allowedPorts, setAllowedPorts] = useState(policy.allowedPorts.join('\n'))
+  const [excludedPorts, setExcludedPorts] = useState(policy.excludedPorts.join('\n'))
   const allowedCheck = validateTargetLines(splitLines(allowed), false)
   const excludedCheck = validateTargetLines(splitLines(excluded), false)
-  const valid = allowedCheck === true && excludedCheck === true
+  const allowedPortsCheck = validatePortLines(splitLines(allowedPorts))
+  const excludedPortsCheck = validatePortLines(splitLines(excludedPorts))
+  const valid = [allowedCheck, excludedCheck, allowedPortsCheck, excludedPortsCheck].every((c) => c === true)
   return (
     <Card>
       <CardHeader>
         <CardTitle>Global scope policy</CardTitle>
         <CardDescription>
-          Networks must fall inside the allowed CIDRs/domains; global exclusions are never scanned. Last updated{' '}
+          Networks must fall inside the allowed CIDRs/domains; global exclusions and ports outside the allowed ports are never scanned. Last updated{' '}
           {formatDateTime(policy.updatedAt)}.
         </CardDescription>
       </CardHeader>
@@ -203,7 +207,15 @@ function ScopePolicyForm({ policy }: { policy: ScopePolicy }) {
           className="grid gap-4 md:grid-cols-2"
           onSubmit={(e) => {
             e.preventDefault()
-            update.mutate({ allowed: splitLines(allowed), excluded: splitLines(excluded) }, { onSuccess: () => toast.success(t.common.saved) })
+            update.mutate(
+              {
+                allowed: splitLines(allowed),
+                excluded: splitLines(excluded),
+                allowedPorts: splitLines(allowedPorts),
+                excludedPorts: splitLines(excludedPorts),
+              },
+              { onSuccess: () => toast.success(t.common.saved) },
+            )
           }}
         >
           <FormField label="Allowed" hint={t.networks.rangesHint} error={allowedCheck === true ? undefined : allowedCheck}>
@@ -211,6 +223,20 @@ function ScopePolicyForm({ policy }: { policy: ScopePolicy }) {
           </FormField>
           <FormField label="Global exclusions" error={excludedCheck === true ? undefined : excludedCheck}>
             <Textarea rows={8} className="font-mono" readOnly={!isAdmin} value={excluded} onChange={(e) => setExcluded(e.target.value)} />
+          </FormField>
+          <FormField
+            label={t.networks.allowedPorts}
+            hint={t.networks.allowedPortsHint}
+            error={allowedPortsCheck === true ? undefined : allowedPortsCheck}
+          >
+            <Textarea rows={4} className="font-mono" readOnly={!isAdmin} value={allowedPorts} onChange={(e) => setAllowedPorts(e.target.value)} />
+          </FormField>
+          <FormField
+            label={t.networks.excludedPorts}
+            hint={t.networks.excludedPortsHint}
+            error={excludedPortsCheck === true ? undefined : excludedPortsCheck}
+          >
+            <Textarea rows={4} className="font-mono" readOnly={!isAdmin} value={excludedPorts} onChange={(e) => setExcludedPorts(e.target.value)} />
           </FormField>
           {isAdmin && (
             <div className="md:col-span-2">

@@ -111,6 +111,11 @@ export const t = {
     create: 'Create network',
     edit: 'Edit network',
     rangesHint: 'One per line: IPv4/IPv6 address, CIDR (10.0.0.0/24), range (10.0.0.1-10.0.0.50) or hostname.',
+    allowedPorts: 'Allowed ports',
+    allowedPortsHint:
+      'One per line: port (443) or range (8000-8100). Empty = every port. Port scans, ping probes and endpoints are limited to these; top-N scans become nmap top-N ∩ this list.',
+    excludedPorts: 'Excluded ports',
+    excludedPortsHint: 'Never scanned, even when allowed.',
     importDone: (created = 0, updated = 0) => `Imported: ${created} created, ${updated} updated`,
   },
   scans: {

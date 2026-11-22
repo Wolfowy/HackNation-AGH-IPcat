@@ -1,3 +1,4 @@
+using WebScan.Contracts;
 using WebScan.Server.Infrastructure.Http;
 using WebScan.Server.Kernel.Networking;
 
@@ -85,6 +86,22 @@ internal sealed class ScopeRules
                 errors.Add(field, $"'{entry}': wildcard hostnames are only allowed in the scope policy.");
         }
     }
+
+    /// <summary>Port allowlist/denylist entries: "80" or "8000-8100" (1-65535), at most <see cref="MaxPortEntries"/>.</summary>
+    public static void ValidatePorts(ValidationErrors errors, string field, IReadOnlyList<string>? entries)
+    {
+        if (entries is null) return;
+        if (entries.Count > MaxPortEntries) errors.Add(field, $"Max {MaxPortEntries} entries.");
+        foreach (var entry in entries.Where(e => !PortSet.TryParseItem(e, out _)))
+            errors.Add(field, $"'{entry}' is not a port (1-65535) or port range (8000-8100).");
+    }
+
+    /// <summary>Trimmed, distinct port entries (validated before).</summary>
+    public static List<string> NormalizePorts(IEnumerable<string>? entries) =>
+        (entries ?? []).Select(e => e.Trim()).Where(e => e.Length > 0).Distinct(StringComparer.Ordinal).ToList();
+
+    // Keeps clipped port parameters well below ParameterValidator's 4096-character limit.
+    public const int MaxPortEntries = 500;
 
     /// <summary>Trimmed entries; hostnames lower-cased without a trailing dot.</summary>
     public static List<string> Normalize(IEnumerable<string>? entries) =>

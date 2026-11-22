@@ -43,6 +43,7 @@ Linux: `ip -4 route show default` i `ip -4 addr show <interfejs>`.
 
 ```bash
 brew install nmap naabu httpx nuclei          # macOS; Linux: pakiet nmap + binarki ProjectDiscovery z GitHub Releases
+go install github.com/praetorian-inc/nerva/cmd/nerva@latest   # opcjonalnie: nerva (README nie podaje formuły brew; albo binarka z GitHub Releases)
 dotnet run --project src/Agent/Worker -c Release -- --list-tools     # sprawdzenie wykrytych narzędzi (bez skanowania)
 
 dotnet run --project src/Agent/Worker -c Release -- \
@@ -56,7 +57,8 @@ dotnet run --project src/Agent/Worker -c Release -- \
 
 Token jest potrzebny tylko przy pierwszym starcie (poświadczenia zapisują się w `DataDirectory`, plik z prawami 600).
 W panelu **Agents** agent `home-agent` powinien być *Active / online* ze strefą `home` i narzędziami nmap/naabu/httpx/nuclei.
-Jeśli dodałeś inne narzędzia (np. tlsx), zatwierdź je w **Agents → Tools catalog**.
+Jeśli dodałeś inne narzędzia (np. tlsx, nerva), zatwierdź je w **Agents → Tools catalog**. Brak binarki nerva niczego nie psuje:
+agent po prostu jej nie zgłasza.
 
 Planer wybiera interfejs, którego podsieć obejmuje skanowany zakres (np. `en0`), więc ruch idzie bezpośrednio do sieci lokalnej.
 

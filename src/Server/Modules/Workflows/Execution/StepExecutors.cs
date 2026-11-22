@@ -49,6 +49,7 @@ public sealed class AgentStepExecutor(TaskPlanner planner, IServiceProvider serv
             plan = await planner.PlanAsync(Spec(context.Run, context.WorkflowRunId, context.Definition, step, parameters.Values) with
             {
                 Signatures = signatures, Hosts = hosts, Endpoints = endpoints,
+                HostAliases = hosts is null ? null : StepInputs.HostAliases(context.Input),
             }, ct);
         }
         catch (PlanningException ex)

@@ -38,6 +38,7 @@ public static class ScannerAgentServiceCollectionExtensions
         services.AddSingleton<IToolOutputParser, HttpxJsonlParser>();
         services.AddSingleton<IToolOutputParser, NucleiJsonlParser>();
         services.AddSingleton<IToolOutputParser, GenericJsonlParser>();
+        services.AddSingleton<IToolOutputParser, NervaJsonlParser>();
         services.AddSingleton<IToolAdapter, ManifestToolAdapter>();
         if (section.GetValue<bool>(nameof(AgentOptions.EnableFakeTools))) services.AddSingleton<IToolAdapter, FakeScannerAdapter>();
         services.AddSingleton<ToolComponentRegistry>();

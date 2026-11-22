@@ -88,9 +88,9 @@ cd tests/E2ETests/playwright && BASE_URL=http://localhost:8088 E2E_ADMIN_USER=$A
 | `Bootstrap:AdminUserName/AdminPassword` | pierwszy administrator |
 | `Agents:BootstrapEnrollmentToken/BootstrapEnrollmentZones` | token zapisu agentów dla automatyzacji |
 | `Agents:HeartbeatTimeoutSeconds` | po jakim czasie agent jest offline (zadania wracają do kolejki) |
-| `Networks:SeedScopePolicy:Allowed/Excluded` | początkowa polityka autoryzowanego zakresu |
+| `Networks:SeedScopePolicy:Allowed/Excluded/AllowedPorts/ExcludedPorts` | początkowa polityka autoryzowanego zakresu (porty: `80,443,8000-8100`; puste = wszystkie) |
 | `Tools:AutoApprove` | narzędzia zatwierdzane automatycznie (domyślnie nmap, naabu, httpx, nuclei) |
-| `Planner:OperationCapabilities`, `Planner:ToolPreference` | mapowanie operacja → capability, preferencje narzędzi |
+| `Planner:OperationCapabilities`, `Planner:ToolPreference` | mapowanie operacja → capability, preferencje narzędzi (domyślnie `service-detection` = `nmap`; `Planner__ToolPreference__service-detection__0=nerva` zmienia domyślne) |
 | `DataProtection:CertificatePath` / `CertificatePassword` | certyfikat PKCS#12 (RSA) chroniący pierścień kluczy, którymi szyfrowane są wrażliwe kolumny (AES-256-GCM, `ARCHITECTURE.md` §6). Brak = klucze w bazie niezaszyfrowane (ostrzeżenie w logu w `Production`); lokalnie klucze generują się same |
 | `DataProtection:KeyLifetimeDays` | co ile dni nowy klucz szyfrujący (domyślnie 90); stare klucze zostają do odszyfrowania |
 | `OpenTelemetry:OtlpEndpoint` | eksport śladów/metryk/logów |

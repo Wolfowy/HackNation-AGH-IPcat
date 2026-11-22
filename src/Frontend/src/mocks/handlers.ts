@@ -651,8 +651,9 @@ export const handlers = [
   http.put(
     '*/api/scope-policy',
     route('admin', async ({ request, user }) => {
-      const input = await body<{ allowed: string[]; excluded: string[] }>(request)
-      db.scopePolicy = { ...input, updatedAt: new Date().toISOString() }
+      const input = await body<{ allowed: string[]; excluded: string[]; allowedPorts?: string[]; excludedPorts?: string[] }>(request)
+      // Like the server: port lists left out are kept.
+      db.scopePolicy = { ...db.scopePolicy, ...input, updatedAt: new Date().toISOString() }
       audit(user, 'scope.updated', 'scope_policy')
       return HttpResponse.json(db.scopePolicy)
     }),

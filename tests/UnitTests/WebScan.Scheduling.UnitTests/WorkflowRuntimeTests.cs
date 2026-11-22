@@ -130,6 +130,70 @@ public sealed class WorkflowRuntimeTests(TestHost host) : DbTestBase(host)
     }
 
     [Fact]
+    public async Task Domain_targets_keep_their_hostname_from_discovery_to_http_probing()
+    {
+        const string name = "app.example.com", ip = "203.0.113.7"; // the name resolves outside the scope
+        var net = Host.Scope.Add(Zone, [name]);
+        Host.Agents.Set(Agents.Create(AgentId, [Zone], new() { ["eth0"] = ["10.69.0.5/24"] }, [Agents.Route("0.0.0.0/0", "eth0")], maxJobs: 10));
+
+        IReadOnlyList<DiscoveryObservation> Lab(ScanJob job)
+        {
+            var id = job.JobId;
+            var byName = job.Targets.Hosts.Contains(name);
+            return job.Operation switch
+            {
+                ScanOperation.DiscoverHosts when byName => [Observations.Make(id, ObservationKind.HostUp, ip) with { Hostname = name }],
+                ScanOperation.ScanPorts when byName => [Observations.Make(id, ObservationKind.PortOpen, ip, 443) with { Hostname = name }],
+                ScanOperation.DetectService => [.. job.Targets.Endpoints.Select(e =>
+                    Observations.Make(id, ObservationKind.Service, e.Address, e.Port, service: new ServiceDetails { Name = "https", Tunnel = "ssl" }) with { Hostname = e.Hostname })],
+                ScanOperation.HttpProbe or ScanOperation.TlsProbe => [.. job.Targets.Endpoints.Select(e =>
+                    Observations.Make(id, ObservationKind.HttpResponse, e.Address, e.Port, http: new HttpDetails { Url = $"https://{e.Hostname}:{e.Port}/", Scheme = "https" }) with { Hostname = e.Hostname })],
+                _ => [],
+            };
+        }
+
+        var runId = await LaunchAsync(net);
+        await RunAgentUntilFinishedAsync(runId, Lab);
+
+        Assert.Equal([name], (await JobsAsync(runId, "ports")).SelectMany(j => j.Targets.Hosts));
+        foreach (var step in new[] { "services", "http", "tls" })
+        {
+            var endpoint = Assert.Single((await JobsAsync(runId, step)).SelectMany(j => j.Targets.Endpoints));
+            Assert.Equal((name, ip, 443), (endpoint.Hostname, endpoint.Address, endpoint.Port));
+        }
+        Assert.Equal("https", (await JobsAsync(runId, "http")).Single().Targets.Endpoints.Single().Scheme);
+        Assert.DoesNotContain((await StepsAsync(runId)).Values, s => s.Message?.Contains("out-of-scope") == true);
+    }
+
+    [Fact]
+    public async Task Scope_policy_ports_clip_port_parameters_and_endpoints()
+    {
+        var net = Host.Scope.Add(Zone, ["10.70.0.0/28"]);
+        Host.Agents.Set(Agents.Simple(AgentId, Zone, "10.70.0.0/24", maxJobs: 10));
+        Host.Scope.AllowedPorts.AddRange(["80", "443", "8000-8100"]);
+        Host.Scope.ExcludedPorts.Add("8080");
+        try
+        {
+            var runId = await LaunchAsync(net);
+            await RunAgentUntilFinishedAsync(runId, Lab()); // the synthetic lab still reports ssh:22: it must not reach later steps
+
+            const string allowed = "80,443,8000-8079,8081-8100";
+            var discover = (await JobsAsync(runId, "discover")).First();
+            Assert.Equal((allowed, "80,443"), (discover.AuthorizedPorts, discover.Parameters["probePorts"])); // default 22,80,443,3389,8080 clipped
+            var ports = (await JobsAsync(runId, "ports")).First();
+            Assert.Equal(allowed, ports.AuthorizedPorts);
+            Assert.Equal("80,443,8000-8002,8007-8011,8021-8022,8031,8042,8045,8081-8090,8093,8099-8100", ports.Parameters["ports"]); // nmap top-1000 ∩ allowed
+            Assert.Equal(["10.70.0.1:80", "10.70.0.2:443"],
+                (await JobsAsync(runId, "services")).SelectMany(j => j.Targets.Endpoints).Select(e => $"{e.Address}:{e.Port}").Order());
+        }
+        finally
+        {
+            Host.Scope.AllowedPorts.Clear();
+            Host.Scope.ExcludedPorts.Clear();
+        }
+    }
+
+    [Fact]
     public async Task Steps_whose_when_condition_matches_nothing_are_skipped()
     {
         var net = Host.Scope.Add(Zone, ["10.61.0.0/28"]);

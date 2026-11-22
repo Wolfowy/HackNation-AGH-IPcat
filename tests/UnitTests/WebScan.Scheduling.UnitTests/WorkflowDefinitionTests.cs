@@ -287,4 +287,24 @@ public sealed class DagAndInputTests
         Assert.Null(endpoints["10.0.0.4:22"].Scheme);
         Assert.Equal(["10.0.0.1", "10.0.0.2", "10.0.0.3", "10.0.0.4"], StepInputs.Hosts(observations).Order());
     }
+
+    [Fact]
+    public void Hostnames_of_observations_stay_in_the_chain_as_hosts_and_virtual_host_endpoints()
+    {
+        var observations = new[]
+        {
+            Observations.Make(Job, ObservationKind.HostUp, "203.0.113.7") with { Hostname = "app.example.com" },
+            Observations.Make(Job, ObservationKind.PortOpen, "203.0.113.7", 443) with { Hostname = "app.example.com" },
+            Observations.Make(Job, ObservationKind.PortOpen, "203.0.113.7", 443) with { Hostname = "api.example.com" },
+            Observations.Make(Job, ObservationKind.Service, "203.0.113.7", 443, service: new ServiceDetails { Name = "https" }) with { Hostname = "APP.example.com" },
+        };
+
+        Assert.Equal(["203.0.113.7", "api.example.com", "app.example.com"], StepInputs.Hosts(observations).Order());
+        Assert.Equal(["api.example.com", "app.example.com"], StepInputs.HostAliases(observations)["203.0.113.7"].Order());
+        Assert.Equal(["203.0.113.7"], StepInputs.HostAliases(observations)["app.example.com"]);
+
+        var endpoints = StepInputs.Endpoints(observations).ToDictionary(e => e.Hostname!);
+        Assert.Equal(2, endpoints.Count); // one per virtual host, names case-insensitive
+        Assert.Equal("https", endpoints["app.example.com"].Scheme);
+    }
 }

@@ -127,8 +127,10 @@ public static class TargetPlanner
     /// Host batches for every segment. <paramref name="restrictTo"/> (e.g. hosts found by a previous step) is intersected
     /// with the scope; entries outside it are counted in <see cref="TargetPlan.OutOfScope"/>.
     /// </summary>
+    /// <param name="aliases">Other names of a <paramref name="restrictTo"/> entry (a domain target and the address it resolved to):
+    /// an entry outside the scope whose alias is inside is not counted as out of scope.</param>
     public static TargetPlan PlanHosts(IReadOnlyList<SegmentTargets> segments, int batchSize, int subnetPrefixLength,
-        IReadOnlyCollection<string>? restrictTo = null)
+        IReadOnlyCollection<string>? restrictTo = null, ILookup<string, string>? aliases = null)
     {
         IpRangeSet? restrictIps = null;
         HashSet<string>? restrictHosts = null;
@@ -138,9 +140,11 @@ public static class TargetPlanner
             var (ips, hosts) = SplitEntries(restrictTo);
             restrictIps = IpRangeSet.Parse(ips);
             restrictHosts = hosts.ToHashSet(StringComparer.Ordinal);
+            var counted = aliases is null ? restrictTo : restrictTo.Where(e => !aliases[e].Any(a => segments.Any(s => s.ContainsHost(a)))).ToList();
+            var (countedIps, countedHosts) = SplitEntries(counted);
             var allScope = segments.Aggregate(new IpRangeSet(), (acc, s) => acc.Union(s.Addresses));
-            outOfScope = (int)Math.Min(int.MaxValue, ToLong(restrictIps.Subtract(allScope).Count))
-                         + restrictHosts.Count(h => !segments.Any(s => s.Hostnames.Contains(h)));
+            outOfScope = (int)Math.Min(int.MaxValue, ToLong(IpRangeSet.Parse(countedIps).Subtract(allScope).Count))
+                         + countedHosts.Distinct().Count(h => !segments.Any(s => s.Hostnames.Contains(h)));
         }
 
         var batches = new List<PlannedBatch>();
@@ -157,17 +161,46 @@ public static class TargetPlanner
         return new TargetPlan(batches, outOfScope);
     }
 
-    /// <summary>Endpoint batches: endpoints grouped by host (a host's endpoints stay together unless they exceed the batch size).</summary>
-    public static TargetPlan PlanEndpoints(IReadOnlyList<SegmentTargets> segments, IEnumerable<ScanEndpoint> endpoints, int batchSize, int subnetPrefixLength)
+    /// <summary>
+    /// Endpoint batches: endpoints grouped by host (a host's endpoints stay together unless they exceed the batch size).
+    /// Tools connect by <see cref="ScanEndpoint.Hostname"/> when one is set (virtual host, SNI), so a hostname is kept only when it is
+    /// in scope itself (the address may then lie outside, as for domain targets); otherwise it is dropped and the address must be in
+    /// scope. A bare-address endpoint next to a named one for the same address and port is redundant and dropped (its scheme is kept).
+    /// <paramref name="ports"/> (the scope policy's ports) drops endpoints on other ports.
+    /// </summary>
+    public static TargetPlan PlanEndpoints(IReadOnlyList<SegmentTargets> segments, IEnumerable<ScanEndpoint> endpoints, int batchSize, int subnetPrefixLength,
+        PortSet? ports = null)
     {
-        var bySegment = segments.ToDictionary(s => s.NetworkId, _ => new List<ScanEndpoint>());
         var outOfScope = 0;
-        foreach (var ep in endpoints.DistinctBy(e => (e.Address.ToLowerInvariant(), e.Port, e.Transport)))
+        var unresolved = new List<ScanEndpoint>();
+        var planned = new Dictionary<EndpointKey, (Guid NetworkId, ScanEndpoint Endpoint)>();
+        foreach (var raw in endpoints)
         {
-            var segment = segments.FirstOrDefault(s => s.ContainsHost(ep.Address));
-            if (segment is null) { outOfScope++; continue; }
-            bySegment[segment.NetworkId].Add(ep);
+            if (ports is not null && !ports.Contains(raw.Port)) { outOfScope++; continue; }
+            var name = raw.Hostname is null ? null : NormalizeHostname(raw.Hostname);
+            var segment = name is null ? null : segments.FirstOrDefault(s => s.Hostnames.Contains(name));
+            if (segment is null) { name = null; segment = segments.FirstOrDefault(s => s.ContainsHost(raw.Address)); }
+            var ep = raw with { Hostname = name };
+            if (segment is null) { unresolved.Add(ep); continue; }
+            var key = EndpointKey.Of(ep);
+            planned[key] = planned.TryGetValue(key, out var existing)
+                ? existing with { Endpoint = existing.Endpoint with { Scheme = existing.Endpoint.Scheme ?? ep.Scheme } }
+                : (segment.NetworkId, ep);
         }
+
+        // Bare endpoints (in scope or not) with a named sibling: redundant, only their scheme is kept.
+        var named = planned.Keys.Where(k => k.Hostname is not null).ToLookup(k => k with { Hostname = null });
+        var bare = planned.Where(kv => kv.Key.Hostname is null).Select(kv => kv.Value.Endpoint).Concat(unresolved).ToList();
+        foreach (var ep in bare.Where(e => named.Contains(EndpointKey.Of(e))))
+        {
+            foreach (var n in named[EndpointKey.Of(ep)])
+                planned[n] = planned[n] with { Endpoint = planned[n].Endpoint with { Scheme = planned[n].Endpoint.Scheme ?? ep.Scheme } };
+            planned.Remove(EndpointKey.Of(ep));
+        }
+        outOfScope += unresolved.Select(EndpointKey.Of).Distinct().Count(k => !named.Contains(k));
+
+        var bySegment = segments.ToDictionary(s => s.NetworkId, _ => new List<ScanEndpoint>());
+        foreach (var (networkId, ep) in planned.Values) bySegment[networkId].Add(ep);
 
         var batches = new List<PlannedBatch>();
         foreach (var segment in segments)
@@ -175,7 +208,7 @@ public static class TargetPlanner
             var current = new List<ScanEndpoint>();
             foreach (var host in bySegment[segment.NetworkId].GroupBy(e => e.Address.ToLowerInvariant()).OrderBy(g => SortKey(g.Key)))
             {
-                var hostEndpoints = host.OrderBy(e => e.Port).ThenBy(e => e.Transport).ToList();
+                var hostEndpoints = host.OrderBy(e => e.Port).ThenBy(e => e.Transport).ThenBy(e => e.Hostname, StringComparer.Ordinal).ToList();
                 if (current.Count > 0 && current.Count + hostEndpoints.Count > batchSize) { batches.Add(EndpointBatch(segment, current, subnetPrefixLength)); current = []; }
                 foreach (var ep in hostEndpoints)
                 {
@@ -186,6 +219,38 @@ public static class TargetPlanner
             if (current.Count > 0) batches.Add(EndpointBatch(segment, current, subnetPrefixLength));
         }
         return new TargetPlan(batches, outOfScope);
+    }
+
+    private readonly record struct EndpointKey(string Address, int Port, TransportProtocol Transport, string? Hostname)
+    {
+        public static EndpointKey Of(ScanEndpoint e) => new(e.Address.ToLowerInvariant(), e.Port, e.Transport, e.Hostname);
+    }
+
+    /// <summary>
+    /// Clips the port parameters in effect (<see cref="PortScope.ParametersInEffect"/>) to the scope policy's ports: explicit lists are
+    /// intersected; "top-N" becomes Nmap's top N ∩ allowed (N ≤ 1000) or, beyond that, the allowlist itself. Fails when nothing remains,
+    /// and for "top-N" above 1000 with port exclusions only (it would turn into an almost full range).
+    /// </summary>
+    public static IReadOnlyDictionary<string, string> ClipPorts(ScanOperation operation, IReadOnlyDictionary<string, string> values, PortSet allowed,
+        bool hasAllowlist)
+    {
+        if (allowed.IsAll) return values;
+        var result = new Dictionary<string, string>(values, StringComparer.Ordinal);
+        foreach (var name in PortScope.ParametersInEffect(operation, values))
+        {
+            var spec = values[name];
+            PortSet requested;
+            if (PortSet.TryParse(spec, out var list)) requested = list;
+            else if (spec.StartsWith("top-", StringComparison.Ordinal) && int.TryParse(spec.AsSpan(4), out var n) && NmapTopPorts.Top(n) is { } top) requested = top;
+            else if (hasAllowlist) requested = allowed;
+            else throw new PlanningException($"Parameter '{name}' ({spec}) cannot be combined with the scope policy's port exclusions; use top-1000 or less, or an explicit list.");
+
+            var clipped = requested.Intersect(allowed).ToString();
+            if (clipped.Length == 0) throw new PlanningException($"Parameter '{name}' ({spec}) has no port allowed by the scope policy ({allowed}).");
+            if (clipped.Length > 4096) throw new PlanningException($"Parameter '{name}' clipped to the scope policy's ports exceeds 4096 characters; simplify the port lists.");
+            result[name] = clipped;
+        }
+        return result;
     }
 
     /// <summary>Linear-time intersection of two normalized sets (IpRangeSet.Intersect is quadratic for large sparse sets).</summary>
@@ -215,9 +280,9 @@ public static class TargetPlanner
     private static PlannedBatch EndpointBatch(SegmentTargets s, List<ScanEndpoint> endpoints, int subnetPrefix)
     {
         var addresses = endpoints.Select(e => e.Address).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-        var first = $"{endpoints[0].Address}:{endpoints[0].Port}";
+        var first = $"{endpoints[0].Hostname ?? endpoints[0].Address}:{endpoints[0].Port}";
         return new(s.NetworkId, s.Zone, s.MaxRatePerSecond, [], endpoints, endpoints.Count,
-            Hash(endpoints.Select(e => $"{e.Address.ToLowerInvariant()}|{e.Port}|{e.Transport}")),
+            Hash(endpoints.Select(e => $"{e.Address.ToLowerInvariant()}|{e.Port}|{e.Transport}" + (e.Hostname is null ? "" : $"|{e.Hostname}"))),
             endpoints.Count == 1 ? first : $"{first} +{endpoints.Count - 1}", addresses, s.AuthorizedScope, SubnetKey(addresses[0], subnetPrefix));
     }
 

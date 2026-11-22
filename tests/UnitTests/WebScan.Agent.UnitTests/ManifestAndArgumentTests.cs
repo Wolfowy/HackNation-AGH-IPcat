@@ -19,7 +19,7 @@ public class ManifestTests
         var result = ToolManifestLoader.Load([TestPaths.ShippedManifests], Parsing.BuiltInRegistry());
 
         Assert.Empty(result.Errors);
-        Assert.Equal(["fake", "httpx", "naabu", "nmap", "nuclei", "tlsx"], result.Manifests.Select(m => m.Manifest.Id).Order());
+        Assert.Equal(["fake", "httpx", "naabu", "nerva", "nmap", "nuclei", "tlsx"], result.Manifests.Select(m => m.Manifest.Id).Order());
         Assert.All(result.Manifests, m => Assert.Matches("^[0-9a-f]{64}$", m.Sha256));
     }
 
@@ -83,6 +83,21 @@ public class ArgumentBuilderTests
         var argv = ArgumentBuilder.Build(tlsx.Capabilities["tls-probe"], new ArgumentValues { Input = "in", Output = "out", Rate = 50, Parallelism = 10 }, new Dictionary<string, string>());
         Assert.Equal("200ms", argv[argv.IndexOf("-delay") + 1]); // 10 threads x 1 connection / 200 ms = 50/s
         Assert.Contains("rate", new RegisteredTool(tlsx, "tlsx.json", new string('0', 64), "/usr/bin/tlsx", "1.0").ToDescriptor().SupportedParameters);
+    }
+
+    [Fact]
+    public void Nerva_fingerprints_endpoints_without_intrusive_probes()
+    {
+        var nerva = ToolManifestLoader.Load([TestPaths.ShippedManifests], Parsing.BuiltInRegistry()).Manifests.Single(m => m.Manifest.Id == "nerva").Manifest;
+        var definition = nerva.Capabilities[ToolCapabilities.ServiceDetection];
+        var argv = ArgumentBuilder.Build(definition, new ArgumentValues { Input = "in", Output = "out", Rate = 50, Parallelism = 10 },
+            new Dictionary<string, string> { ["versionIntensity"] = "5", ["grabBanner"] = "true" });
+
+        Assert.Equal(["-l", "in", "--json", "-o", "out", "--rate-limit", "50", "--workers", "10", "--timeout", "3000"], argv);
+        Assert.DoesNotContain(argv, a => a is "--deep" or "--misconfigs" or "--proxy");
+        Assert.Equal(ToolInputFormat.Endpoints, definition.Input.Format);
+        // Only rate is supported: a step that sets versionIntensity/grabBanner explicitly keeps nmap.
+        Assert.Equal(["rate"], new RegisteredTool(nerva, "nerva.json", new string('0', 64), "/usr/local/bin/nerva", "unknown").ToDescriptor().SupportedParameters);
     }
 
     private static ToolCapabilityDefinition Nmap(string capability) =>
@@ -205,5 +220,26 @@ public class ArgumentBuilderTests
     {
         var targets = new JobTargets { Endpoints = [new ScanEndpoint { Address = "10.0.0.1", Port = 8443, Scheme = "https" }, new ScanEndpoint { Address = "10.0.0.2", Port = 8080 }] };
         Assert.Equal(["https://10.0.0.1:8443", "10.0.0.2:8080"], TargetFormatter.Lines(targets, ToolInputFormat.Urls));
+    }
+
+    [Fact]
+    public void Virtual_hosts_are_probed_by_name_with_ip_fallback_and_no_duplicates()
+    {
+        var targets = new JobTargets
+        {
+            Endpoints =
+            [
+                new ScanEndpoint { Address = "203.0.113.7", Port = 443, Hostname = "app.example.com", Scheme = "https" },
+                new ScanEndpoint { Address = "203.0.113.7", Port = 443, Hostname = "api.example.com", Scheme = "https" },
+                new ScanEndpoint { Address = "203.0.113.8", Port = 443, Hostname = "APP.example.com", Scheme = "https" }, // same name, other address
+                new ScanEndpoint { Address = "10.0.0.2", Port = 80, Scheme = "http" },
+            ],
+        };
+
+        Assert.Equal(["https://app.example.com:443", "https://api.example.com:443", "http://10.0.0.2:80"], TargetFormatter.Lines(targets, ToolInputFormat.Urls));
+        Assert.Equal(["app.example.com:443", "api.example.com:443", "10.0.0.2:80"], TargetFormatter.Lines(targets, ToolInputFormat.Endpoints));
+        Assert.Equal(["app.example.com", "api.example.com", "10.0.0.2"], TargetFormatter.Lines(targets, ToolInputFormat.Hosts));
+        Assert.Equal(["api.example.com,app.example.com|443", "10.0.0.2|80"],
+            TargetFormatter.GroupByPortSet(targets).Select(g => $"{string.Join(",", TargetFormatter.Lines(g, ToolInputFormat.Hosts).Order())}|{TargetFormatter.Ports(g)}"));
     }
 }

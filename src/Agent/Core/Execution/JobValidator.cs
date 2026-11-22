@@ -42,6 +42,7 @@ public sealed class JobValidator(ToolRegistry tools, NetworkInventory inventory,
         if (!parameters.IsValid) return JobValidationResult.Fail(JobFailureReason.InvalidJob, string.Join(" ", parameters.Errors));
 
         if (TargetError(job, operation) is { } targetError) return JobValidationResult.Fail(JobFailureReason.InvalidJob, targetError);
+        if (PortError(job, parameters.Values) is { } portError) return JobValidationResult.Fail(JobFailureReason.InvalidJob, portError);
 
         if (job.InterfaceName is { } nic && !inventory.GetInterfaces().Any(i => i.Name == nic))
             return JobValidationResult.Fail(JobFailureReason.InvalidJob, $"Interface '{nic}' does not exist on this agent.");
@@ -96,8 +97,28 @@ public sealed class JobValidator(ToolRegistry tools, NetworkInventory inventory,
             if (e.Port is < 1 or > 65535) return $"Endpoint port {e.Port} is invalid.";
             if (e.Address.Contains('/') || (!Targets.TryParseNetwork(e.Address, out _) && !Targets.IsHostname(e.Address)))
                 return $"Endpoint address '{e.Address}' is invalid.";
-            if (!Targets.IsInScope(e.Address, job.AuthorizedScope)) return $"Endpoint '{e.Address}:{e.Port}' is outside the authorized scope.";
+            if (e.Hostname is { } name && (!Targets.IsHostname(name) || Targets.TryParseNetwork(name, out _)))
+                return $"Endpoint hostname '{name}' is invalid.";
+            // Tools connect by the hostname when one is set (TargetFormatter), so that name is what must be in scope.
+            if (!Targets.IsInScope(e.Hostname ?? e.Address, job.AuthorizedScope))
+                return $"Endpoint '{e.Hostname ?? e.Address}:{e.Port}' is outside the authorized scope.";
             if (e.Scheme is not (null or "http" or "https")) return $"Endpoint scheme '{e.Scheme}' is not supported.";
+        }
+        return null;
+    }
+
+    /// <summary>Scope policy ports: every endpoint port and every port parameter in effect must lie inside <see cref="ScanJob.AuthorizedPorts"/>.</summary>
+    private static string? PortError(ScanJob job, IReadOnlyDictionary<string, string> parameters)
+    {
+        if (job.AuthorizedPorts is null) return null;
+        if (!PortSet.TryParse(job.AuthorizedPorts, out var allowed)) return $"Authorized ports '{job.AuthorizedPorts}' are invalid.";
+        if (job.Targets.Endpoints.FirstOrDefault(e => !allowed.Contains(e.Port)) is { } outside)
+            return $"Endpoint '{outside.Hostname ?? outside.Address}:{outside.Port}' is outside the authorized ports.";
+        foreach (var name in PortScope.ParametersInEffect(job.Operation, parameters))
+        {
+            // "top-N" cannot be checked against a port list; the planner always sends explicit lists under port rules.
+            if (!PortSet.TryParse(parameters[name], out var requested) || !allowed.ContainsAll(requested))
+                return $"Parameter '{name}' ({parameters[name]}) is outside the authorized ports.";
         }
         return null;
     }
