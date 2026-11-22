@@ -19,7 +19,7 @@ public sealed class IdentityDbContext(DbContextOptions<IdentityDbContext> option
             e.Property(x => x.UserName).HasMaxLength(User.MaxUserNameLength);
             e.Property(x => x.NormalizedUserName).HasMaxLength(User.MaxUserNameLength);
             e.HasIndex(x => x.NormalizedUserName).IsUnique();
-            e.Property(x => x.DisplayName).HasMaxLength(256);
+            e.Property(x => x.DisplayName).HasEncryptedConversion(); // personal data; length validated by the API
             e.Property(x => x.PasswordHash).HasMaxLength(512);
         });
     }

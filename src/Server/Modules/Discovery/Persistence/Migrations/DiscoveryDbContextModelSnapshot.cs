@@ -416,7 +416,7 @@ namespace WebScan.Server.Modules.Discovery.Persistence.Migrations
 
                     b.Property<string>("Payload")
                         .IsRequired()
-                        .HasColumnType("jsonb");
+                        .HasColumnType("text");
 
                     b.Property<int?>("Port")
                         .HasColumnType("integer");

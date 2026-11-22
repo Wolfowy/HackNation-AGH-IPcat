@@ -91,7 +91,8 @@ cd tests/E2ETests/playwright && BASE_URL=http://localhost:8088 E2E_ADMIN_USER=$A
 | `Networks:SeedScopePolicy:Allowed/Excluded` | początkowa polityka autoryzowanego zakresu |
 | `Tools:AutoApprove` | narzędzia zatwierdzane automatycznie (domyślnie nmap, naabu, httpx, nuclei) |
 | `Planner:OperationCapabilities`, `Planner:ToolPreference` | mapowanie operacja → capability, preferencje narzędzi |
-| `DataProtection:CertificatePath` | ochrona kluczy szyfrujących dane w spoczynku certyfikatem |
+| `DataProtection:CertificatePath` / `CertificatePassword` | certyfikat PKCS#12 (RSA) chroniący pierścień kluczy, którymi szyfrowane są wrażliwe kolumny (AES-256-GCM, `ARCHITECTURE.md` §6). Brak = klucze w bazie niezaszyfrowane (ostrzeżenie w logu w `Production`); lokalnie klucze generują się same |
+| `DataProtection:KeyLifetimeDays` | co ile dni nowy klucz szyfrujący (domyślnie 90); stare klucze zostają do odszyfrowania |
 | `OpenTelemetry:OtlpEndpoint` | eksport śladów/metryk/logów |
 | `Agent:*` (agent) | `src/Agent/Worker/appsettings.json` — opis każdej opcji w komentarzach |
 

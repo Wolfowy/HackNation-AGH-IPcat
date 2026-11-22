@@ -3,6 +3,7 @@ using System.Security.Claims;
 using System.Text.Encodings.Web;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.TestHost;
@@ -75,6 +76,7 @@ public sealed class TestApp : IAsyncLifetime
         services.AddSingleton<IAuditLog>(Audit);
         services.AddSingleton<IScanEventPublisher>(ScanEvents);
         services.AddSingleton<ISecretProtector, FakeSecretProtector>();
+        services.AddDataProtection().UseEphemeralDataProtectionProvider(); // keys for encrypted columns
         services.AddSingleton<INetworkScopeService>(NetworkScope);
         services.AddHttpContextAccessor();
         services.AddScoped<ICurrentUser, HttpContextCurrentUser>();

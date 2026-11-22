@@ -54,7 +54,7 @@ public sealed class ScanningDbContext(DbContextOptions<ScanningDbContext> option
             e.ToTable("result_batches");
             e.HasKey(x => x.BatchId);
             e.Property(x => x.BatchId).ValueGeneratedNever();
-            e.Property(x => x.PayloadJson).HasColumnType("jsonb");
+            e.Property(x => x.PayloadJson).HasEncryptedConversion(); // raw scan results
             e.HasIndex(x => new { x.JobId, x.LeaseId });
             e.HasIndex(x => new { x.ScanRunId, x.StepId });
         });

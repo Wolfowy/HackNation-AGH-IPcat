@@ -80,7 +80,7 @@ namespace WebScan.Server.Modules.Scanning.Persistence.Migrations
 
                     b.Property<string>("PayloadJson")
                         .IsRequired()
-                        .HasColumnType("jsonb")
+                        .HasColumnType("text")
                         .HasColumnName("payload_json");
 
                     b.Property<DateTimeOffset>("ReceivedAt")

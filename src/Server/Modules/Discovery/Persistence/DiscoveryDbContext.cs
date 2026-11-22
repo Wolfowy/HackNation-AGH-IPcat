@@ -34,7 +34,7 @@ public sealed class DiscoveryDbContext(DbContextOptions<DiscoveryDbContext> opti
         {
             e.ToTable("observations");
             e.Property(x => x.ObservationId).HasMaxLength(64);
-            e.Property(x => x.Payload).HasColumnType("jsonb");
+            e.Property(x => x.Payload).HasEncryptedConversion();
             e.HasIndex(x => new { x.JobId, x.ObservationId }).IsUnique();
             e.HasIndex(x => new { x.ScanRunId, x.Kind });
             e.HasIndex(x => new { x.Address, x.ObservedAt });
@@ -69,6 +69,7 @@ public sealed class DiscoveryDbContext(DbContextOptions<DiscoveryDbContext> opti
             e.ToTable("services");
             e.HasIndex(x => new { x.HostId, x.Port, x.Transport }).IsUnique();
             e.HasIndex(x => new { x.Port, x.State });
+            e.Property(x => x.Banner).HasEncryptedConversion();
         });
 
         b.Entity<Technology>(e =>
@@ -100,6 +101,8 @@ public sealed class DiscoveryDbContext(DbContextOptions<DiscoveryDbContext> opti
             e.HasIndex(x => new { x.Status, x.Severity });
             e.HasIndex(x => x.LastSeenRunId);
             e.OwnsMany(x => x.ExternalRefs, o => o.ToJson());
+            e.Property(x => x.MatchedUrl).HasEncryptedConversion();
+            e.Property(x => x.Evidence).HasEncryptedConversion();
         });
 
         b.Entity<ChangeEvent>(e =>
@@ -114,12 +117,16 @@ public sealed class DiscoveryDbContext(DbContextOptions<DiscoveryDbContext> opti
         {
             e.ToTable("asset_annotations");
             e.HasKey(x => new { x.Zone, x.Address });
+            e.Property(x => x.Description).HasEncryptedConversion();
+            e.Property(x => x.Owner).HasEncryptedConversion();
         });
 
         b.Entity<AssetAnnotationRevision>(e =>
         {
             e.ToTable("asset_annotation_revisions");
             e.HasIndex(x => new { x.Zone, x.Address, x.ChangedAt });
+            e.Property(x => x.Description).HasEncryptedConversion();
+            e.Property(x => x.Owner).HasEncryptedConversion();
         });
     }
 }

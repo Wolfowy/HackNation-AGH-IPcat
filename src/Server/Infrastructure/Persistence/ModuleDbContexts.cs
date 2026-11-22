@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
 using Microsoft.Extensions.Configuration;
@@ -38,6 +39,7 @@ public static class ModuleDbContextExtensions
     {
         services.AddDbContext<TContext>((sp, options) =>
         {
+            if (sp.GetService<IDataProtectionProvider>() is { } dataProtection) FieldEncryption.Use(dataProtection);
             var cs = sp.GetRequiredService<IConfiguration>().GetConnectionString(ConnectionStringName)
                      ?? throw new InvalidOperationException($"Connection string '{ConnectionStringName}' is not configured.");
             ConfigureNpgsql<TContext>(options, cs, schema);

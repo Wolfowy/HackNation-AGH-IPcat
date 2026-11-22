@@ -3,6 +3,7 @@ using System.Security.Claims;
 using System.Text.Encodings.Web;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
@@ -105,6 +106,7 @@ public sealed class TestHost : IAsyncLifetime
         services.AddSingleton<IFindingPublisher>(Findings);
         services.AddSingleton<ISignatureCatalog>(Signatures);
         services.AddSingleton<IAuditLog>(Audit);
+        services.AddDataProtection().UseEphemeralDataProtectionProvider(); // keys for encrypted columns
         services.AddSingleton(Messages);
         services.AddProblemDetails();
         services.ConfigureHttpJsonOptions(o => ContractJson.Configure(o.SerializerOptions));
