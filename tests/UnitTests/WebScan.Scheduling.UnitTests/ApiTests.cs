@@ -91,7 +91,7 @@ public sealed class ApiTests(TestHost host) : DbTestBase(host)
         Assert.Contains(page!.Items, r => r.Id == run.Id);
         var detail = await viewer.GetFromJsonAsync<ScanRunDto>($"/api/scans/{run.Id}", ContractJson.Options);
         Assert.Equal(10, detail!.Steps!.Count);
-        Assert.Equal("discover", detail.Steps[0].StepId);
+        Assert.Equal("sweep", detail.Steps[0].StepId);
         Assert.Equal(WebScan.Server.Modules.Workflows.Persistence.StepStatus.Running, detail.Steps[0].Status);
         Assert.Equal(1, detail.Steps[0].JobsTotal);
 

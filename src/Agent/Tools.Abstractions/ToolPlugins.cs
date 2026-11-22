@@ -61,6 +61,9 @@ public sealed record ToolExecutionRequest
     /// <summary>Local interface to scan from (verified to exist), or null for the OS default.</summary>
     public string? InterfaceName { get; init; }
 
+    /// <summary>Gateway of <see cref="InterfaceName"/> (route gateway or first subnet address), null without an interface.</summary>
+    public string? InterfaceGateway { get; init; }
+
     /// <summary>Per-job temporary directory, deleted after the job.</summary>
     public required string WorkingDirectory { get; init; }
 

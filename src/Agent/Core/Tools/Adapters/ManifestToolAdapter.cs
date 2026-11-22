@@ -41,6 +41,7 @@ public sealed class ManifestToolAdapter(ILogger<ManifestToolAdapter> logger) : I
                 TimeoutSeconds = (int)Math.Ceiling(request.Timeout.TotalSeconds),
                 Parallelism = request.Parallelism,
                 Interface = request.InterfaceName,
+                Gateway = request.InterfaceGateway,
                 TemplatesDir = request.TemplatesDirectory,
                 Ports = targets.Endpoints.Count > 0 ? TargetFormatter.Ports(targets) : null,
             }, request.Parameters);

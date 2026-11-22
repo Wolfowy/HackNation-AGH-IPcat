@@ -68,7 +68,8 @@ public sealed class DistributedScanFlowTests(PostgresFixture postgres) : Scenari
         Assert.True(run["coverageComplete"]!.GetValue<bool>());
 
         var jobs = await AllPagesAsync($"/api/scans/{runId}/jobs");
-        var discovery = jobs.Where(j => j.Str("operation") == nameof(ScanOperation.DiscoverHosts)).ToList();
+        // The first step (masscan sweep; the fake tool here) covers the whole scope; later steps only the hosts it found.
+        var discovery = jobs.Where(j => j.Str("stepId") == "sweep").ToList();
         Assert.Equal(8, discovery.Count); // 2 × /24 in batches of 64
         var details = new List<JsonNode>();
         foreach (var job in discovery) details.Add(await Admin.GetAsync($"/api/jobs/{job.Str("id")}"));

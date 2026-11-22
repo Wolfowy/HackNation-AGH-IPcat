@@ -117,7 +117,7 @@ public static partial class ToolManifestLoader
                 }
                 else if (!ToolPlaceholders.All.Contains(p)) errors.Add($"{at}: unknown placeholder {p}.");
                 else if (p == ToolPlaceholders.Value && !allowValue) errors.Add($"{at}: {p} is only allowed in parameterArguments.");
-                else if (p == ToolPlaceholders.Interface && !allowInterface) errors.Add($"{at}: {p} is only allowed in interfaceArguments.");
+                else if (p is ToolPlaceholders.Interface or ToolPlaceholders.Gateway && !allowInterface) errors.Add($"{at}: {p} is only allowed in interfaceArguments.");
             }
         }
     }

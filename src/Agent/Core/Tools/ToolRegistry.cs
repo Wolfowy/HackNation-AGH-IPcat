@@ -20,6 +20,8 @@ public sealed record RegisteredTool(ToolManifest Manifest, string ManifestPath, 
         Parser = string.Join(",", Manifest.Capabilities.Values.Select(c => c.Parser).OfType<string>().Distinct()) is { Length: > 0 } p ? p : null,
         ManifestSha256 = ManifestSha256,
         MaxConcurrency = Manifest.MaxConcurrency,
+        RequiresRawSockets = Manifest.RequiresRawSockets,
+        AcceptsHostnames = Manifest.AcceptsHostnames,
     };
 
     private IEnumerable<string> SupportedParameters()

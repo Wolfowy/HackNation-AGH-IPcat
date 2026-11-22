@@ -123,6 +123,20 @@ polityki. Planer przycina `ports` i `probePorts` (tylko metody pingu TCP) oraz e
 listę dozwolonych (a przy samych wykluczeniach odrzuca krok). Agent odrzuca zadanie z endpointem lub parametrem portów poza
 `AuthorizedPorts` (także `top-N`, którego nie da się sprawdzić). Manifesty nie muszą nic robić: dostają jawną listę.
 
+### masscan — szybki przegląd dużych zakresów
+
+`tools.d/masscan.json` ([robertdavidgraham/masscan](https://github.com/robertdavidgraham/masscan), AGPL-3.0, pakiet Debiana
+w obrazie agenta, `cap_net_raw` na binarce): `port-scan` asynchronicznym SYN-skanem, wyjście `-oX` czytane parserem `nmap-xml`
+(masscan nie zapisuje `<status>` — otwarty port dowodzi, że host żyje). Wbudowane workflow zaczynają od kroku `sweep`
+(`toolId: masscan`, porty top-1000 + typowe porty usług, `rate` 10000 — dalej ograniczane przez `Agent:MaxRatePerSecond`, domyślnie
+2000, oraz limity globalne); dokładne skanowanie nmap/naabu idzie już tylko na hosty z wynikami przeglądu.
+
+* `requiresRawSockets: true` — agent z `rawSockets: false` dostaje zamiast masscana inne narzędzie `port-scan`.
+* `acceptsHostnames: false` — masscan nie rozwiązuje nazw; paczki z nazwami domen idą do naabu/nmap.
+* `interfaceArguments: ["-e", "{interface}", "--router-ip", "{gateway}"]` — masscan wysyła ramki na MAC routera; `{gateway}` to
+  brama trasy na interfejsie zadania, a bez niej pierwszy adres podsieci interfejsu (sieci Dockera, typowe LAN-y). Bez tego masscan
+  na interfejsie bez trasy domyślnej czeka w nieskończoność na router.
+
 ### nerva — alternatywne rozpoznawanie usług
 
 `tools.d/nerva.json` ([praetorian-inc/nerva](https://github.com/praetorian-inc/nerva), Apache-2.0, utrzymywany fork

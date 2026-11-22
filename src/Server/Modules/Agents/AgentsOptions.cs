@@ -28,7 +28,7 @@ public sealed class AgentsOptions
     {
         configuration.GetSection("Agents").Bind(options);
         options.BootstrapEnrollmentZones = ReadList(configuration.GetSection("Agents:BootstrapEnrollmentZones"), []);
-        options.AutoApproveTools = ReadList(configuration.GetSection("Tools:AutoApprove"), ["nmap", "naabu", "httpx", "nuclei"]);
+        options.AutoApproveTools = ReadList(configuration.GetSection("Tools:AutoApprove"), ["nmap", "naabu", "masscan", "httpx", "nuclei"]);
     }
 
     /// <summary>Accepts either a JSON array / indexed keys or a comma-separated string (handy in environment variables).</summary>

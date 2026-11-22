@@ -1,0 +1,27 @@
+// masscan: asynchronous SYN port scanner for fast first sweeps of large ranges. Its nmap-style XML (-oX) is read by the
+// nmap-xml parser (no <status>: an open port proves the host). Needs raw sockets and IP addresses (no name resolution):
+// the planner then picks another port-scan tool. --router-ip: masscan sends frames to the gateway of the chosen interface.
+{
+  "id": "masscan",
+  "displayName": "masscan",
+  "executable": "masscan",
+  "versionArgs": ["--version"],
+  "versionRegex": "[Vv]ersion\\s+(?<version>\\d+\\.\\d+\\.\\d+)",
+  "maxConcurrency": 1,
+  "defaultTimeoutSeconds": 3600,
+  "requiresRawSockets": true,
+  "acceptsHostnames": false,
+  "capabilities": {
+    "port-scan": {
+      "parser": "nmap-xml",
+      "input": { "mode": "file", "format": "hosts" },
+      "output": { "mode": "file" },
+      "arguments": ["-iL", "{input}", "-oX", "{output}", "--rate", "{rate}", "--wait", "3"],
+      "parameterArguments": {
+        "ports": { "top-*": ["--top-ports", "{value}"], "*": ["-p", "{value}"] },
+        "retries": ["--retries", "{value}"]
+      },
+      "interfaceArguments": ["-e", "{interface}", "--router-ip", "{gateway}"]
+    }
+  }
+}

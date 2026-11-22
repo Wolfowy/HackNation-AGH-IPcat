@@ -67,8 +67,9 @@ public sealed class NmapXmlParser : IToolOutputParser
         var ports = host.Element("ports")?.Elements("port").ToList() ?? [];
         var anyOpen = ports.Any(p => (string?)p.Element("state")?.Attribute("state") == "open");
 
-        // "user-set" (-Pn) is an assumption, not evidence: report the host up only when a port proved it.
-        if (state == "up" && (reason != "user-set" || anyOpen))
+        // "user-set" (-Pn) is an assumption, not evidence: report the host up only when a port proved it. masscan's
+        // nmap-style XML has no <status> at all: an open port is the evidence there too.
+        if ((state == "up" && (reason != "user-set" || anyOpen)) || (state is null && anyOpen))
         {
             yield return context.NewObservation(ObservationKind.HostUp, address, observedAt: observedAt) with
             {
@@ -76,7 +77,7 @@ public sealed class NmapXmlParser : IToolOutputParser
                 Host = new HostDetails
                 {
                     Status = "up",
-                    Reason = reason == "user-set" ? "open-port" : reason,
+                    Reason = reason is "user-set" or null ? "open-port" : reason,
                     LatencyMs = (double?)host.Element("times")?.Attribute("srtt") is { } srtt ? Math.Round(srtt / 1000.0, 3) : null,
                     MacAddress = (string?)mac?.Attribute("addr"),
                     MacVendor = (string?)mac?.Attribute("vendor"),
@@ -110,7 +111,7 @@ public sealed class NmapXmlParser : IToolOutputParser
             if (portState != "open") continue;
 
             var scripts = port.Elements("script").ToList();
-            if (Service(port, scripts) is { } service)
+            if (Service(port, scripts, versionScan: context.Job.Operation == ScanOperation.DetectService) is { } service)
             {
                 var conf = (int?)port.Element("service")?.Attribute("conf");
                 yield return context.NewObservation(ObservationKind.Service, address, portId, transport, observedAt: observedAt) with
@@ -133,13 +134,15 @@ public sealed class NmapXmlParser : IToolOutputParser
         }
     }
 
-    private static ServiceDetails? Service(XElement port, List<XElement> scripts)
+    private static ServiceDetails? Service(XElement port, List<XElement> scripts, bool versionScan)
     {
         var svc = port.Element("service");
         var banner = (string?)scripts.FirstOrDefault(s => (string?)s.Attribute("id") == "banner")?.Attribute("output");
         var probed = (string?)svc?.Attribute("method") == "probed";
         var tunnel = (string?)svc?.Attribute("tunnel"); // only set when -sV actually negotiated TLS
-        if (!probed && tunnel is null && banner is null) return null; // port-table guesses are not service detection
+        // A port-table guess is not service detection. In a version scan (-sV) the port stays an unidentified service
+        // ("unknown", no product) so later steps (e.g. HTTP probing) still get the endpoint; plain port scans report none.
+        if (!probed && tunnel is null && banner is null) return versionScan ? new ServiceDetails { Name = "unknown" } : null;
 
         var name = (string?)svc?.Attribute("name") ?? "unknown";
         if (ServiceAliases.TryGetValue(name, out var alias)) name = alias;

@@ -1,0 +1,136 @@
+# Separate WebScan instance for the organizers' lab template (HackNation "Attack Surface Intelligence").
+# Own database, queue and agents; reuses the locally built images (webscan-server/-frontend/-agent from deploy/docker).
+#
+#   1. start one organizer stack first, e.g.  docker compose -f <lab>/docker-compose-custom-network.yml up -d
+#   2. cp deploy/organizer-lab/.env.example deploy/organizer-lab/.env  (set secrets; LAB_SCOPE = the lab subnets)
+#   3. docker compose -p webscan-orglab --env-file deploy/organizer-lab/.env -f deploy/organizer-lab/docker-compose.yml up -d
+#   panel: http://localhost:${ORGLAB_PANEL_PORT:-9088}
+#
+# The agents join the lab's own Docker networks (LAB_NET_A / LAB_NET_B, external), so they see every lab container
+# directly, the way an agent sits inside a scanned network.
+name: webscan-orglab
+
+x-agent: &agent
+  image: webscan-agent
+  restart: unless-stopped
+  depends_on:
+    server:
+      condition: service_healthy
+  cap_add: [NET_RAW, NET_ADMIN]
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: webscan
+      POSTGRES_USER: webscan
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set it in .env}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks: [backend]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U webscan -d webscan"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  rabbitmq:
+    image: rabbitmq:4-management-alpine
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: webscan
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?set it in .env}
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    networks: [backend]
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+
+  server:
+    image: webscan-server
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ConnectionStrings__WebScan: Host=postgres;Port=5432;Database=webscan;Username=webscan;Password=${POSTGRES_PASSWORD}
+      RabbitMq__ConnectionString: amqp://webscan:${RABBITMQ_PASSWORD}@rabbitmq:5672
+      Auth__Jwt__SigningKey: ${JWT_SIGNING_KEY:?set it in .env}
+      Bootstrap__AdminUserName: ${ADMIN_USERNAME:-admin}
+      Bootstrap__AdminPassword: ${ADMIN_PASSWORD:?set it in .env}
+      Agents__BootstrapEnrollmentToken: ${AGENT_ENROLLMENT_TOKEN:?set it in .env}
+      Agents__BootstrapEnrollmentZones: lab
+      # Only the lab is authorized: the scope policy is seeded from LAB_SCOPE (comma separated) on the first start.
+      Networks__SeedScopePolicy__Allowed: ${LAB_SCOPE:?set the lab subnets in .env}
+      Kestrel__Endpoints__Http__Url: http://+:8080
+      Kestrel__Endpoints__Https__Url: https://+:8443
+      Kestrel__Endpoints__Https__Certificate__Path: /certs/server.crt
+      Kestrel__Endpoints__Https__Certificate__KeyPath: /certs/server.key
+    volumes:
+      - ../docker/certs:/certs:ro
+    networks: [backend]
+    healthcheck:
+      test: ["CMD", "wget", "-qO", "/dev/null", "http://127.0.0.1:8080/health/ready"]
+      interval: 10s
+      timeout: 5s
+      start_period: 60s
+      retries: 10
+
+  frontend:
+    image: webscan-frontend
+    restart: unless-stopped
+    depends_on:
+      server:
+        condition: service_healthy
+    ports:
+      - "${ORGLAB_PANEL_PORT:-9088}:8080"
+    networks: [backend]
+
+  lab-agent-1:
+    <<: *agent
+    environment:
+      Agent__ServerUrl: https://server:8443
+      Agent__AgentId: lab-agent-1
+      # Local lab: let the masscan sweep run fast (the default agent cap is 2000 packets/s).
+      Agent__MaxRatePerSecond: ${LAB_AGENT_RATE:-20000}
+      Agent__EnrollmentToken: ${AGENT_ENROLLMENT_TOKEN}
+      Server__CaCertificatePath: /certs/ca.crt
+    volumes:
+      - ../docker/certs:/certs:ro
+      - agent-1-data:/var/lib/webscan-agent
+    networks: [backend, lab-a, lab-b]
+
+  lab-agent-2:
+    <<: *agent
+    environment:
+      Agent__ServerUrl: https://server:8443
+      Agent__AgentId: lab-agent-2
+      Agent__MaxRatePerSecond: ${LAB_AGENT_RATE:-20000}
+      Agent__EnrollmentToken: ${AGENT_ENROLLMENT_TOKEN}
+      Server__CaCertificatePath: /certs/ca.crt
+    volumes:
+      - ../docker/certs:/certs:ro
+      - agent-2-data:/var/lib/webscan-agent
+    networks: [backend, lab-a, lab-b]
+
+networks:
+  backend: {}
+  lab-a:
+    external: true
+    name: ${LAB_NET_A:?set the first lab network in .env}
+  lab-b:
+    external: true
+    name: ${LAB_NET_B:?set the second lab network in .env}
+
+volumes:
+  postgres-data:
+  rabbitmq-data:
+  agent-1-data:
+  agent-2-data:

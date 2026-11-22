@@ -50,6 +50,42 @@ public class ParserTests
     }
 
     [Fact]
+    public async Task Nmap_version_scan_reports_unidentified_ports_as_unknown_services()
+    {
+        const string xml = """
+            <nmaprun><host><status state="up" reason="syn-ack"/><address addr="172.30.0.9" addrtype="ipv4"/><ports>
+            <port protocol="tcp" portid="3000"><state state="open"/><service name="ppp" method="table" conf="3"/></port>
+            <port protocol="tcp" portid="22"><state state="open"/><service name="ssh" product="OpenSSH" version="9.6" method="probed" conf="10"/></port>
+            </ports></host></nmaprun>
+            """;
+        var job = Jobs.Endpoints(ScanOperation.DetectService, ToolCapabilities.ServiceDetection,
+            [new ScanEndpoint { Address = "172.30.0.9", Port = 3000 }, new ScanEndpoint { Address = "172.30.0.9", Port = 22 }], ["172.30.0.0/24"]);
+        var services = (await Parsing.ParseAsync(new NmapXmlParser(), new MemoryStream(Encoding.UTF8.GetBytes(xml)), Parsing.Context(job)))
+            .Where(o => o.Kind == ObservationKind.Service).ToDictionary(o => o.Port!.Value, o => o.Service!);
+        Assert.Equal(("unknown", null), (services[3000].Name, services[3000].Product)); // the guessed "ppp" is not trusted
+        Assert.Equal(("ssh", "OpenSSH"), (services[22].Name, services[22].Product));
+    }
+
+    [Fact]
+    public async Task Masscan_xml_without_host_status_reports_hosts_and_open_ports()
+    {
+        const string xml = """
+            <?xml version="1.0"?>
+            <!-- masscan v1.3 scan -->
+            <nmaprun scanner="masscan" start="1763790000" version="1.0-BETA" xmloutputversion="1.03">
+            <scaninfo type="syn" protocol="tcp" />
+            <host endtime="1763790001"><address addr="172.24.0.4" addrtype="ipv4"/><ports><port protocol="tcp" portid="5672"><state state="open" reason="syn-ack" reason_ttl="64"/></port></ports></host>
+            <host endtime="1763790002"><address addr="172.24.0.4" addrtype="ipv4"/><ports><port protocol="tcp" portid="15672"><state state="open" reason="syn-ack" reason_ttl="64"/></port></ports></host>
+            <runstats><finished time="1763790010" timestr="2026-11-22 06:00:10" elapsed="10" /><hosts up="1" down="0" total="1" /></runstats>
+            </nmaprun>
+            """;
+        var observations = await Parsing.ParseAsync(new NmapXmlParser(), new MemoryStream(Encoding.UTF8.GetBytes(xml)));
+        Assert.Equal([5672, 15672], observations.Where(o => o.Kind == ObservationKind.PortOpen).Select(o => o.Port!.Value).Order());
+        Assert.All(observations.Where(o => o.Kind == ObservationKind.HostUp), o => Assert.Equal(("172.24.0.4", "open-port"), (o.Address, o.Host!.Reason)));
+        Assert.DoesNotContain(observations, o => o.Kind == ObservationKind.Service);
+    }
+
+    [Fact]
     public async Task Nmap_service_detection_maps_product_version_cpe_and_banner_without_raw_fingerprints()
     {
         var observations = await Parsing.ParseFixtureAsync(new NmapXmlParser(), "nmap-service-detection.xml");

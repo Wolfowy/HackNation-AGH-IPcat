@@ -33,6 +33,12 @@ public sealed record ToolManifest
     public int MaxConcurrency { get; init; } = 1;
     public int DefaultTimeoutSeconds { get; init; } = 3600;
 
+    /// <summary>The tool needs raw sockets (SYN-only scanners); the planner skips it on unprivileged agents.</summary>
+    public bool RequiresRawSockets { get; init; }
+
+    /// <summary>False when the tool takes only IP addresses/ranges; batches containing host names go to another tool.</summary>
+    public bool AcceptsHostnames { get; init; } = true;
+
     /// <summary>Fixed environment variables for the tool process (no expansion, no placeholders).</summary>
     public IReadOnlyDictionary<string, string> Environment { get; init; } = new Dictionary<string, string>();
 
@@ -157,6 +163,12 @@ public static class ToolPlaceholders
     public const string ThreadDelayMs = "{threadDelayMs}";
 
     /// <summary>
+    /// Gateway (router) of the job's interface: its route gateway, else the first address of its IPv4 subnet (Docker bridges).
+    /// Only in interfaceArguments; for tools that send raw frames to a router MAC (masscan <c>--router-ip</c>).
+    /// </summary>
+    public const string Gateway = "{gateway}";
+
+    /// <summary>
     /// <c>{param:NAME}</c> in parameterArguments: the validated value of another operation parameter, e.g. a method mapping that
     /// uses the probe ports only for TCP methods. Counts as support for NAME.
     /// </summary>
@@ -164,7 +176,7 @@ public static class ToolPlaceholders
 
     public static readonly IReadOnlySet<string> All = new HashSet<string>(StringComparer.Ordinal)
     {
-        Input, Output, Rate, Timeout, Parallelism, Interface, TemplatesDir, Value, Ports, ThreadDelayMs,
+        Input, Output, Rate, Timeout, Parallelism, Interface, TemplatesDir, Value, Ports, ThreadDelayMs, Gateway,
     };
 
     /// <summary>NAME of a <c>{param:NAME}</c> placeholder, else null.</summary>

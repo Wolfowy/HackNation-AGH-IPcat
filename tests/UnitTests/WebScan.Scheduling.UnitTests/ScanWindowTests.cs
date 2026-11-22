@@ -89,7 +89,11 @@ public sealed class ScanWindowTests(TestHost host) : DbTestBase(host)
     {
         var net = Host.Scope.Add(Zone, ["10.110.0.0/20"]);
         var viewer = Host.UserClient(Roles.Viewer);
-        var request = new ScanEstimateRequest(StandardWorkflows.StandardDiscoveryKey, null, [net], null, 5);
+        // A one-step host discovery flow: the estimate math is under test, not the built-in workflow's shape.
+        var key = $"est-{Guid.NewGuid():N}"[..20];
+        await Host.WithScopeAsync(sp => sp.GetRequiredService<WebScan.Server.Modules.Workflows.Definitions.WorkflowDefinitionStore>().CreateAsync(
+            new ScanWorkflowDefinition { Key = key, Name = "Estimate", Steps = [new() { Id = "discover", Operation = ScanOperation.DiscoverHosts }] }, "test"));
+        var request = new ScanEstimateRequest(key, null, [net], null, 5);
 
         var invalid = await viewer.PostAsJsonAsync("/api/scans/estimate", request with { NetworkIds = [Guid.NewGuid()] }, ContractJson.Options);
         Assert.Equal(HttpStatusCode.UnprocessableEntity, invalid.StatusCode);

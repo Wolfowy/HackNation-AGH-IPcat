@@ -27,3 +27,4 @@ deploy/docker/certs/*.srl
 
 # Real API responses captured from a running stack (contain scan data)
 api-samples/
+deploy/organizer-lab/.env

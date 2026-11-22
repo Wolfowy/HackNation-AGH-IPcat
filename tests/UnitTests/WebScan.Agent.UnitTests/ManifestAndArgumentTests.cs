@@ -19,7 +19,7 @@ public class ManifestTests
         var result = ToolManifestLoader.Load([TestPaths.ShippedManifests], Parsing.BuiltInRegistry());
 
         Assert.Empty(result.Errors);
-        Assert.Equal(["fake", "httpx", "naabu", "nerva", "nmap", "nuclei", "tlsx"], result.Manifests.Select(m => m.Manifest.Id).Order());
+        Assert.Equal(["fake", "httpx", "masscan", "naabu", "nerva", "nmap", "nuclei", "tlsx"], result.Manifests.Select(m => m.Manifest.Id).Order());
         Assert.All(result.Manifests, m => Assert.Matches("^[0-9a-f]{64}$", m.Sha256));
     }
 
@@ -76,6 +76,35 @@ public class ManifestTests
 
 public class ArgumentBuilderTests
 {
+    [Fact]
+    public void Masscan_sweeps_through_the_job_interface_and_its_gateway()
+    {
+        var masscan = ToolManifestLoader.Load([TestPaths.ShippedManifests], Parsing.BuiltInRegistry()).Manifests.Single(m => m.Manifest.Id == "masscan").Manifest;
+        Assert.True(masscan.RequiresRawSockets);
+        Assert.False(masscan.AcceptsHostnames);
+        var def = masscan.Capabilities["port-scan"];
+        var values = new ArgumentValues { Input = "in", Output = "out", Rate = 5000, Parallelism = 1, Interface = "eth1", Gateway = "172.24.0.1" };
+
+        var argv = ArgumentBuilder.Build(def, values, new Dictionary<string, string> { ["ports"] = "22,80,5672" });
+        Assert.Equal(["-iL", "in", "-oX", "out", "--rate", "5000", "--wait", "3", "-p", "22,80,5672", "-e", "eth1", "--router-ip", "172.24.0.1"], argv);
+        Assert.Contains("--top-ports", ArgumentBuilder.Build(def, values, new Dictionary<string, string> { ["ports"] = "top-100" }));
+    }
+
+    [Theory]
+    [InlineData("eth0", "172.27.0.1")] // gateway of a route on the interface
+    [InlineData("eth1", "172.24.0.1")] // no route gateway: first address of the subnet (Docker bridges, most LANs)
+    [InlineData("eth9", null)]
+    public void Gateway_of_an_interface(string nic, string? expected)
+    {
+        NetworkInterfaceInfo[] interfaces =
+        [
+            new() { Name = "eth0", Addresses = ["172.27.0.8/16"] },
+            new() { Name = "eth1", Addresses = ["fe80::1/64", "172.24.0.8/16"] },
+        ];
+        RouteInfo[] routes = [new() { Destination = "0.0.0.0/0", Gateway = "172.27.0.1", InterfaceName = "eth0" }, new() { Destination = "172.24.0.0/16", InterfaceName = "eth1" }];
+        Assert.Equal(expected, WebScan.Agent.Inventory.NetworkInventory.GatewayFor(nic, interfaces, routes));
+    }
+
     [Fact]
     public void Tools_without_a_rate_limit_get_a_per_thread_delay_that_holds_the_rate_and_count_as_rate_support()
     {

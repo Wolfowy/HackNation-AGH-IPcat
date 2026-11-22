@@ -209,9 +209,15 @@ Tools are **data, not code paths**. Nothing on the server switches on tool names
 * ETA of active runs (`ScanRunDto.remainingSeconds`, `estimatedFinishAt`): targets of queued/leased jobs at the rate the run achieved
   so far (finished job targets / elapsed). Null until a job finished; steps not planned yet (their targets come from discoveries) are
   not counted, so the ETA grows when they start.
-* Built-in workflow `standard-discovery` is seeded (DiscoverHosts → ScanPorts → DetectService → [HTTP: HttpProbe → ExecuteSignatures]
-  [TLS: TlsProbe] → RecheckMissing (OnFailure = Continue) → PersistObservations → ComparePreviousScan → PublishFinding). Seeding
-  only inserts the key when it is absent: existing databases keep their stored version until a new one is saved.
+* Built-in workflows `standard-discovery` and `full-discovery` are seeded: sweep (ScanPorts pinned to masscan over the whole scope,
+  nmap top-1000 + common service ports such as 5672/15672/6379/9200/27017) → ScanPorts on the hosts the sweep found (top-1000,
+  resp. 1-65535 for `full-discovery`) → DetectService → [HTTP: HttpProbe → ExecuteSignatures] [TLS: TlsProbe] → RecheckMissing
+  (OnFailure = Continue) → PersistObservations → ComparePreviousScan → PublishFinding. HTTP probing also covers services nmap could
+  not identify (`unknown`, `tcpwrapped`). An updated built-in reaches existing databases as a new `system` version unless a user saved
+  a newer version of that key.
+* Tool requirements from manifests: `requiresRawSockets` (masscan) and `acceptsHostnames: false` make the planner pick another tool
+  of the capability on unprivileged agents / for batches with host names, so a pinned sweeper never blocks a run. Without
+  configuration the port-scan preference is naabu, nmap (masscan only where a step pins it).
 * Operations (closed enum `ScanOperation`, `OperationCatalog`): agent plane DiscoverHosts, ScanPorts, DetectService, HttpProbe,
   TlsProbe, ExecuteSignatures, RecheckMissing; server plane EvaluateCondition, PersistObservations, ComparePreviousScan, PublishFinding.
 * Schedules: Quartz.NET (RAM store, rebuilt from DB at startup), cron + IANA time zone, allowed windows, overlap policy;

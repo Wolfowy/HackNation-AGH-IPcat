@@ -91,7 +91,7 @@ public static class Eligibility
         if (job.NeedsRawSockets && agent.RawSockets == false)
             return new([], $"agent {agent.AgentId} has no raw-socket privileges (needed for the selected scan technique)");
 
-        var tool = SelectTool(agent, job.Capability, job.PreferredToolId, options, job.RequiredParameters);
+        var tool = SelectTool(agent, job.Capability, job.PreferredToolId, options, job.RequiredParameters, job.ReachTargets);
         if (tool is null)
         {
             var anyTool = SelectTool(agent, job.Capability, job.PreferredToolId, options) is not null;
@@ -120,10 +120,13 @@ public static class Eligibility
     /// </summary>
     // shortcut: SupportedParameters is per tool, not per capability; split it in the contract if two capabilities of one tool diverge.
     public static string? SelectTool(AgentSnapshot agent, string capability, string? preferredToolId, PlannerOptions options,
-        IReadOnlyCollection<string>? requiredParameters = null)
+        IReadOnlyCollection<string>? requiredParameters = null, IReadOnlyList<string>? targets = null)
     {
+        // A pinned tool the agent cannot run here (no raw sockets, host names it cannot resolve) falls back to another tool.
+        var hasHostnames = targets?.Any(t => !IpRangeSet.TryParseRange(t, out _)) == true;
         var tools = agent.ApprovedTools
             .Where(t => t.Capabilities.Contains(capability, StringComparer.OrdinalIgnoreCase))
+            .Where(t => !(t.RequiresRawSockets && agent.RawSockets == false) && !(hasHostnames && !t.AcceptsHostnames))
             .Where(t => requiredParameters is null || requiredParameters.All(p => t.SupportedParameters.Contains(p, StringComparer.Ordinal)))
             .Select(t => t.Id).OrderBy(id => id, StringComparer.Ordinal).ToList();
         if (tools.Count == 0) return null;

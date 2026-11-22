@@ -18,7 +18,8 @@ public sealed class WorkflowValidatorTests
     [Fact]
     public void Standard_discovery_is_valid_and_survives_a_json_round_trip()
     {
-        Assert.Empty(WorkflowValidator.Validate(StandardWorkflows.StandardDiscovery));
+        Assert.All(StandardWorkflows.All, w => Assert.Empty(WorkflowValidator.Validate(w)));
+        Assert.Equal("1-65535", StandardWorkflows.FullDiscovery.Steps.Single(s => s.Id == "ports").Parameters["ports"]);
         var json = JsonSerializer.Serialize(StandardWorkflows.StandardDiscovery, ContractJson.Options);
         Assert.Empty(WorkflowValidator.Validate(JsonSerializer.Deserialize<ScanWorkflowDefinition>(json, ContractJson.Options)));
     }
@@ -261,9 +262,9 @@ public sealed class DagAndInputTests
     {
         var def = StandardWorkflows.StandardDiscovery;
         var status = def.Steps.ToDictionary(s => s.Id, _ => StepStatus.Pending);
-        Assert.Equal(["discover"], DagScheduler.ReadySteps(def, status).Select(s => s.Id));
+        Assert.Equal(["sweep"], DagScheduler.ReadySteps(def, status).Select(s => s.Id));
 
-        foreach (var id in new[] { "discover", "ports", "services" }) status[id] = StepStatus.Completed;
+        foreach (var id in new[] { "sweep", "ports", "services" }) status[id] = StepStatus.Completed;
         Assert.Equal(["http", "tls"], DagScheduler.ReadySteps(def, status).Select(s => s.Id)); // parallel branches
 
         status["http"] = StepStatus.Failed; // OnFailure = Continue
@@ -279,7 +280,7 @@ public sealed class DagAndInputTests
     public void Ancestors_are_transitive()
     {
         var ancestors = DagScheduler.Ancestors(StandardWorkflows.StandardDiscovery.Steps, "persist");
-        Assert.Equal(["discover", "http", "ports", "recheck", "services", "signatures", "tls"], ancestors.Order());
+        Assert.Equal(["http", "ports", "recheck", "services", "signatures", "sweep", "tls"], ancestors.Order());
     }
 
     [Fact]

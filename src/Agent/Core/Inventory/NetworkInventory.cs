@@ -79,6 +79,31 @@ public sealed class NetworkInventory(IOptionsMonitor<AgentOptions> options, IToo
         return capEff is not null && ulong.TryParse(capEff, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var caps) && (caps & (1UL << CapNetRaw)) != 0;
     }
 
+    /// <summary>Gateway for scanning through <paramref name="interfaceName"/> (see <see cref="GatewayFor"/>).</summary>
+    public async Task<string?> GatewayForAsync(string interfaceName, CancellationToken ct) =>
+        GatewayFor(interfaceName, GetInterfaces(), await GetRoutesAsync(ct));
+
+    /// <summary>
+    /// The IPv4 gateway of a route on the interface, else the first address of the interface's IPv4 subnet (Docker and most
+    /// LANs put the router there). Null when the interface has no IPv4 address.
+    /// </summary>
+    public static string? GatewayFor(string interfaceName, IReadOnlyList<NetworkInterfaceInfo> interfaces, IReadOnlyList<RouteInfo> routes)
+    {
+        var routed = routes.Where(r => r.InterfaceName == interfaceName && r.Gateway is { } g && IPAddress.TryParse(g, out var ip)
+            && ip.AddressFamily == AddressFamily.InterNetwork && !ip.Equals(IPAddress.Any)).Select(r => r.Gateway).FirstOrDefault();
+        if (routed is not null) return routed;
+        foreach (var address in interfaces.FirstOrDefault(i => i.Name == interfaceName)?.Addresses ?? [])
+        {
+            var parts = address.Split('/');
+            if (parts.Length != 2 || !IPAddress.TryParse(parts[0], out var ip) || ip.AddressFamily != AddressFamily.InterNetwork
+                || !int.TryParse(parts[1], out var prefix) || prefix is < 1 or > 30) continue;
+            var value = BitConverter.ToUInt32(ip.GetAddressBytes().Reverse().ToArray(), 0);
+            var network = value & (uint.MaxValue << (32 - prefix));
+            return new IPAddress(BitConverter.GetBytes(network + 1).Reverse().ToArray()).ToString();
+        }
+        return null;
+    }
+
     public static AgentResources Resources() => new()
     {
         CpuCores = Environment.ProcessorCount,

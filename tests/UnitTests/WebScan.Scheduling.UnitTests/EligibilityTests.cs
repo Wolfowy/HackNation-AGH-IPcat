@@ -53,6 +53,19 @@ public sealed class EligibilityTests
     }
 
     [Fact]
+    public void A_pinned_sweeper_falls_back_where_it_cannot_run()
+    {
+        var masscan = Agents.Tool("masscan", ToolCapabilities.PortScan) with { RequiresRawSockets = true, AcceptsHostnames = false };
+        var agent = Agents.Simple("a1", "dc1", "10.0.0.5/16", tools: [masscan, Agents.Naabu]);
+
+        Assert.Equal("masscan", Eligibility.SelectTool(agent with { RawSockets = true }, ToolCapabilities.PortScan, "masscan", Options, targets: ["10.0.1.0/24"]));
+        Assert.Equal("naabu", Eligibility.SelectTool(agent with { RawSockets = false }, ToolCapabilities.PortScan, "masscan", Options, targets: ["10.0.1.0/24"]));
+        Assert.Equal("naabu", Eligibility.SelectTool(agent with { RawSockets = true }, ToolCapabilities.PortScan, "masscan", Options, targets: ["app.example.com"]));
+        // Only the sweeper and it cannot run: no tool, so the job waits for (or times out without) a capable agent.
+        Assert.Null(Eligibility.SelectTool(agent with { RawSockets = false, ApprovedTools = [masscan] }, ToolCapabilities.PortScan, "masscan", Options));
+    }
+
+    [Fact]
     public void Raw_socket_techniques_go_only_to_agents_that_can_use_them()
     {
         var job = Job(["10.0.1.0/24"]) with { NeedsRawSockets = true };

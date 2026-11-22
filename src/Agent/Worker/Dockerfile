@@ -58,16 +58,17 @@ RUN case "$TARGETARCH" in amd64|arm64) ;; *) echo "unsupported arch: $TARGETARCH
     fetch nerva  "$NERVA_VERSION"  "$(eval echo \$NERVA_SHA256_${ARCH_UPPER})" praetorian-inc; \
     chmod 0755 /dl/bin/*
 
-# ---------- toolbox: Debian runtime with nmap + ProjectDiscovery tools + nerva, non-root ----------
+# ---------- toolbox: Debian runtime with nmap + masscan + ProjectDiscovery tools + nerva, non-root ----------
 FROM debian:bookworm-slim AS toolbox
 RUN apt-get update \
- && apt-get install -y --no-install-recommends nmap libpcap0.8 ca-certificates libcap2-bin libssl3 libstdc++6 zlib1g \
+ && apt-get install -y --no-install-recommends nmap masscan libpcap0.8 ca-certificates libcap2-bin libssl3 libstdc++6 zlib1g \
  && rm -rf /var/lib/apt/lists/*
 COPY --from=tools-download /dl/bin/ /usr/local/bin/
 # Raw sockets for SYN scans without root; tools still run as the unprivileged user.
 # Only cap_net_raw: a file capability outside the container's bounding set makes exec fail with EPERM, and
 # cap_net_admin is not in Docker's default set. Runtimes that drop NET_RAW must add it back (--cap-add NET_RAW).
 RUN setcap cap_net_raw+eip /usr/bin/nmap \
+ && setcap cap_net_raw+eip /usr/bin/masscan \
  && setcap cap_net_raw+eip /usr/local/bin/naabu \
  && groupadd --system --gid 10001 webscan \
  && useradd --system --uid 10001 --gid webscan --home-dir /var/lib/webscan-agent --shell /usr/sbin/nologin webscan \

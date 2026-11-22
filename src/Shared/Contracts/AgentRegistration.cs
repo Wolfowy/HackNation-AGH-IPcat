@@ -61,6 +61,12 @@ public sealed record ToolDescriptor
 
     /// <summary>Max concurrent executions of this tool on the agent.</summary>
     public int MaxConcurrency { get; init; } = 1;
+
+    /// <summary>The tool only works with raw sockets (e.g. masscan): not chosen on agents reporting RawSockets=false.</summary>
+    public bool RequiresRawSockets { get; init; }
+
+    /// <summary>False when the tool cannot resolve host names (e.g. masscan): batches with host names use another tool.</summary>
+    public bool AcceptsHostnames { get; init; } = true;
 }
 
 public sealed record NetworkInterfaceInfo

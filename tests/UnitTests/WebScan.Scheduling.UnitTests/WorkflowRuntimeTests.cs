@@ -213,8 +213,10 @@ public sealed class WorkflowRuntimeTests(TestHost host) : DbTestBase(host)
             await RunAgentUntilFinishedAsync(runId, Lab()); // the synthetic lab still reports ssh:22: it must not reach later steps
 
             const string allowed = "80,443,8000-8079,8081-8100";
-            var discover = (await JobsAsync(runId, "discover")).First();
-            Assert.Equal((allowed, "80,443"), (discover.AuthorizedPorts, discover.Parameters["probePorts"])); // default 22,80,443,3389,8080 clipped
+            var sweep = (await JobsAsync(runId, "sweep")).First();
+            Assert.True(PortSet.TryParse(StandardWorkflows.SweepPorts, out var sweepPorts));
+            Assert.True(PortSet.TryParse(allowed, out var allowedPorts));
+            Assert.Equal((allowed, sweepPorts.Intersect(allowedPorts).ToString()), (sweep.AuthorizedPorts, sweep.Parameters["ports"])); // sweep list clipped
             var ports = (await JobsAsync(runId, "ports")).First();
             Assert.Equal(allowed, ports.AuthorizedPorts);
             Assert.Equal("80,443,8000-8002,8007-8011,8021-8022,8031,8042,8045,8081-8090,8093,8099-8100", ports.Parameters["ports"]); // nmap top-1000 ∩ allowed

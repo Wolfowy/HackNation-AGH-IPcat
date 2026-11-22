@@ -11,6 +11,7 @@ public sealed class ToolExecutor(
     ToolComponentRegistry components,
     IToolProcessRunner processRunner,
     CredentialStore credentials,
+    WebScan.Agent.Inventory.NetworkInventory inventory,
     IOptions<AgentOptions> options,
     TimeProvider time,
     ILogger<ToolExecutor> logger)
@@ -45,6 +46,7 @@ public sealed class ToolExecutor(
                 Parallelism = job.Parallelism,
                 Timeout = job.Timeout,
                 InterfaceName = job.Job.InterfaceName,
+                InterfaceGateway = job.Job.InterfaceName is { } nic ? await inventory.GatewayForAsync(nic, cancellationToken) : null,
                 WorkingDirectory = workDir,
                 TemplatesDirectory = templatesDir,
                 Parser = parser,

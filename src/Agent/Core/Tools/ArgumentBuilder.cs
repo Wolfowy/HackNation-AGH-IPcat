@@ -15,6 +15,7 @@ public sealed record ArgumentValues
     public int TimeoutSeconds { get; init; }
     public int Parallelism { get; init; }
     public string? Interface { get; init; }
+    public string? Gateway { get; init; }
     public string? TemplatesDir { get; init; }
     public string? Ports { get; init; }
 
@@ -72,6 +73,7 @@ public static class ArgumentBuilder
                 ToolPlaceholders.Timeout => v.TimeoutSeconds.ToString(CultureInfo.InvariantCulture),
                 ToolPlaceholders.Parallelism => v.Parallelism.ToString(CultureInfo.InvariantCulture),
                 ToolPlaceholders.Interface => v.Interface,
+                ToolPlaceholders.Gateway => v.Gateway,
                 ToolPlaceholders.TemplatesDir => v.TemplatesDir,
                 ToolPlaceholders.Ports => v.Ports,
                 ToolPlaceholders.ThreadDelayMs => v.ThreadDelayMs.ToString(CultureInfo.InvariantCulture),

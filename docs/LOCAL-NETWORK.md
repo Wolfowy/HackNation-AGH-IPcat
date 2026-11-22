@@ -78,8 +78,10 @@ dopiero, gdy żaden bezpośredni nie jest online.
 Postęp widać na żywo; wyniki w **Assets** (hosty, usługi, technologie, certyfikaty), **Findings** (sygnatury),
 a po kolejnych skanach w **Changes**. Cykliczne skanowanie: **Schedules** (cron w składni Quartz, np. `0 0 2 * * ?` = 02:00).
 
-`standard-discovery`: wykrywanie hostów (TCP ping na 22/80/443/3389/8080) → top-1000 portów TCP → wykrywanie usług →
-HTTP/TLS → zatwierdzone sygnatury (domyślnie tylko `info`/`low`) → zapis → porównanie z poprzednim skanem.
+`standard-discovery`: szybki przegląd całego zakresu masscanem (top-1000 + typowe porty usług) → top-1000 portów TCP tylko na
+hostach z otwartymi portami → wykrywanie usług → HTTP/TLS → zatwierdzone sygnatury (domyślnie tylko `info`/`low`) → ponowny pomiar
+brakujących → zapis → porównanie z poprzednim skanem. `full-discovery` skanuje na znalezionych hostach wszystkie porty 1-65535.
+Agent bez uprawnień do surowych gniazd (np. natywny na macOS bez sudo) robi przegląd naabu/nmapem zamiast masscana.
 
 ## Wskazówki
 

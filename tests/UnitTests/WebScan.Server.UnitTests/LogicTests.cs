@@ -173,7 +173,7 @@ public sealed class AgentLogicTests
             return options;
         }
 
-        Assert.Equal(["nmap", "naabu", "httpx", "nuclei"], Bind([]).AutoApproveTools);
+        Assert.Equal(["nmap", "naabu", "masscan", "httpx", "nuclei"], Bind([]).AutoApproveTools);
         Assert.Equal(["nmap", "custom"], Bind(new() { ["Tools:AutoApprove"] = "nmap, custom" }).AutoApproveTools);
         Assert.Empty(Bind(new() { ["Tools:AutoApprove"] = "" }).AutoApproveTools);
         var zones = Bind(new() { ["Agents:BootstrapEnrollmentZones:0"] = "lab", ["Agents:BootstrapEnrollmentZones:1"] = "dmz", ["Agents:HeartbeatTimeoutSeconds"] = "30" });

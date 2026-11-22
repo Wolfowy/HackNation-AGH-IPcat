@@ -29,7 +29,12 @@ public static class ScanningModule
         services.AddModuleDbContext<ScanningDbContext>(ScanningDbContext.Schema);
         services.Configure<PlannerOptions>(configuration.GetSection(PlannerOptions.Section));
         // nmap stays the default service detector when an alternative (nerva) is approved; configuring the key replaces this.
-        services.PostConfigure<PlannerOptions>(o => o.ToolPreference.TryAdd(ToolCapabilities.ServiceDetection, ["nmap"]));
+        // Defaults when not configured: thorough tools first; fast sweepers (masscan) only where a workflow step pins them.
+        services.PostConfigure<PlannerOptions>(o =>
+        {
+            o.ToolPreference.TryAdd(ToolCapabilities.ServiceDetection, ["nmap"]);
+            o.ToolPreference.TryAdd(ToolCapabilities.PortScan, ["naabu", "nmap"]);
+        });
         services.Configure<ScanningOptions>(configuration.GetSection(ScanningOptions.Section));
         services.TryAddSingleton(TimeProvider.System);
 

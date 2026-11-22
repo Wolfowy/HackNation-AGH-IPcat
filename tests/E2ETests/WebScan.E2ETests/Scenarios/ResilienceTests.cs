@@ -60,7 +60,17 @@ public sealed class AgentLossTests(PostgresFixture postgres) : Scenario(postgres
         await SetScanLimitsAsync(l => { l["defaultBatchSize"] = 64; l["leaseDurationSeconds"] = 30; });
         var net = await CreateNetworkAsync("loss-lab", "lab-a", ["10.50.2.0/24"]);
 
-        var runId = await StartScanAsync("agent-loss", [net]);
+        // Host discovery over the whole /24 (every address answers): the check is "each address exactly once" after reassignment.
+        await Admin.PostAsync("/api/workflows", new
+        {
+            key = "loss-discovery", name = "Loss discovery",
+            steps = new object[]
+            {
+                new { id = "discover", operation = "DiscoverHosts" },
+                new { id = "persist", operation = "PersistObservations", dependsOn = new[] { "discover" } },
+            },
+        });
+        var runId = await StartScanAsync("agent-loss", [net], workflow: "loss-discovery");
         await ApiClient.EventuallyAsync(() => AllPagesAsync($"/api/scans/{runId}/jobs"),
             jobs => jobs.Any(j => j["agentId"]?.GetValue<string>() == "agent-doomed" && j.Str("status") == "Leased"),
             TimeSpan.FromSeconds(30), "doomed agent holding a lease");
