@@ -32,7 +32,7 @@ const retryOf = (r: RetryPolicy) => (r.maxAttempts === undefined && r.backoffSec
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="grid gap-3 border-t pt-3">
-      <h4 className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">{title}</h4>
+      <h4 className="text-[13px] font-semibold">{title}</h4>
       {children}
     </section>
   )

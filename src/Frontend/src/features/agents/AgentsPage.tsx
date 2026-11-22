@@ -301,7 +301,7 @@ function ToolsCatalog() {
                           Revoke approval
                         </Button>
                       ) : (
-                        <Button size="sm" onClick={() => save(tool.toolId, true, true)}>
+                        <Button size="sm" variant="outline" onClick={() => save(tool.toolId, true, true)}>
                           {t.agents.approve}
                         </Button>
                       )}

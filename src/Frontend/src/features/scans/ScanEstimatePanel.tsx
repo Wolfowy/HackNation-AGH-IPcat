@@ -36,7 +36,7 @@ export function ScanEstimatePanel({ request }: { request: ScanEstimateRequest | 
             </p>
           ))}
           {e.warnings.map((w) => (
-            <p key={w} className="flex items-start gap-1 text-amber-600">
+            <p key={w} className="flex items-start gap-1 text-sev-medium-fg">
               <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
               {w}
             </p>

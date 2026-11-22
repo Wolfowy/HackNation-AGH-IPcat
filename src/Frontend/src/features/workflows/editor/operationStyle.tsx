@@ -17,7 +17,7 @@ const ICONS: Record<ScanOperation, LucideIcon> = {
 }
 
 /** Agent-plane (network traffic via scanner agents) vs server-plane operations. */
-export const planeAccent = (plane?: OperationPlane) => (plane === 'Server' ? 'border-l-violet-500' : 'border-l-sky-500')
+export const planeAccent = (plane?: OperationPlane) => (plane === 'Server' ? 'border-l-flow-decision' : 'border-l-node-host')
 
 export function OperationIcon({ operation, plane, className }: { operation: ScanOperation; plane?: OperationPlane; className?: string }) {
   const Icon = ICONS[operation] ?? Network
@@ -25,8 +25,8 @@ export function OperationIcon({ operation, plane, className }: { operation: Scan
     <span
       aria-hidden
       className={cn(
-        'inline-flex size-7 shrink-0 items-center justify-center rounded-md',
-        plane === 'Server' ? 'bg-violet-500/15 text-violet-700 dark:text-violet-300' : 'bg-sky-500/15 text-sky-700 dark:text-sky-300',
+        'inline-flex size-7 shrink-0 items-center justify-center rounded-md text-white',
+        plane === 'Server' ? 'bg-flow-decision' : 'bg-node-host',
         className,
       )}
     >

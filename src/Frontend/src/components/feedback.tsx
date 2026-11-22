@@ -8,7 +8,7 @@ import { t } from '@/i18n/strings'
 
 export function Spinner({ label = t.common.loading }: { label?: string }) {
   return (
-    <div className="text-muted-foreground flex items-center gap-2 py-6 text-sm" role="status">
+    <div className="text-muted-foreground flex items-center gap-2 py-6 text-[13px]" role="status">
       <Loader2 className="size-4 animate-spin" /> {label}
     </div>
   )
@@ -25,7 +25,7 @@ export function ErrorAlert({ error, title = 'Error' }: { error: unknown; title?:
 }
 
 export function EmptyState({ children = t.common.empty }: { children?: ReactNode }) {
-  return <p className="text-muted-foreground py-6 text-center text-sm">{children}</p>
+  return <p className="text-muted-foreground px-6 py-10 text-center text-[13px]">{children}</p>
 }
 
 /** Renders loading / error states of a query and hands the data to `children`. */

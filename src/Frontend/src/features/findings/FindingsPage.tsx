@@ -15,6 +15,7 @@ import { NativeSelect } from '@/components/ui/input'
 import { t } from '@/i18n/strings'
 import { triageLabels } from './FindingEditDialog'
 import { FindingsTable } from './FindingsTable'
+import { SeverityTiles } from './SeverityTiles'
 
 export function FindingsPage() {
   const [severity, setSeverity] = useState<Severity | ''>('')
@@ -54,6 +55,7 @@ export function FindingsPage() {
           </>
         }
       />
+      <SeverityTiles value={severity} onChange={resetSelection(setSeverity)} />
       <Filters>
         <FormField label="Severity">
           <NativeSelect value={severity} onChange={(e) => resetSelection(setSeverity)(e.target.value as Severity | '')}>
