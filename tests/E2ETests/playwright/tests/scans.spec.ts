@@ -13,7 +13,8 @@ test.describe('scans', () => {
     const workflow = page.getByLabel('Workflow')
     await expect(workflow.locator('option')).not.toHaveCount(1)
     await workflow.selectOption({ index: 1 })
-    await page.getByRole('checkbox', { name: new RegExp(network) }).check()
+    await page.getByRole('combobox', { name: 'Search networks' }).fill(network)
+    await page.getByRole('option', { name: new RegExp(network) }).click()
     await page.getByRole('button', { name: 'Start scan' }).click()
 
     await expect(page).toHaveURL(/\/scans\/[0-9a-f-]{36}$/)

@@ -6,7 +6,8 @@ import { useNetworks } from '@/api/networks'
 import { useCreateSchedule, useUpdateSchedule } from '@/api/schedules'
 import { DAYS_OF_WEEK, type AllowedWindow, type OverlapPolicy, type Schedule, type ScheduleInput } from '@/api/types'
 import { useWorkflowVersions, useWorkflows } from '@/api/workflows'
-import { CheckboxField, CheckboxList, FormField, submitHandler } from '@/components/form'
+import { CheckboxField, FormField, submitHandler } from '@/components/form'
+import { MultiSelect, networkOption } from '@/components/MultiSelect'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input, NativeSelect } from '@/components/ui/input'
@@ -204,9 +205,10 @@ export function ScheduleFormDialog({ schedule, onClose }: { schedule?: Schedule;
               </NativeSelect>
             </FormField>
           </div>
-          <CheckboxList
+          <MultiSelect
             legend="Networks"
-            options={(networks.data ?? []).map((n) => ({ value: n.id, label: `${n.name} (${n.zone})` }))}
+            placeholder="Search by name, zone, range or #tag…"
+            options={(networks.data ?? []).map(networkOption)}
             value={watch('networkIds')}
             onChange={(v) => {
               setValue('networkIds', v)

@@ -4,7 +4,8 @@ import { useNetworks } from '@/api/networks'
 import { useStartScan } from '@/api/scans'
 import type { ScanStartRequest } from '@/api/types'
 import { useWorkflowVersions, useWorkflows } from '@/api/workflows'
-import { CheckboxList, FormField, submitHandler } from '@/components/form'
+import { FormField, submitHandler } from '@/components/form'
+import { MultiSelect, networkOption } from '@/components/MultiSelect'
 import { PageHeader } from '@/components/page'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -97,9 +98,10 @@ export function StartScanPage() {
                 </NativeSelect>
               </FormField>
             </div>
-            <CheckboxList
+            <MultiSelect
               legend="Networks"
-              options={(networks.data ?? []).filter((n) => n.enabled).map((n) => ({ value: n.id, label: `${n.name} — ${n.zone} (${n.ranges.join(', ')})` }))}
+              placeholder="Search by name, zone, range or #tag…"
+              options={(networks.data ?? []).filter((n) => n.enabled).map(networkOption)}
               value={watch('networkIds')}
               onChange={(v) => {
                 setValue('networkIds', v)

@@ -13,7 +13,8 @@ RUN --mount=type=cache,target=/root/.nuget/packages \
 # Alpine runtime: small, ships busybox wget for the health check; the app uses invariant globalization.
 FROM mcr.microsoft.com/dotnet/aspnet:10.0-alpine
 # Npgsql probes GSSAPI on Linux; without the library every connection logs a native load error.
-RUN apk add --no-cache krb5-libs
+# tzdata: Alpine ships no /usr/share/zoneinfo, so every IANA time zone except UTC (schedules, Quartz) would be "unknown".
+RUN apk add --no-cache krb5-libs tzdata
 WORKDIR /app
 COPY --from=build /app .
 ENV ASPNETCORE_ENVIRONMENT=Production \
